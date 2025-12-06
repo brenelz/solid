@@ -20,19 +20,18 @@ export {
   isEqual,
   isPending,
   isWrappable,
-  latest,
   mapArray,
   merge,
   omit,
   onCleanup,
+  onSettled,
+  pending,
   reconcile,
   repeat,
   resolve,
   runWithOwner,
   snapshot,
-  transition,
-  untrack,
-  useTransition
+  untrack
 } from "@solidjs/signals";
 
 export type {
@@ -72,7 +71,7 @@ export * from "./client/observable.js";
 
 export * from "./client/component.js";
 export * from "./client/flow.js";
-export { sharedConfig, createAsync, Suspense } from "./client/hydration.js";
+export { sharedConfig, createAsync, Loading } from "./client/hydration.js";
 // stub
 export function ssrHandleError() {}
 export function ssrRunInScope() {}
@@ -118,6 +117,7 @@ export {
   onError, // handled by ErrorBoundary
   resetErrorBoundaries, // no longer needed with healing
   startTransition,
+  Suspense, // Loading
   SuspenseList, // was experimental, do we keep it?
   useTransition,
   writeSignal, // handled by underlying Node class

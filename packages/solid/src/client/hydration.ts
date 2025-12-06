@@ -2,12 +2,13 @@ import {
   getOwner,
   createAsync as coreAsync,
   MemoOptions,
-  createSuspense,
+  createLoadBoundary,
   createSignal,
   flush,
   createMemo,
-  Computation,
-  runWithOwner
+  runWithOwner,
+  getNextChildId,
+  type Owner
 } from "@solidjs/signals";
 import { JSX } from "../jsx.js";
 
@@ -32,7 +33,7 @@ export const sharedConfig: SharedConfig = {
   getNextContextId() {
     const o = getOwner();
     if (!o) throw new Error(`getNextContextId cannot be used under non-hydrating context`);
-    return o.getNextChildId();
+    return getNextChildId(o);
   }
 };
 
@@ -41,15 +42,15 @@ export const sharedConfig: SharedConfig = {
  * ```typescript
  * const AsyncComponent = lazy(() => import('./component'));
  *
- * <Suspense fallback={<LoadingIndicator />}>
+ * <Loading fallback={<LoadingIndicator />}>
  *   <AsyncComponent />
- * </Suspense>
+ * </Loading>
  * ```
  * @description https://docs.solidjs.com/reference/components/suspense
  */
-export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element }): JSX.Element {
+export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }): JSX.Element {
   if (!sharedConfig.hydrating)
-    return createSuspense(
+    return createLoadBoundary(
       () => props.children,
       () => props.fallback
     ) as unknown as JSX.Element;
@@ -77,7 +78,7 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
               sharedConfig.hydrating = false;
             },
             (err: any) =>
-              runWithOwner(o as Computation<any>, () => {
+              runWithOwner(o as Owner, () => {
                 throw err;
               })
           );
@@ -85,7 +86,7 @@ export function Suspense(props: { fallback?: JSX.Element; children: JSX.Element 
         return props.fallback;
       }
     }
-    return createSuspense(
+    return createLoadBoundary(
       () => props.children,
       () => props.fallback
     );

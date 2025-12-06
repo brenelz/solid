@@ -3,9 +3,9 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, test } from "vitest";
-import { createRoot, ErrorBoundary, flush } from "solid-js";
+import { createRoot, Errored, flush } from "solid-js";
 
-describe("Testing ErrorBoundary control flow", () => {
+describe("Testing Errored control flow", () => {
   let div!: HTMLDivElement, disposer: () => void;
 
   const Component = () => {
@@ -29,9 +29,9 @@ describe("Testing ErrorBoundary control flow", () => {
     createRoot(dispose => {
       disposer = dispose;
       <div ref={div}>
-        <ErrorBoundary fallback="Failed Miserably">
+        <Errored fallback="Failed Miserably">
           <Component />
-        </ErrorBoundary>
+        </Errored>
       </div>;
     });
     expect(div.innerHTML).toBe("Failed Miserably");
@@ -41,9 +41,9 @@ describe("Testing ErrorBoundary control flow", () => {
     createRoot(dispose => {
       disposer = dispose;
       <div ref={div}>
-        <ErrorBoundary fallback="Failed Miserably">
+        <Errored fallback="Failed Miserably">
           <Component3 />
-        </ErrorBoundary>
+        </Errored>
       </div>;
     });
     expect(div.innerHTML).toBe("Failed Miserably");
@@ -53,9 +53,9 @@ describe("Testing ErrorBoundary control flow", () => {
     createRoot(dispose => {
       disposer = dispose;
       <div ref={div}>
-        <ErrorBoundary fallback={e => e.message}>
+        <Errored fallback={e => e.message}>
           <Component />
-        </ErrorBoundary>
+        </Errored>
       </div>;
     });
     expect(div.innerHTML).toBe("Failure");
@@ -66,17 +66,18 @@ describe("Testing ErrorBoundary control flow", () => {
     createRoot(dispose => {
       disposer = dispose;
       <div ref={div}>
-        <ErrorBoundary
+        <Errored
           fallback={(e, reset) => {
             r = reset;
             return e.message;
           }}
         >
           <Component2 />
-        </ErrorBoundary>
+        </Errored>
       </div>;
     });
     expect(div.innerHTML).toBe("Failure");
+    flush();
 
     r!();
     flush();
@@ -88,11 +89,11 @@ describe("Testing ErrorBoundary control flow", () => {
     createRoot(dispose => {
       disposer = dispose;
       <div ref={div}>
-        <ErrorBoundary fallback="Failed Miserably">
-          <ErrorBoundary fallback={<Component />}>
+        <Errored fallback="Failed Miserably">
+          <Errored fallback={<Component />}>
             <Component />
-          </ErrorBoundary>
-        </ErrorBoundary>
+          </Errored>
+        </Errored>
       </div>;
     });
     expect(div.innerHTML).toBe("Failed Miserably");

@@ -208,8 +208,7 @@ export function createAsync<T>(
     processSource() ||
     (() => {
       if (value === undefined && uninitialized) {
-        const error = new NotReadyError();
-        error.cause = source;
+        const error = new NotReadyError(source);
         throw error;
       }
       return value as T;
@@ -229,15 +228,8 @@ export function isPending(fn: () => any, fallback?: boolean): boolean {
   }
 }
 
-export function latest<T>(fn: () => T, fallback?: T): T | undefined {
-  try {
-    return fn();
-  } catch (err) {
-    if (err instanceof NotReadyError && arguments.length > 1) {
-      return fallback!;
-    }
-    throw err;
-  }
+export function pending<T>(fn: () => T): T | undefined {
+  return fn();
 }
 
 export function resolve() {
@@ -304,14 +296,6 @@ export function repeat<T>(
     for (let i = 0; i < len; i++) s.push(mapFn(i + offset));
   } else if (options.fallback) s = [options.fallback()];
   return () => s;
-}
-
-export function transition<T>(fn: () => T): void {
-  // noop on server
-}
-
-export function useTransition(): [() => boolean, (fn: () => void) => void] {
-  return [() => false, () => {}];
 }
 
 export function createOptimistic<T>(value: T): [Accessor<T>, (v: T | ((p: T) => T)) => void] {

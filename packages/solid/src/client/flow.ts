@@ -37,13 +37,7 @@ export function For<T extends readonly any[], U extends JSX.Element>(props: {
     "fallback" in props
       ? { keyed: props.keyed, fallback: () => props.fallback }
       : { keyed: props.keyed };
-  return (IS_DEV
-    ? createMemo(
-        mapArray(() => props.each, props.children, options),
-        undefined,
-        { name: "value" }
-      )
-    : createMemo(mapArray(() => props.each, props.children, options))) as unknown as JSX.Element;
+  return mapArray(() => props.each, props.children, options) as unknown as JSX.Element;
 }
 
 /**
@@ -67,23 +61,11 @@ export function Repeat<T extends JSX.Element>(props: {
   const options: { fallback?: Accessor<JSX.Element>; from?: Accessor<number | undefined> } =
     "fallback" in props ? { fallback: () => props.fallback } : {};
   options.from = () => props.from;
-  return (IS_DEV
-    ? createMemo(
-        repeat(
-          () => props.count,
-          index => (typeof props.children === "function" ? props.children(index) : props.children),
-          options
-        ),
-        undefined,
-        { name: "value" }
-      )
-    : createMemo(
-        repeat(
-          () => props.count,
-          index => (typeof props.children === "function" ? props.children(index) : props.children),
-          options
-        )
-      )) as unknown as JSX.Element;
+  return repeat(
+    () => props.count,
+    index => (typeof props.children === "function" ? props.children(index) : props.children),
+    options
+  ) as unknown as JSX.Element;
 }
 
 /**
@@ -155,8 +137,7 @@ type EvalConditions = readonly [number, Accessor<unknown>, MatchProps<unknown>];
 export function Switch(props: { fallback?: JSX.Element; children: JSX.Element }): JSX.Element {
   const chs = children(() => props.children);
   const switchFunc = createMemo(() => {
-    const ch = chs() as unknown as MatchProps<unknown> | MatchProps<unknown>[];
-    const mps = Array.isArray(ch) ? ch : [ch];
+    const mps = chs.toArray() as unknown as MatchProps<unknown>[];
     let func: Accessor<EvalConditions | undefined> = () => undefined;
     for (let i = 0; i < mps.length; i++) {
       const index = i;
@@ -227,17 +208,17 @@ export function Match<T>(props: MatchProps<T>) {
  *
  * Also supports a callback form that passes the error and a reset function:
  * ```typescript
- * <ErrorBoundary fallback={
+ * <Errored fallback={
  *   (err, reset) => <div onClick={reset}>Error: {err.toString()}</div>
  * }>
  *   <MyComp />
- * </ErrorBoundary>
+ * </Errored>
  * ```
- * Errors thrown from the fallback can be caught by a parent ErrorBoundary
+ * Errors thrown from the fallback can be caught by a parent Errored
  *
  * @description https://docs.solidjs.com/reference/components/error-boundary
  */
-export function ErrorBoundary(props: {
+export function Errored(props: {
   fallback: JSX.Element | ((err: any, reset: () => void) => JSX.Element);
   children: JSX.Element;
 }): JSX.Element {

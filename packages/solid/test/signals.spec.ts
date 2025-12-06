@@ -74,27 +74,32 @@ describe("Update signals", () => {
   test("Create and update a Signal", () => {
     const [value, setValue] = createSignal(5);
     setValue(10);
+    flush();
     expect(value()).toBe(10);
   });
   test("Create and update a Signal with fn", () => {
     const [value, setValue] = createSignal(5);
     setValue(p => p + 5);
+    flush();
     expect(value()).toBe(10);
   });
   test("Create Signal and set different value", () => {
     const [value, setValue] = createSignal(5);
     setValue(10);
+    flush();
     expect(value()).toBe(10);
   });
   test("Create Signal and set equivalent value", () => {
     const [value, setValue] = createSignal(5, { equals: (a, b) => a > b });
     setValue(3);
+    flush();
     expect(value()).toBe(5);
   });
   test("Create and read a Signal with function value", () => {
     const [value, setValue] = createSignal<() => string>(() => () => "Hi");
     expect(value()()).toBe("Hi");
     setValue(() => () => "Hello");
+    flush();
     expect(value()()).toBe("Hello");
   });
   test("Create and trigger a Memo", () => {
@@ -102,6 +107,7 @@ describe("Update signals", () => {
       memo = createMemo(() => `Hello ${name()}`);
     expect(memo()).toBe("Hello John");
     setName("Jake");
+    flush();
     expect(memo()).toBe("Hello Jake");
   });
   test("Create Signal and set equivalent value not trigger Memo", () => {
@@ -110,6 +116,7 @@ describe("Update signals", () => {
     expect(name()).toBe("John");
     expect(memo()).toBe("Hello John");
     setName("Jake");
+    flush();
     expect(name()).toBe("John");
     expect(memo()).toBe("Hello John");
   });
@@ -336,6 +343,7 @@ describe("Effect grouping of signals", () => {
           expect(a()).toBe(1);
           expect(b()).toBe(0);
           setA(2);
+          flush();
           expect(a()).toBe(2);
           expect(error).toBeInstanceOf(Error);
           expect(error.message).toBe("test");
