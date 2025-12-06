@@ -1,5 +1,11 @@
 # solid-js
 
+## 2.0.0-experimental.11
+
+### Major Changes
+
+- 2645436: Update to R3 based signals
+
 ## 2.0.0-experimental.10
 
 ### Patch Changes
@@ -69,6 +75,7 @@
 ### Patch Changes
 
 - fff8aed: Update typescript to 5.7
+
 ## 1.9.10
 
 ### Patch Changes

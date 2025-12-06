@@ -1,5 +1,16 @@
 # babel-preset-solid
 
+## 2.0.0-experimental.11
+
+### Major Changes
+
+- 2645436: Update to R3 based signals
+
+### Patch Changes
+
+- Updated dependencies [2645436]
+  - solid-js@2.0.0-experimental.11
+
 ## 2.0.0-experimental.10
 
 ### Patch Changes
@@ -62,6 +73,7 @@
 ### Major Changes
 
 - 1da85a3: Update to new package layout, signals implementation, compiler
+
 ## 1.9.10
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # test-integration
 
+## 2.0.0-experimental.11
+
+### Major Changes
+
+- 2645436: Update to R3 based signals
+
+### Patch Changes
+
+- Updated dependencies [2645436]
+  - babel-preset-solid@2.0.0-experimental.11
+  - solid-js@2.0.0-experimental.11
+
 ## 2.0.0-experimental.10
 
 ### Patch Changes
@@ -92,6 +104,7 @@
 - Updated dependencies [1da85a3]
   - solid-js@2.0.0-experimental.0
   - babel-preset-solid@2.0.0-experimental.0
+
 ## 1.9.10
 
 ### Patch Changes

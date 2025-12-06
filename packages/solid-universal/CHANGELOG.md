@@ -1,5 +1,16 @@
 # @solidjs/universal
 
+## 2.0.0-experimental.11
+
+### Major Changes
+
+- 2645436: Update to R3 based signals
+
+### Patch Changes
+
+- Updated dependencies [2645436]
+  - solid-js@2.0.0-experimental.11
+
 ## 2.0.0-experimental.10
 
 ### Patch Changes
