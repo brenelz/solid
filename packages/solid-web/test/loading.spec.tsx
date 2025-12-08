@@ -68,7 +68,7 @@ describe("Testing Loading", () => {
     expect(div.innerHTML).toBe("Loading");
   });
 
-  test.skip("Toggle Loading control flow", async () => {
+  test("Toggle Loading control flow", async () => {
     for (const r of resolvers) r({ default: ChildComponent });
     await Promise.resolve();
     await Promise.resolve();
