@@ -1,4 +1,4 @@
-import { untrack, createSignal, createAsync, createMemo, getOwner } from "@solidjs/signals";
+import { untrack, createSignal, createMemo } from "@solidjs/signals";
 import { $DEVCOMP, IS_DEV, devComponent } from "../client/core.js";
 import { sharedConfig } from "./hydration.js";
 import type { JSX } from "../jsx.js";
@@ -108,10 +108,7 @@ export function lazy<T extends Component<any>>(
     //   });
     //   comp = s;
     // } else
-    if (!comp) {
-      const s = createAsync<T>(() => (p || (p = fn())).then(mod => mod.default));
-      comp = s;
-    }
+    comp = createMemo<T>(() => (p || (p = fn())).then(mod => mod.default));
     let Comp: T | undefined;
     return createMemo(() =>
       (Comp = comp())

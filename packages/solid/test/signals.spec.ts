@@ -7,14 +7,14 @@ import {
   createRenderEffect,
   createMemo,
   untrack,
-  onMount,
   onCleanup,
   createContext,
   useContext,
   getOwner,
   runWithOwner,
   flush,
-  Setter
+  Setter,
+  onSettled
 } from "../src/index.js";
 
 describe("Create signals", () => {
@@ -33,14 +33,6 @@ describe("Create signals", () => {
   test("Create and read a Memo with initial value", () => {
     const memo = createMemo(i => `${i} John`, "Hello");
     expect(memo()).toBe("Hello John");
-  });
-  test("Create onMount", () => {
-    let temp: string;
-    createRoot(() => {
-      onMount(() => (temp = "impure"));
-    });
-    flush();
-    expect(temp!).toBe("impure");
   });
   test("Create a Effect with explicit deps", () => {
     let temp: string;
@@ -464,7 +456,7 @@ describe("runWithOwner", () => {
     });
 
     runWithOwner(owner, () => {
-      onMount(() => {
+      onSettled(() => {
         effectRun = true;
       });
       onCleanup(() => (cleanupRun = true));

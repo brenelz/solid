@@ -18,6 +18,7 @@ export {
   getObserver,
   getOwner,
   isEqual,
+  isRefreshing,
   isPending,
   isWrappable,
   mapArray,
@@ -27,6 +28,7 @@ export {
   onSettled,
   pending,
   reconcile,
+  refresh,
   repeat,
   resolve,
   runWithOwner,
@@ -55,7 +57,7 @@ export type {
 } from "@solidjs/signals";
 
 // needs wrappers
-export { $DEVCOMP, children, createContext, onMount, useContext } from "./client/core.js";
+export { $DEVCOMP, children, createContext, useContext } from "./client/core.js";
 
 export type {
   ChildrenReturn,
@@ -66,12 +68,9 @@ export type {
 } from "./client/core.js";
 
 export * from "./utilities.js";
-// under review.. might be unnecessary core with `createAsync`
-export * from "./client/observable.js";
-
 export * from "./client/component.js";
 export * from "./client/flow.js";
-export { sharedConfig, createAsync, Loading } from "./client/hydration.js";
+export { sharedConfig, Loading } from "./client/hydration.js";
 // stub
 export function ssrHandleError() {}
 export function ssrRunInScope() {}
@@ -104,23 +103,26 @@ export {
   catchError, // old version handled by createErrorBoundary. new version is different helper.
   createComputed, // nope
   createDeferred, // take it outside
-  createResource, // createAsync
+  createResource, // all computations
   createSelector, // createProjection
   DevHooks,
   enableExternalSource,
   enableScheduling,
   equalFn, // renamed `isEqual`
+  from, // handled by async iterators
   getListener, // renamed `getObserver`
   indexArray, // handled in `mapArray`
   Index, // handled by For
+  observable, // handled by async iterators
   on, // with split effects this doesn't need to be core
   onError, // handled by ErrorBoundary
+  onMount, // onSettled
   resetErrorBoundaries, // no longer needed with healing
   startTransition,
   Suspense, // Loading
   SuspenseList, // was experimental, do we keep it?
   useTransition,
-  writeSignal, // handled by underlying Node class
+  writeSignal, // handled by underlying Node class, should have never been external
 
   // Store related to legacy syntax
   createMutable,

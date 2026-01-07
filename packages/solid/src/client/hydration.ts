@@ -1,6 +1,5 @@
 import {
   getOwner,
-  createAsync as coreAsync,
   MemoOptions,
   createLoadBoundary,
   createSignal,
@@ -93,81 +92,81 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
   }) as unknown as JSX.Element;
 }
 
-/**
- * Creates a readonly derived async reactive memoized signal
- * ```typescript
- * export function createAsync<T>(
- *   compute: (v: T) => Promise<T> | T,
- *   value?: T,
- *   options?: { name?: string, equals?: false | ((prev: T, next: T) => boolean) }
- * ): () => T & { refresh: () => void };
- * ```
- * @param compute a function that receives its previous or the initial value, if set, and returns a new value used to react on a computation
- * @param value an optional initial value for the computation; if set, fn will never receive undefined as first argument
- * @param options allows to set a name in dev mode for debugging purposes and use a custom comparison function in equals
- *
- * @description https://docs.solidjs.com/reference/basic-reactivity/create-async
- */
-export function createAsync<T>(
-  compute: (prev?: T) => Promise<T> | AsyncIterable<T> | T,
-  value?: T,
-  options?: MemoOptions<T>
-) {
-  if (!sharedConfig.hydrating) return coreAsync(compute, value, options);
-  return coreAsync(
-    (prev?: T | undefined) => {
-      if (!sharedConfig.hydrating) return compute(prev);
-      const o = getOwner()!;
-      let initP: any;
-      if (sharedConfig.has!(o.id!)) initP = sharedConfig.load!(o.id!);
-      const init = initP?.value || initP;
-      return init ? (subFetch<T>(compute, prev), init) : compute(prev);
-    },
-    value,
-    options
-  );
-}
+// /**
+//  * Creates a readonly derived async reactive memoized signal
+//  * ```typescript
+//  * export function createAsync<T>(
+//  *   compute: (v: T) => Promise<T> | T,
+//  *   value?: T,
+//  *   options?: { name?: string, equals?: false | ((prev: T, next: T) => boolean) }
+//  * ): () => T & { refresh: () => void };
+//  * ```
+//  * @param compute a function that receives its previous or the initial value, if set, and returns a new value used to react on a computation
+//  * @param value an optional initial value for the computation; if set, fn will never receive undefined as first argument
+//  * @param options allows to set a name in dev mode for debugging purposes and use a custom comparison function in equals
+//  *
+//  * @description https://docs.solidjs.com/reference/basic-reactivity/create-async
+//  */
+// export function createAsync<T>(
+//   compute: (prev?: T) => Promise<T> | AsyncIterable<T> | T,
+//   value?: T,
+//   options?: MemoOptions<T>
+// ) {
+//   if (!sharedConfig.hydrating) return coreAsync(compute, value, options);
+//   return coreAsync(
+//     (prev?: T | undefined) => {
+//       if (!sharedConfig.hydrating) return compute(prev);
+//       const o = getOwner()!;
+//       let initP: any;
+//       if (sharedConfig.has!(o.id!)) initP = sharedConfig.load!(o.id!);
+//       const init = initP?.value || initP;
+//       return init ? (subFetch<T>(compute, prev), init) : compute(prev);
+//     },
+//     value,
+//     options
+//   );
+// }
 
 // mock promise while hydrating to prevent fetching
-class MockPromise {
-  static all() {
-    return new MockPromise();
-  }
-  static allSettled() {
-    return new MockPromise();
-  }
-  static any() {
-    return new MockPromise();
-  }
-  static race() {
-    return new MockPromise();
-  }
-  static reject() {
-    return new MockPromise();
-  }
-  static resolve() {
-    return new MockPromise();
-  }
-  catch() {
-    return new MockPromise();
-  }
-  then() {
-    return new MockPromise();
-  }
-  finally() {
-    return new MockPromise();
-  }
-}
+// class MockPromise {
+//   static all() {
+//     return new MockPromise();
+//   }
+//   static allSettled() {
+//     return new MockPromise();
+//   }
+//   static any() {
+//     return new MockPromise();
+//   }
+//   static race() {
+//     return new MockPromise();
+//   }
+//   static reject() {
+//     return new MockPromise();
+//   }
+//   static resolve() {
+//     return new MockPromise();
+//   }
+//   catch() {
+//     return new MockPromise();
+//   }
+//   then() {
+//     return new MockPromise();
+//   }
+//   finally() {
+//     return new MockPromise();
+//   }
+// }
 
-function subFetch<T>(fn: (prev?: T) => T | Promise<T> | AsyncIterable<T>, prev?: T) {
-  const ogFetch = fetch;
-  const ogPromise = Promise;
-  try {
-    window.fetch = () => new MockPromise() as any;
-    Promise = MockPromise as any;
-    return fn(prev);
-  } finally {
-    window.fetch = ogFetch;
-    Promise = ogPromise;
-  }
-}
+// function subFetch<T>(fn: (prev?: T) => T | Promise<T> | AsyncIterable<T>, prev?: T) {
+//   const ogFetch = fetch;
+//   const ogPromise = Promise;
+//   try {
+//     window.fetch = () => new MockPromise() as any;
+//     Promise = MockPromise as any;
+//     return fn(prev);
+//   } finally {
+//     window.fetch = ogFetch;
+//     Promise = ogPromise;
+//   }
+// }

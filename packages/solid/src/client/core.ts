@@ -5,7 +5,6 @@ import {
   untrack,
   setContext,
   getContext,
-  createEffect,
   flatten
 } from "@solidjs/signals";
 import type { Accessor, Owner, EffectOptions } from "@solidjs/signals";
@@ -15,16 +14,6 @@ import { FlowComponent, FlowProps } from "./component.js";
 // replaced during build
 export const IS_DEV = "_SOLID_DEV_" as string | boolean;
 export const $DEVCOMP = Symbol(IS_DEV ? "COMPONENT_DEV" : 0);
-
-/**
- * Runs an effect only after initial render on mount
- * @param fn an effect that should run only once on mount
- *
- * @description https://docs.solidjs.com/reference/lifecycle/on-mount
- */
-export function onMount(fn: () => void) {
-  createEffect(() => null, fn);
-}
 
 // Magic type that when used at sites where generic types are inferred from, will prevent those sites from being involved in the inference.
 // https://github.com/microsoft/TypeScript/issues/14829
