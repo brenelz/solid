@@ -1,5 +1,11 @@
 # solid-js
 
+## 2.0.0-experimental.12
+
+### Major Changes
+
+- c3e5e78: Async everywhere
+
 ## 2.0.0-experimental.11
 
 ### Major Changes

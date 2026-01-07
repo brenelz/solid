@@ -1,5 +1,11 @@
 # @solidjs/h
 
+## 2.0.0-experimental.12
+
+### Patch Changes
+
+- @solidjs/web@2.0.0-experimental.12
+
 ## 2.0.0-experimental.11
 
 ### Major Changes
