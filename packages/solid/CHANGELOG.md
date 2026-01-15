@@ -1,5 +1,11 @@
 # solid-js
 
+## 2.0.0-experimental.13
+
+### Patch Changes
+
+- e8d8403: add action helper
+
 ## 2.0.0-experimental.12
 
 ### Major Changes
