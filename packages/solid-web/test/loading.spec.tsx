@@ -5,7 +5,7 @@
 
 import { describe, expect, test, beforeEach, afterEach, vi } from "vitest";
 import "./MessageChannel.js";
-import { lazy, createSignal, createAsync, Loading, createStore, flush } from "solid-js";
+import { lazy, createSignal, createMemo, Loading, createStore, flush } from "solid-js";
 import { render } from "../src/index.js";
 
 // enableScheduling();
@@ -32,6 +32,8 @@ describe("Testing Basics", () => {
     disposer();
   });
 });
+
+// TODO why is this suddenly failing?
 describe("Testing Loading", () => {
   let div = document.createElement("div"),
     disposer: () => void,
@@ -39,7 +41,7 @@ describe("Testing Loading", () => {
     [triggered, trigger] = createSignal<string>();
   const LazyComponent = lazy<typeof ChildComponent>(() => new Promise(r => resolvers.push(r))),
     ChildComponent = (props: { greeting: string }) => {
-      const value = createAsync(
+      const value = createMemo(
         () => (
           triggered(),
           new Promise(r =>

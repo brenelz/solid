@@ -1,6 +1,7 @@
 export {
   $PROXY,
   $TRACK,
+  action,
   createEffect,
   createMemo,
   createOptimistic,
