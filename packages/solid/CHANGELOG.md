@@ -1,5 +1,11 @@
 # solid-js
 
+## 1.9.11
+
+### Patch Changes
+
+- 6628d9f: Update dom-expressions/seroval to latest
+
 ## 1.9.10
 
 ### Patch Changes
