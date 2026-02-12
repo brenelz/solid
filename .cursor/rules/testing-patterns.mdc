@@ -1,0 +1,113 @@
+---
+description: Test conventions and patterns for the SolidJS monorepo
+globs: packages/*/test/**
+alwaysApply: false
+---
+
+# Testing Patterns
+
+## Setup
+
+Vitest with globals enabled — `describe`, `test`, `expect`, `vi` are available without imports. Environment is `jsdom` (set per-file via `/** @vitest-environment jsdom */` directive or in config).
+
+JSX files use the `@jsxImportSource solid-js` directive.
+
+## Flush After Writes
+
+Updates are batched via `@solidjs/signals`. Signal writes do NOT take effect until `flush()`:
+
+```typescript
+const [count, setCount] = createSignal(0);
+setCount(1);
+expect(count()).toBe(0); // Not flushed yet
+flush();
+expect(count()).toBe(1); // Now updated
+```
+
+## Reactive Roots
+
+Effects and computations need `createRoot` for ownership:
+
+```typescript
+let disposer: () => void;
+createRoot(dispose => {
+  disposer = dispose;
+  createEffect(signal, value => { /* ... */ });
+});
+flush();
+```
+
+Always capture the disposer for cleanup.
+
+## Effect Testing
+
+Effects separate compute and effect functions. Compute runs synchronously on creation; the effect callback runs after flush:
+
+```typescript
+const compute = vi.fn(signal);
+const effect = vi.fn();
+createRoot(() => createEffect(compute, effect));
+expect(compute).toHaveBeenCalledTimes(1);
+expect(effect).toHaveBeenCalledTimes(0);
+flush();
+expect(effect).toHaveBeenCalledTimes(1);
+```
+
+## DOM / Component Testing
+
+Use JSX inside `createRoot`, capture elements via `ref`:
+
+```typescript
+let div!: HTMLDivElement, disposer: () => void;
+const Component = () => (
+  <div ref={div}>
+    <Show when={count() >= 5}>{count()}</Show>
+  </div>
+);
+
+test("renders conditionally", () => {
+  createRoot(dispose => {
+    disposer = dispose;
+    <Component />;
+  });
+  expect(div.innerHTML).toBe("");
+  setCount(7);
+  flush();
+  expect(div.innerHTML).toBe("7");
+});
+
+test("dispose", () => disposer());
+```
+
+## Common Assertions
+
+- `div.innerHTML` for content
+- `querySelector` / `querySelectorAll` for element queries
+- `instanceof` checks for element types
+- `textContent` for text nodes
+- `vi.fn()` for spy/mock tracking
+
+## Test File Organization
+
+- `packages/solid/test/` — reactive primitives (signals, effects, memos, context, owner)
+- `packages/solid-web/test/` — DOM rendering, flow controls, Portal, Dynamic
+- `packages/test-integration/` — integration tests against external repos
+- Type tests in `.type-tests.ts` files using `@ts-expect-error` for negative cases
+
+## Imports
+
+```typescript
+// Reactive primitives
+import { createSignal, createMemo, createEffect, createRoot, flush } from "solid-js";
+
+// DOM utilities
+import { render, insert, clearDelegatedEvents } from "@solidjs/web";
+
+// Flow controls
+import { For, Show, Switch, Match } from "solid-js";
+```
+
+## Commands
+
+- `pnpm test` — all tests + type tests via Turborepo
+- `pnpm coverage` — coverage reports (v8 provider, lcov)

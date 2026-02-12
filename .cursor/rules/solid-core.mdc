@@ -1,0 +1,65 @@
+---
+description: Solid core runtime — component model, flow controls, context, and hydration
+globs: packages/solid/**
+alwaysApply: false
+---
+
+# Solid Core (`solid-js`)
+
+## Package Role
+
+Wraps `@solidjs/signals` with a UI component layer. Re-exports all reactivity primitives directly (no wrapping) and adds: components, context, flow controls, hydration, and JSX types.
+
+## Entry Point (`src/index.ts`)
+
+- Re-exports everything from `@solidjs/signals`
+- Exports component utilities from `client/component.js`
+- Exports context/children from `client/core.js`
+- Exports flow components from `client/flow.js`
+- Exports `sharedConfig`, `Loading` from `client/hydration.js`
+- Exports `tryCatch`, `reducer` from `utilities.js`
+- Dev mode: detects multiple instances via `globalThis.Solid$$`
+
+## Component Creation
+
+`createComponent(Comp, props)` wraps execution in `untrack()` — components never track during creation. Dev mode wraps with `devComponent()` which attaches `_props`, `_name`, `_component` to the owner for debugging.
+
+`lazy(fn)` returns a component that loads async via `createMemo`. Returns `""` while loading.
+
+`createUniqueId()` is hydration-aware via `sharedConfig.getNextContextId()`.
+
+## Context System
+
+`createContext(defaultValue)` creates a context with a Symbol ID. Providers use `createRoot()` for isolated scope. Storage uses `setContext`/`getContext` from `@solidjs/signals` (owner-based, not global).
+
+`children(fn)` resolves children via `createMemo` + `flatten()`, returns accessor with `.toArray()` helper.
+
+## Flow Controls
+
+| Component | Backing Primitive | Key Behavior |
+|-----------|------------------|--------------|
+| `For<T>` | `mapArray()` | List rendering, supports `keyed` (boolean or key fn) |
+| `Repeat` | `repeat()` | Count-based rendering with `from` offset |
+| `Show<T>` | `createMemo` | Conditional, function children get narrowed accessor |
+| `Switch/Match` | `children()` + memos | Sequential evaluation, short-circuit |
+| `Errored` | `createErrorBoundary()` | Fallback: element or `(err, reset) => JSX.Element` |
+| `Boundary` | `createBoundary()` | Generic boundary with `mode` prop |
+
+Function children in `Show`/`Match` have stale-read protection — accessing after unmount throws via `narrowedError()`.
+
+## Hydration
+
+`sharedConfig` coordinates hydration state: `hydrating`, `resources`, `load`, `has`, `gather`, `registry`, `done`, `getNextContextId()`.
+
+`Loading` component uses `createLoadBoundary()` normally. During hydration, it checks resources via `sharedConfig.has(id)` and `sharedConfig.load(id)`, managing promise resolution.
+
+## Server Stubs
+
+`src/server/index.ts` is empty. `ssrHandleError` and `ssrRunInScope` are no-op stubs in the client build.
+
+## Naming Conventions
+
+- Component types: PascalCase (`Component`, `FlowComponent`, `ParentComponent`)
+- Functions: camelCase (`createComponent`, `createContext`, `useContext`)
+- Dev-only internal props: `_props`, `_name`, `_component`
+- Symbols: `$DEVCOMP` for component marking

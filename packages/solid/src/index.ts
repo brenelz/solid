@@ -68,7 +68,6 @@ export type {
   ResolvedJSXElement
 } from "./client/core.js";
 
-export * from "./utilities.js";
 export * from "./client/component.js";
 export * from "./client/flow.js";
 export { sharedConfig, Loading } from "./client/hydration.js";

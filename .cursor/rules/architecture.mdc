@@ -1,0 +1,80 @@
+---
+description: Core architecture and mental model for the SolidJS monorepo
+alwaysApply: true
+---
+
+# Architecture
+
+SolidJS core monorepo — a declarative JavaScript UI library that compiles templates to real DOM nodes with fine-grained reactivity. Version 2.0 experimental (pre-release, every release may be breaking).
+
+## Monorepo Structure
+
+PNPM workspaces + Turborepo. All packages version together (`2.0.0-experimental.x`).
+
+- **`solid-js`** (`packages/solid/`): Core runtime — component model, flow controls, context, hydration. Wraps `@solidjs/signals` with a UI layer.
+- **`@solidjs/web`** (`packages/solid-web/`): Web platform runtime — `render`, `hydrate`, SSR methods, `Portal`, `Dynamic`. Delegates DOM ops to `dom-expressions`.
+- **`@solidjs/h`** (`packages/solid-h/`): Hyperscript/JSX factory — less-optimal JSX alternative.
+- **`solid-element`** (`packages/solid-element/`): Web Components wrapper.
+- **`solid-html`** (`packages/solid-html/`): Build-less tagged template literals.
+- **`@solidjs/universal`** (`packages/solid-universal/`): Universal runtime for custom renderers.
+- **`babel-preset-solid`** (`packages/babel-preset-solid/`): Babel preset for JSX compilation.
+- **`test-integration`** (`packages/test-integration/`): Integration tests against external repos.
+
+## Dependency Chain
+
+```
+@solidjs/signals  (external — reactive primitives)
+       ↓
+   solid-js       (component model, flow controls, context, hydration)
+       ↓
+  @solidjs/web    (DOM rendering, SSR, Portal, Dynamic)
+       ↓
+  dom-expressions (external — DOM operation runtime)
+```
+
+`solid-js` re-exports all reactivity primitives from `@solidjs/signals` and adds the component/JSX layer on top. `@solidjs/web` provides the platform-specific runtime.
+
+## Component Model
+
+Components are plain functions: `(props: P) => JSX.Element`. No classes, no hooks. Component creation is wrapped in `untrack()` to avoid reactive tracking during initialization.
+
+Component types enforce children constraints:
+- `Component<P>` — no implicit children
+- `VoidComponent<P>` — forbids children
+- `ParentComponent<P>` — optional `JSX.Element` children
+- `FlowComponent<P, C>` — requires children of type `C`
+
+## Reactivity Integration
+
+All reactivity comes from `@solidjs/signals`:
+- `createSignal()` → `[getter, setter]`
+- `createMemo()` → derived computation
+- `createEffect(compute, effect)` — separate compute and effect phases
+- `createStore()` → proxy-based deep reactivity
+- `flush()` — updates are batched; must flush to process
+
+## Flow Controls
+
+Built on signals primitives: `For` (mapArray), `Repeat` (repeat), `Show` (createMemo), `Switch/Match` (children + memos), `Errored` (createErrorBoundary), `Boundary` (createBoundary), `Loading` (createLoadBoundary).
+
+All support `keyed` mode (identity comparison) vs non-keyed (truthiness). Function children in `Show`/`Match` receive narrowed accessors with stale-read protection.
+
+## Build-time Constants
+
+`_SOLID_DEV_` and `_DX_DEV_` are replaced at build time (see rollup configs). Use these for dev-only code to enable tree-shaking in production.
+
+## Commands
+
+- `pnpm install` — install dependencies (pnpm 9.15+ required)
+- `pnpm build` — Turborepo build (all packages)
+- `pnpm types` — generate TypeScript declarations
+- `pnpm test` — run all tests + type tests
+- `pnpm coverage` — coverage reports
+- `pnpm format` — Prettier formatting (also runs on pre-commit)
+
+## Key External Dependencies
+
+- `@solidjs/signals` — reactive primitives (separate repo)
+- `dom-expressions` — DOM operation runtime
+- `seroval` / `seroval-plugins` — serialization for SSR
+- `babel-plugin-jsx-dom-expressions` — JSX compilation
