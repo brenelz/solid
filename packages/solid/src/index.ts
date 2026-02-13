@@ -32,6 +32,7 @@ export {
   refresh,
   repeat,
   resolve,
+  NotReadyError,
   runWithOwner,
   snapshot,
   untrack
@@ -39,7 +40,6 @@ export {
 
 export type {
   Accessor,
-  BoundaryMode,
   ComputeFunction,
   EffectFunction,
   EffectOptions,

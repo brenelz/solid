@@ -34,7 +34,7 @@ const App = RouteHOC(() => {
             </li>
           </ul>
           <div class={["tab", { pending: pending() }]}>
-            <Suspense fallback={<span class="loader">Loading...</span>}>
+            <Loading fallback={<span class="loader">Loading...</span>}>
               <Switch>
                 <Match when={matches("index")}>
                   <Home />
@@ -46,7 +46,7 @@ const App = RouteHOC(() => {
                   <Settings />
                 </Match>
               </Switch>
-            </Suspense>
+            </Loading>
           </div>
         </div>
       </body>

@@ -3,16 +3,7 @@ import { omit, type JSX, type ValidComponent, type ComponentProps } from "solid-
 
 export * from "./server.js";
 
-export {
-  For,
-  Show,
-  Suspense,
-  // SuspenseList,
-  Switch,
-  Match,
-  Repeat,
-  ErrorBoundary
-} from "solid-js";
+export { For, Show, Loading, Switch, Match, Repeat, Errored } from "solid-js";
 
 export const isServer: boolean = true;
 export const isDev: boolean = false;

@@ -1,13 +1,6 @@
 import { children, IS_DEV } from "../client/core.js";
-import {
-  createMemo,
-  untrack,
-  mapArray,
-  createErrorBoundary,
-  createBoundary,
-  repeat
-} from "@solidjs/signals";
-import type { Accessor, BoundaryMode } from "@solidjs/signals";
+import { createMemo, untrack, mapArray, createErrorBoundary, repeat } from "@solidjs/signals";
+import type { Accessor } from "@solidjs/signals";
 import type { JSX } from "../jsx.js";
 
 const narrowedError = (name: string) =>
@@ -229,12 +222,5 @@ export function Errored(props: {
       if (IS_DEV && (typeof f !== "function" || f.length == 0)) console.error(err);
       return typeof f === "function" && f.length ? f(err, reset) : f;
     }
-  ) as unknown as JSX.Element;
-}
-
-export function Boundary(props: { mode: BoundaryMode; children: JSX.Element }): JSX.Element {
-  return createBoundary(
-    () => props.children,
-    () => props.mode
   ) as unknown as JSX.Element;
 }

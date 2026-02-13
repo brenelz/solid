@@ -1,7 +1,7 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 const Home = () => {
   const [s, set] = createSignal(0);
-  onMount(() => {
+  onSettled(() => {
     const t = setInterval(() => set(s() + 1), 100);
     return () => clearInterval(t);
   });

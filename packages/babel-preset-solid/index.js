@@ -12,12 +12,11 @@ module.exports = function (context, options = {}) {
             "Show",
             "Switch",
             "Match",
-            "Suspense",
-            "SuspenseList",
+            "Loading",
             "Portal",
             "Repeat",
             "Dynamic",
-            "ErrorBoundary"
+            "Errored"
           ],
           contextToCustomElements: true,
           wrapConditionals: true,
