@@ -1,4 +1,4 @@
-import { useContext } from "solid-js";
+import { useContext, isPending } from "solid-js";
 import { HydrationScript } from "@solidjs/web";
 import { Link, RouteHOC, RouterContext } from "../router";
 // import stub as main package to allowing fetch as you load
@@ -10,7 +10,7 @@ import Settings from "./Settings";
 // const Settings = lazy(() => import("./Settings"));
 
 const App = RouteHOC(() => {
-  const [, pending, { matches }] = useContext(RouterContext);
+  const [location, { matches }] = useContext(RouterContext);
   return (
     <html lang="en">
       <head>
@@ -33,7 +33,7 @@ const App = RouteHOC(() => {
               <Link path="settings">Settings</Link>
             </li>
           </ul>
-          <div class={["tab", { pending: pending() }]}>
+          <div class={["tab", { pending: isPending(location) }]}>
             <Loading fallback={<span class="loader">Loading...</span>}>
               <Switch>
                 <Match when={matches("index")}>

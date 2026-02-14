@@ -3,11 +3,6 @@ import { $DEVCOMP, IS_DEV, devComponent } from "../client/core.js";
 import { sharedConfig } from "./hydration.js";
 import type { JSX } from "../jsx.js";
 
-let hydrationEnabled = false;
-export function enableHydration() {
-  hydrationEnabled = true;
-}
-
 /**
  * A general `Component` has no implicit `children` prop.  If desired, you can
  * specify one as in `Component<{name: String, children: JSX.Element}>`.

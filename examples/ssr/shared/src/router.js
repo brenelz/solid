@@ -12,7 +12,7 @@ function RouteHOC(Comp) {
     !isServer && (window.onpopstate = () => setLocation(window.location.pathname.slice(1)));
 
     return (
-      <RouterContext value={[location, () => false, { setLocation: v => setLocation(v), matches }]}>
+      <RouterContext value={[location, { setLocation: v => setLocation(v), matches }]}>
         <Comp />
       </RouterContext>
     );
@@ -20,7 +20,7 @@ function RouteHOC(Comp) {
 }
 
 const Link = props => {
-  const [, , { setLocation }] = useContext(RouterContext);
+  const [, { setLocation }] = useContext(RouterContext);
   const navigate = e => {
     if (e) e.preventDefault();
     window.history.pushState("", "", `/${props.path}`);

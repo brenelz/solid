@@ -157,6 +157,9 @@ export function createMemo<Next extends Prev, Init, Prev>(
   value?: Init,
   options?: MemoOptions<Next>
 ): Accessor<Next> {
+  // Capture SSR context at creation time — async re-computations (via .then callbacks)
+  // may run after a concurrent request has overwritten sharedConfig.context.
+  const ctx = sharedConfig.context;
   const owner = createOwner();
   const comp: ServerComputation<Next> = {
     owner,
@@ -173,7 +176,7 @@ export function createMemo<Next extends Prev, Init, Prev>(
         runWithObserver(comp, () => comp.compute(comp.value))
       );
       comp.computed = true;
-      processResult(comp, result, owner);
+      processResult(comp, result, owner, ctx);
     } catch (err) {
       if (err instanceof NotReadyError) {
         // Chain re-computation when dependency resolves (mirrors archived createAsync's processSource pattern)
@@ -202,15 +205,14 @@ export function createMemo<Next extends Prev, Init, Prev>(
 }
 
 /** Process async results from a computation (Promise / AsyncIterable) */
-function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner) {
-  const ctx = sharedConfig.context;
+function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner, ctx: any) {
   const id = owner.id;
   const uninitialized = comp.value === undefined;
 
   if (result instanceof Promise) {
     result.then((v: T) => {
-      (result as any).s = "success";
-      (result as any).value = comp.value = v;
+      (result as any).s = 1;
+      (result as any).v = comp.value = v;
       comp.error = undefined; // clear NotReadyError after resolution
     });
     if (ctx?.serialize && id) ctx.serialize(id, result);
@@ -224,8 +226,8 @@ function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner)
   if (typeof iterator === "function") {
     const iter = iterator.call(result);
     const promise = iter.next().then((v: IteratorResult<T>) => {
-      (promise as any).s = "success";
-      (promise as any).value = comp.value = v.value;
+      (promise as any).s = 1;
+      (promise as any).v = comp.value = v.value;
       comp.error = undefined; // clear NotReadyError after resolution
     });
     if (ctx?.serialize && id) ctx.serialize(id, promise);
@@ -509,7 +511,10 @@ export function action<T extends (...args: any[]) => any>(fn: T): T {
 }
 
 export function onSettled(callback: () => void | (() => void)): void {
-  // No-op on server
+  // No-op on server, but allocate computation ID for hydration tree alignment
+  // (on the client, onSettled calls createTrackedEffect which allocates an ID)
+  const o = getOwner();
+  if (o?.id != null) getNextChildId(o);
 }
 
 // NoInfer utility type (also re-exported from signals, but define for local use)

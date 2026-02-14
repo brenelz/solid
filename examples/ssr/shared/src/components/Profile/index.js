@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { createMemo, lazy } from "solid-js";
 // const Profile = lazy(() => import("./Profile"));
 import Profile from "./Profile";
 

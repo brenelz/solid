@@ -3,15 +3,9 @@ export {
   $TRACK,
   action,
   createEffect,
-  createMemo,
-  createOptimistic,
-  createOptimisticStore,
-  createProjection,
   createReaction,
   createRenderEffect,
   createRoot,
-  createSignal,
-  createStore,
   createTrackedEffect,
   deep,
   flatten,
@@ -70,7 +64,17 @@ export type {
 
 export * from "./client/component.js";
 export * from "./client/flow.js";
-export { sharedConfig, Loading } from "./client/hydration.js";
+export {
+  sharedConfig,
+  Loading,
+  enableHydration,
+  createMemo,
+  createSignal,
+  createStore,
+  createProjection,
+  createOptimistic,
+  createOptimisticStore
+} from "./client/hydration.js";
 // stub
 export function ssrHandleError() {}
 export function ssrRunInScope() {}

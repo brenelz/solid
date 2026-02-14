@@ -52,9 +52,13 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
 
   const o = createOwner();
   const id = o.id!;
+  (o as any).id = id + "00"; // fake depth to match client's createLoadBoundary nesting
 
   let runPromise: Promise<any> | undefined;
   function runInitially(): SSRTemplateObject {
+    // Dispose children from previous attempt — signals now resets _childCount on dispose
+    // so IDs are stable across re-render attempts.
+    o.dispose(false);
     return runWithOwner(o, () => {
       try {
         return ctx!.resolve(flatten(props.children));

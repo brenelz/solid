@@ -1,15 +1,22 @@
 import {
   getOwner,
-  MemoOptions,
   createLoadBoundary,
-  createSignal,
   flush,
-  createMemo,
   runWithOwner,
   getNextChildId,
+  createMemo as coreMemo,
+  createSignal as coreSignal,
   type Owner
 } from "@solidjs/signals";
 import { JSX } from "../jsx.js";
+
+// Re-export pass-throughs for store primitives (hydration wrappers to be added later)
+export {
+  createStore,
+  createProjection,
+  createOptimistic,
+  createOptimisticStore
+} from "@solidjs/signals";
 
 export type HydrationContext = {};
 
@@ -27,7 +34,6 @@ type SharedConfig = {
 export const sharedConfig: SharedConfig = {
   hydrating: false,
   registry: undefined,
-  // effects: undefined,
   done: false,
   getNextContextId() {
     const o = getOwner();
@@ -35,6 +41,109 @@ export const sharedConfig: SharedConfig = {
     return getNextChildId(o);
   }
 };
+
+// === Override slots for hydration-aware primitives (tree-shakeable) ===
+// Only assigned inside enableHydration(). If enableHydration is never called
+// (no hydrate() import), the hydrated* functions and their dependencies
+// (MockPromise, subFetch) are eliminated by the bundler.
+
+let _createMemo: Function | undefined;
+let _createSignal: Function | undefined;
+
+// --- Hydration helpers ---
+
+class MockPromise {
+  static all() {
+    return new MockPromise();
+  }
+  static allSettled() {
+    return new MockPromise();
+  }
+  static any() {
+    return new MockPromise();
+  }
+  static race() {
+    return new MockPromise();
+  }
+  static reject() {
+    return new MockPromise();
+  }
+  static resolve() {
+    return new MockPromise();
+  }
+  catch() {
+    return new MockPromise();
+  }
+  then() {
+    return new MockPromise();
+  }
+  finally() {
+    return new MockPromise();
+  }
+}
+
+function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
+  const ogFetch = fetch;
+  const ogPromise = Promise;
+  try {
+    window.fetch = () => new MockPromise() as any;
+    Promise = MockPromise as any;
+    return fn(prev);
+  } finally {
+    window.fetch = ogFetch;
+    Promise = ogPromise;
+  }
+}
+
+// --- Hydration-aware implementations ---
+
+function hydratedCreateMemo(compute: any, value?: any, options?: any) {
+  if (!sharedConfig.hydrating) return coreMemo(compute, value, options);
+  return coreMemo(
+    (prev: any) => {
+      const o = getOwner()!;
+      if (!sharedConfig.hydrating) return compute(prev);
+      let initP: any;
+      if (sharedConfig.has!(o.id!)) initP = sharedConfig.load!(o.id!);
+      const init = initP?.v ?? initP;
+      return init != null ? (subFetch(compute, prev), init) : compute(prev);
+    },
+    value,
+    options
+  );
+}
+
+function hydratedCreateSignal(fn?: any, second?: any, third?: any) {
+  if (typeof fn !== "function" || !sharedConfig.hydrating) return coreSignal(fn, second, third);
+  return coreSignal(
+    (prev: any) => {
+      if (!sharedConfig.hydrating) return fn(prev);
+      const o = getOwner()!;
+      let initP: any;
+      if (sharedConfig.has!(o.id!)) initP = sharedConfig.load!(o.id!);
+      const init = initP?.v ?? initP;
+      return init != null ? (subFetch(fn, prev), init) : fn(prev);
+    },
+    second,
+    third
+  );
+}
+
+// --- Public API ---
+
+export function enableHydration() {
+  _createMemo = hydratedCreateMemo;
+  _createSignal = hydratedCreateSignal;
+}
+
+// Wrapped primitives — delegate to override or core
+export const createMemo: typeof coreMemo = ((...args: any[]) =>
+  (_createMemo || coreMemo)(...args)) as typeof coreMemo;
+
+export const createSignal: typeof coreSignal = ((...args: any[]) =>
+  (_createSignal || coreSignal)(...args)) as typeof coreSignal;
+
+// === Loading component ===
 
 /**
  * Tracks all resources inside a component and renders a fallback until they are all resolved
@@ -54,18 +163,18 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
       () => props.fallback
     ) as unknown as JSX.Element;
 
-  return createMemo(() => {
+  return coreMemo(() => {
     const o = getOwner()!;
     const id = o.id!;
     if (sharedConfig.hydrating && sharedConfig.has!(id)) {
       let ref = sharedConfig.load!(id);
       let p: Promise<any> | any;
       if (ref) {
-        if (typeof ref !== "object" || ref.s !== "success") p = ref;
+        if (typeof ref !== "object" || ref.s !== 1) p = ref;
         else sharedConfig.gather!(id);
       }
       if (p) {
-        const [s, set] = createSignal(undefined, { equals: false });
+        const [s, set] = coreSignal(undefined, { equals: false });
         s();
         if (p !== "$$f") {
           p.then(
@@ -91,82 +200,3 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
     );
   }) as unknown as JSX.Element;
 }
-
-// /**
-//  * Creates a readonly derived async reactive memoized signal
-//  * ```typescript
-//  * export function createAsync<T>(
-//  *   compute: (v: T) => Promise<T> | T,
-//  *   value?: T,
-//  *   options?: { name?: string, equals?: false | ((prev: T, next: T) => boolean) }
-//  * ): () => T & { refresh: () => void };
-//  * ```
-//  * @param compute a function that receives its previous or the initial value, if set, and returns a new value used to react on a computation
-//  * @param value an optional initial value for the computation; if set, fn will never receive undefined as first argument
-//  * @param options allows to set a name in dev mode for debugging purposes and use a custom comparison function in equals
-//  *
-//  * @description https://docs.solidjs.com/reference/basic-reactivity/create-async
-//  */
-// export function createAsync<T>(
-//   compute: (prev?: T) => Promise<T> | AsyncIterable<T> | T,
-//   value?: T,
-//   options?: MemoOptions<T>
-// ) {
-//   if (!sharedConfig.hydrating) return coreAsync(compute, value, options);
-//   return coreAsync(
-//     (prev?: T | undefined) => {
-//       if (!sharedConfig.hydrating) return compute(prev);
-//       const o = getOwner()!;
-//       let initP: any;
-//       if (sharedConfig.has!(o.id!)) initP = sharedConfig.load!(o.id!);
-//       const init = initP?.value || initP;
-//       return init ? (subFetch<T>(compute, prev), init) : compute(prev);
-//     },
-//     value,
-//     options
-//   );
-// }
-
-// mock promise while hydrating to prevent fetching
-// class MockPromise {
-//   static all() {
-//     return new MockPromise();
-//   }
-//   static allSettled() {
-//     return new MockPromise();
-//   }
-//   static any() {
-//     return new MockPromise();
-//   }
-//   static race() {
-//     return new MockPromise();
-//   }
-//   static reject() {
-//     return new MockPromise();
-//   }
-//   static resolve() {
-//     return new MockPromise();
-//   }
-//   catch() {
-//     return new MockPromise();
-//   }
-//   then() {
-//     return new MockPromise();
-//   }
-//   finally() {
-//     return new MockPromise();
-//   }
-// }
-
-// function subFetch<T>(fn: (prev?: T) => T | Promise<T> | AsyncIterable<T>, prev?: T) {
-//   const ogFetch = fetch;
-//   const ogPromise = Promise;
-//   try {
-//     window.fetch = () => new MockPromise() as any;
-//     Promise = MockPromise as any;
-//     return fn(prev);
-//   } finally {
-//     window.fetch = ogFetch;
-//     Promise = ogPromise;
-//   }
-// }
