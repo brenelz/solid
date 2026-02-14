@@ -20,6 +20,20 @@ This is a foundational library laying groundwork for the future. "Good enough" i
 - Identify the specific structural differences before writing code.
 - If two approaches converge to the same implementation, stop and report that — it's a finding, not a failure.
 
+## Changesets
+
+Every commit that changes packages under `packages/` must include a changeset. Generate one by running:
+
+```bash
+pnpm changeset
+```
+
+This will interactively prompt for affected packages, semver bump type, and a summary. The result is a `.changeset/<name>.md` file that should be included in the commit.
+
+- Use `patch` for bug fixes, `minor` for features, `major` for breaking changes.
+- All packages in the `fixed` group version together — only list the primary package affected.
+- If a commit only touches examples, tests, or tooling config (not packages), no changeset is needed.
+
 ## Communication
 
 - Be direct about what you don't know or don't understand.
