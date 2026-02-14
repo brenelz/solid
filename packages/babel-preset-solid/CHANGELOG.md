@@ -1,5 +1,13 @@
 # babel-preset-solid
 
+## 2.0.0-experimental.14
+
+### Patch Changes
+
+- Updated dependencies [dea16f3]
+- Updated dependencies [dea16f3]
+  - solid-js@2.0.0-experimental.14
+
 ## 2.0.0-experimental.13
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # solid-js
 
+## 2.0.0-experimental.14
+
+### Patch Changes
+
+- dea16f3: Add client hydration support with tree-shakeable createMemo/createSignal wrappers, fix SSR context isolation for concurrent requests, align seroval serialization format, update @solidjs/signals to ^0.10.2
+- dea16f3: Add server-side rendering implementation: pull-based server signals, streaming Loading component, SSR-aware flow controls, and hydration context infrastructure
+
 ## 2.0.0-experimental.13
 
 ### Patch Changes
