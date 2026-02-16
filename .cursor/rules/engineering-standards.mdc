@@ -22,17 +22,23 @@ This is a foundational library laying groundwork for the future. "Good enough" i
 
 ## Changesets
 
-Every commit that changes packages under `packages/` must include a changeset. Generate one by running:
+Every commit that changes packages under `packages/` must include a changeset. **Create the changeset file before committing** — it must be staged and included in the same commit as the code changes.
 
-```bash
-pnpm changeset
+Since `pnpm changeset` is interactive and cannot be used from the agent, create the file directly:
+
+```markdown
+// .changeset/<descriptive-name>.md
+---
+"solid-js": patch
+---
+
+Short summary of the change
 ```
 
-This will interactively prompt for affected packages, semver bump type, and a summary. The result is a `.changeset/<name>.md` file that should be included in the commit.
-
 - Use `patch` for bug fixes, `minor` for features, `major` for breaking changes.
-- All packages in the `fixed` group version together — only list the primary package affected.
-- If a commit only touches examples, tests, or tooling config (not packages), no changeset is needed.
+- All packages in the `fixed` group version together — only list the primary package affected (usually `solid-js`).
+- If a commit only touches examples, tests, or tooling config (not source under `packages/`), no changeset is needed.
+- The changeset file name should be descriptive (e.g., `fix-ssr-async-error-handling.md`), not random words.
 
 ## Communication
 
