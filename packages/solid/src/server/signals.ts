@@ -210,11 +210,14 @@ function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner,
   const uninitialized = comp.value === undefined;
 
   if (result instanceof Promise) {
-    result.then((v: T) => {
-      (result as any).s = 1;
-      (result as any).v = comp.value = v;
-      comp.error = undefined; // clear NotReadyError after resolution
-    });
+    result.then(
+      (v: T) => {
+        (result as any).s = 1;
+        (result as any).v = comp.value = v;
+        comp.error = undefined; // clear NotReadyError after resolution
+      },
+      () => {} // rejection handled downstream by Loading's IIFE catch
+    );
     if (ctx?.serialize && id) ctx.serialize(id, result);
     if (uninitialized) {
       comp.error = new NotReadyError(result);
@@ -225,11 +228,14 @@ function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner,
   const iterator = result?.[Symbol.asyncIterator];
   if (typeof iterator === "function") {
     const iter = iterator.call(result);
-    const promise = iter.next().then((v: IteratorResult<T>) => {
-      (promise as any).s = 1;
-      (promise as any).v = comp.value = v.value;
-      comp.error = undefined; // clear NotReadyError after resolution
-    });
+    const promise = iter.next().then(
+      (v: IteratorResult<T>) => {
+        (promise as any).s = 1;
+        (promise as any).v = comp.value = v.value;
+        comp.error = undefined; // clear NotReadyError after resolution
+      },
+      () => {} // rejection handled downstream by Loading's IIFE catch
+    );
     if (ctx?.serialize && id) ctx.serialize(id, promise);
     if (uninitialized) {
       comp.error = new NotReadyError(promise);
@@ -439,17 +445,20 @@ export function createErrorBoundary<U>(
   fn: () => any,
   fallback: (error: unknown, reset: () => void) => U
 ): () => unknown {
+  const ctx = sharedConfig.context;
   const owner = createOwner();
   return runWithOwner(owner, () => {
     let result: any;
 
     setContext(ErrorContext, (err: any) => {
+      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, err);
       result = fallback(err, () => {});
     });
 
     try {
       result = fn();
     } catch (err) {
+      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, err);
       result = fallback(err, () => {});
     }
     return () => result;

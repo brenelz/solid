@@ -78,16 +78,20 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
   if (ctx.async) {
     const done = ctx.registerFragment(id);
     (async () => {
-      while (runPromise) {
-        await runPromise;
-        runPromise = undefined;
-        ret = runInitially();
+      try {
+        while (runPromise) {
+          await runPromise;
+          runPromise = undefined;
+          ret = runInitially();
+        }
+        while (ret.p.length) {
+          await Promise.all(ret.p);
+          ret = ctx.ssr(ret.t, ...ret.h);
+        }
+        done!(ret.t[0]);
+      } catch (err) {
+        done!(undefined, err);
       }
-      while (ret.p.length) {
-        await Promise.all(ret.p);
-        ret = ctx.ssr(ret.t, ...ret.h);
-      }
-      done!(ret.t[0]);
     })();
 
     return runWithOwner(fallbackOwner, () =>
