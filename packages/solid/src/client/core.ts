@@ -106,16 +106,19 @@ export function children(fn: Accessor<JSX.Element>): ChildrenReturn {
 
 // Dev
 export function devComponent<P, V>(Comp: (props: P) => V, props: P): V {
-  return createRoot(() => {
-    const owner: any = getOwner();
-    owner._props = props;
-    owner._name = Comp.name;
-    owner._component = Comp;
-    return untrack(() => {
-      Object.assign(Comp, { [$DEVCOMP]: true });
-      return Comp(props);
-    });
-  });
+  return createRoot(
+    () => {
+      const owner: any = getOwner();
+      owner._props = props;
+      owner._name = Comp.name;
+      owner._component = Comp;
+      return untrack(() => {
+        Object.assign(Comp, { [$DEVCOMP]: true });
+        return Comp(props);
+      });
+    },
+    { transparent: true }
+  );
 }
 
 interface SourceMapValue {
