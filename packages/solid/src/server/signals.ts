@@ -350,22 +350,48 @@ function setProperty(state: any, property: PropertyKey, value: any) {
 }
 
 export function createStore<T extends object>(
-  state: T | Store<T>
+  first: T | Store<T> | ((store: T) => void | T | Promise<void | T>),
+  second?: T | Store<T>
 ): [get: Store<T>, set: StoreSetter<T>] {
-  function setStore(fn: (state: T) => void): void {
-    fn(state as T);
+  if (typeof first === "function") {
+    const store = createProjection(first as any, (second ?? {}) as T);
+    return [store as Store<T>, ((fn: (state: T) => void) => fn(store as T)) as StoreSetter<T>];
   }
-  return [state as Store<T>, setStore as StoreSetter<T>];
+  const state = first as T;
+  return [state as Store<T>, ((fn: (state: T) => void) => fn(state as T)) as StoreSetter<T>];
 }
 
 export const createOptimisticStore = createStore;
 
 export function createProjection<T extends object>(
-  fn: (draft: T) => void,
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   initialValue: T = {} as T
 ): Store<T> {
+  const ctx = sharedConfig.context;
+  const owner = createOwner();
   const [state] = createStore(initialValue);
-  fn(state as T);
+
+  const result = runWithOwner(owner, () => fn(state as T));
+
+  if (result instanceof Promise) {
+    const promise = result.then(
+      (v: void | T) => {
+        if (v !== undefined && v !== state) {
+          Object.assign(state, v);
+        }
+        (promise as any).s = 1;
+        (promise as any).v = state;
+      },
+      () => {}
+    );
+    if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise);
+    return state;
+  }
+
+  // Synchronous: fn either mutated state directly (void) or returned a new value
+  if (result !== undefined && result !== state) {
+    Object.assign(state, result as T);
+  }
   return state;
 }
 

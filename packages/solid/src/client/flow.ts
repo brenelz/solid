@@ -1,5 +1,6 @@
 import { children, IS_DEV } from "../client/core.js";
-import { createMemo, untrack, mapArray, createErrorBoundary, repeat } from "@solidjs/signals";
+import { createMemo, untrack, mapArray, repeat } from "@solidjs/signals";
+import { createErrorBoundary } from "./hydration.js";
 import type { Accessor } from "@solidjs/signals";
 import type { JSX } from "../jsx.js";
 
