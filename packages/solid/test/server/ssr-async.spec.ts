@@ -3,6 +3,8 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import {
   createRoot,
   createMemo,
+  createSignal,
+  createProjection,
   NotReadyError,
   getOwner,
   For,
@@ -1190,5 +1192,281 @@ describe("Loading SSR Async", () => {
       // Result should be the fallback content
       expect(result).toBe("Fallback");
     });
+  });
+});
+
+// ============================================================================
+// Stream Blocking / deferStream (Goal 2c)
+// ============================================================================
+//
+// New architecture: processResult does NOT call ctx.block(). Blocking is handled
+// structurally by dom-expressions:
+//   - Root-level async: res.p added to blockingPromises in root render
+//   - deferStream: serialize() auto-blocks when deferStream=true
+//   - Loading: never interacts with blockingPromises (no block/unblock)
+//   - lazy: still calls ctx.block() directly for code-split components
+
+describe("Stream Blocking / deferStream", () => {
+  let savedContext: any;
+
+  beforeEach(() => {
+    savedContext = sharedConfig.context;
+  });
+
+  afterEach(() => {
+    sharedConfig.context = savedContext;
+  });
+
+  function createBlockTrackingContext(options: { async?: boolean } = {}) {
+    const base = createMockSSRContext(options);
+    const blocked = new Set<Promise<any>>();
+    const serializeLog: Array<{ id: string; value: any; deferStream?: boolean }> = [];
+
+    base.context.block = (p: Promise<any>) => blocked.add(p);
+    const origSerialize = base.context.serialize;
+    base.context.serialize = (id: string, v: any, deferStream?: boolean) => {
+      serializeLog.push({ id, value: v, deferStream });
+      origSerialize(id, v);
+    };
+
+    return { ...base, blocked, serializeLog };
+  }
+
+  // --------------------------------------------------------------------------
+  // 1. processResult does NOT block async computations
+  // --------------------------------------------------------------------------
+
+  test("async createMemo does not call block (handled by dom-expressions root)", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        createMemo(() => d.promise);
+      },
+      { id: "t" }
+    );
+
+    // processResult no longer calls ctx.block — blocking is structural in dom-expressions
+    expect(blocked.size).toBe(0);
+  });
+
+  test("createSignal(fn) does not block (wraps result in sync Signal tuple)", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        createSignal(() => d.promise);
+      },
+      { id: "t" }
+    );
+
+    expect(blocked.size).toBe(0);
+  });
+
+  test("async createProjection does not call block", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<{ name: string }>();
+
+    createRoot(
+      () => {
+        createProjection(() => d.promise);
+      },
+      { id: "t" }
+    );
+
+    expect(blocked.size).toBe(0);
+  });
+
+  test("sync createMemo does not block", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    createRoot(
+      () => {
+        createMemo(() => "sync value");
+      },
+      { id: "t" }
+    );
+
+    expect(blocked.size).toBe(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // 2. Loading does not interact with blockingPromises at all
+  // --------------------------------------------------------------------------
+
+  test("Loading does not call block or unblock for async children", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const data = createMemo(() => d.promise);
+            return ssr(["<div>", "</div>"], () => data()) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    // Neither processResult nor Loading touch blockingPromises
+    expect(blocked.size).toBe(0);
+  });
+
+  test("Loading with deferStream: true does not call block (serialize handles it)", () => {
+    const { context, blocked, serializeLog } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const data = createMemo(() => d.promise, undefined, { deferStream: true });
+            return ssr(["<div>", "</div>"], () => data()) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    // processResult does not block — deferStream blocking happens in dom-expressions' serialize
+    expect(blocked.size).toBe(0);
+    // But deferStream IS passed through to serialize for dom-expressions to handle
+    expect(serializeLog.some(e => e.deferStream === true)).toBe(true);
+  });
+
+  // --------------------------------------------------------------------------
+  // 3. deferStream flag passed through to serialize
+  // --------------------------------------------------------------------------
+
+  test("deferStream: true is passed as 3rd arg to serialize", () => {
+    const { context, serializeLog } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        createMemo(() => d.promise, undefined, { deferStream: true });
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    expect(serializeLog[0].deferStream).toBe(true);
+  });
+
+  test("without deferStream, serialize 3rd arg is undefined", () => {
+    const { context, serializeLog } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        createMemo(() => d.promise);
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    expect(serializeLog[0].deferStream).toBeUndefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // 4. Multiple async inside Loading — no blocking interaction
+  // --------------------------------------------------------------------------
+
+  test("multiple async children in Loading — no block calls", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d1 = deferred<string>();
+    const d2 = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const data1 = createMemo(() => d1.promise);
+            const data2 = createMemo(() => d2.promise);
+            return ssr(
+              ["<div>", " ", "</div>"],
+              () => data1(),
+              () => data2()
+            ) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(blocked.size).toBe(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // 5. createSignal(fn) — deferStream not applicable (sync tuple)
+  // --------------------------------------------------------------------------
+
+  test("createSignal(fn) with deferStream: true does not block (sync Signal tuple)", () => {
+    const { context, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const [data] = createSignal(() => d.promise, undefined, { deferStream: true });
+            return ssr(["<div>", "</div>"], () => data()) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(blocked.size).toBe(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // 6. createProjection with deferStream
+  // --------------------------------------------------------------------------
+
+  test("createProjection with deferStream: true passes to serialize", () => {
+    const { context, serializeLog, blocked } = createBlockTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<{ name: string }>();
+
+    createRoot(
+      () => {
+        createProjection(() => d.promise, {} as any, { deferStream: true });
+      },
+      { id: "t" }
+    );
+
+    // processResult no longer blocks — serialize handles deferStream blocking in dom-expressions
+    expect(blocked.size).toBe(0);
+    expect(serializeLog.length).toBe(1);
+    expect(serializeLog[0].deferStream).toBe(true);
   });
 });

@@ -115,24 +115,28 @@ export function createSignal<T>(value: Exclude<T, Function>, options?: SignalOpt
 export function createSignal<T>(
   fn: ComputeFunction<T>,
   initialValue?: T,
-  options?: SignalOptions<T>
+  options?: SignalOptions<T> & { deferStream?: boolean }
 ): Signal<T>;
 export function createSignal<T>(
   first?: T | ComputeFunction<T>,
   second?: T | SignalOptions<T>,
-  third?: SignalOptions<T>
+  third?: SignalOptions<T> & { deferStream?: boolean }
 ): Signal<T | undefined> {
   // Function form delegates to createMemo-based writable signal
   if (typeof first === "function") {
-    const memo = createMemo<Signal<T>>(p => {
-      let value = (first as (prev?: T) => T)(p ? p[0]() : (second as T));
-      return [
-        () => value,
-        v => {
-          return ((value as any) = typeof v === "function" ? (v as (prev: T) => T)(value) : v);
-        }
-      ] as Signal<T>;
-    });
+    const memo = createMemo<Signal<T>>(
+      p => {
+        let value = (first as (prev?: T) => T)(p ? p[0]() : (second as T));
+        return [
+          () => value,
+          v => {
+            return ((value as any) = typeof v === "function" ? (v as (prev: T) => T)(value) : v);
+          }
+        ] as Signal<T>;
+      },
+      undefined as any,
+      third?.deferStream ? { deferStream: true } : undefined
+    );
     return [() => memo()[0](), (v => memo()[1](v as any)) as Setter<T | undefined>];
   }
   // Plain value form — no ID allocation (IDs are only for owners/computations)
@@ -150,12 +154,12 @@ export function createMemo<Next extends Prev, Prev = Next>(
 export function createMemo<Next extends Prev, Init = Next, Prev = Next>(
   compute: ComputeFunction<Init | Prev, Next>,
   value: Init,
-  options?: MemoOptions<Next>
+  options?: MemoOptions<Next> & { deferStream?: boolean }
 ): Accessor<Next>;
 export function createMemo<Next extends Prev, Init, Prev>(
   compute: ComputeFunction<Init | Prev, Next>,
   value?: Init,
-  options?: MemoOptions<Next>
+  options?: MemoOptions<Next> & { deferStream?: boolean }
 ): Accessor<Next> {
   // Capture SSR context at creation time — async re-computations (via .then callbacks)
   // may run after a concurrent request has overwritten sharedConfig.context.
@@ -176,7 +180,7 @@ export function createMemo<Next extends Prev, Init, Prev>(
         runWithObserver(comp, () => comp.compute(comp.value))
       );
       comp.computed = true;
-      processResult(comp, result, owner, ctx);
+      processResult(comp, result, owner, ctx, options?.deferStream);
     } catch (err) {
       if (err instanceof NotReadyError) {
         // Chain re-computation when dependency resolves (mirrors archived createAsync's processSource pattern)
@@ -205,7 +209,13 @@ export function createMemo<Next extends Prev, Init, Prev>(
 }
 
 /** Process async results from a computation (Promise / AsyncIterable) */
-function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner, ctx: any) {
+function processResult<T>(
+  comp: ServerComputation<T>,
+  result: any,
+  owner: Owner,
+  ctx: any,
+  deferStream?: boolean
+) {
   const id = owner.id;
   const uninitialized = comp.value === undefined;
 
@@ -218,7 +228,7 @@ function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner,
       },
       () => {} // rejection handled downstream by Loading's IIFE catch
     );
-    if (ctx?.serialize && id) ctx.serialize(id, result);
+    if (ctx?.serialize && id) ctx.serialize(id, result, deferStream);
     if (uninitialized) {
       comp.error = new NotReadyError(result);
     }
@@ -236,7 +246,7 @@ function processResult<T>(comp: ServerComputation<T>, result: any, owner: Owner,
       },
       () => {} // rejection handled downstream by Loading's IIFE catch
     );
-    if (ctx?.serialize && id) ctx.serialize(id, promise);
+    if (ctx?.serialize && id) ctx.serialize(id, promise, deferStream);
     if (uninitialized) {
       comp.error = new NotReadyError(promise);
     }
@@ -365,7 +375,8 @@ export const createOptimisticStore = createStore;
 
 export function createProjection<T extends object>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  initialValue: T = {} as T
+  initialValue: T = {} as T,
+  options?: { deferStream?: boolean }
 ): Store<T> {
   const ctx = sharedConfig.context;
   const owner = createOwner();
@@ -384,7 +395,7 @@ export function createProjection<T extends object>(
       },
       () => {}
     );
-    if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise);
+    if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise, options?.deferStream);
     return state;
   }
 
