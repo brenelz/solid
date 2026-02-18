@@ -2,7 +2,16 @@
  * @jsxImportSource solid-js
  */
 import { describe, expect, test, vi } from "vitest";
-import { renderToString, renderToStream, Loading, Show, For, Switch, Match, Errored } from "@solidjs/web";
+import {
+  renderToString,
+  renderToStream,
+  Loading,
+  Show,
+  For,
+  Switch,
+  Match,
+  Errored
+} from "@solidjs/web";
 import { createMemo } from "solid-js";
 
 function delay(ms: number) {
@@ -554,10 +563,7 @@ describe("renderToString — Sync Rendering", () => {
   });
 
   test("noScripts suppresses script injection", () => {
-    const html = renderToString(
-      () => <div>Content</div>,
-      { noScripts: true }
-    );
+    const html = renderToString(() => <div>Content</div>, { noScripts: true });
     expect(html).toContain("Content");
     expect(html).not.toContain("<script");
   });

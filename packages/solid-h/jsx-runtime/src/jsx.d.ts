@@ -1010,15 +1010,15 @@ export namespace JSX {
         ? K extends `on:${infer T}`
           ? T
           : K extends `on${infer T}`
-          ? Lowercase<T>
-          : never
+            ? Lowercase<T>
+            : never
         : never)
     | (keyof EventHandlersElement<any> extends infer K
         ? K extends `on:${infer T}`
           ? T
           : K extends `on${infer T}`
-          ? Lowercase<T>
-          : never
+            ? Lowercase<T>
+            : never
         : never)
     | (string & {});
 
