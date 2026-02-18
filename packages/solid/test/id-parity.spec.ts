@@ -52,7 +52,7 @@ describe("ID Parity: devComponent transparent wrapper", () => {
           b();
           return undefined as any;
         };
-        Comp({} as any);
+        Comp();
       },
       { id: "t" }
     );

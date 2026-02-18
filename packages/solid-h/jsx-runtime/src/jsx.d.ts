@@ -1,36 +1,120 @@
 import * as csstype from "csstype";
 
 /**
- * Based on JSX types for Surplus and Inferno and adapted for `dom-expressions`.
+ * Originally based on JSX types for Surplus and Inferno and adapted for `dom-expressions`.
  *
- * https://github.com/adamhaile/surplus/blob/master/index.d.ts
- * https://github.com/infernojs/inferno/blob/master/packages/inferno/src/core/types.ts
+ * - https://github.com/adamhaile/surplus/blob/master/index.d.ts
+ * - https://github.com/infernojs/inferno/blob/master/packages/inferno/src/core/types.ts
  *
  * MathML typings coming mostly from Preact
- * https://github.com/preactjs/preact/blob/07dc9f324e58569ce66634aa03fe8949b4190358/src/jsx.d.ts#L2575
+ *
+ * - https://github.com/preactjs/preact/blob/07dc9f324e58569ce66634aa03fe8949b4190358/src/jsx.d.ts#L2575
  *
  * Checked against other frameworks via the following table:
- * https://potahtml.github.io/namespace-jsx-project/index.html
  *
- * Note: Typings must include attributes and not properties (unless the property is special-cased,
- * such textContent, event handlers, etc).
+ * - https://potahtml.github.io/namespace-jsx-project/index.html
+ *
+ * # Typings on elements
+ *
+ * ## Attributes
+ *
+ * - Typings include attributes and not properties (unless the property Is special-cased, such
+ *   textContent, event handlers, etc).
+ * - Attributes are lowercase to avoid confusion with properties.
+ * - Attributes are used "as is" and won't be transformed in any way (such to `lowercase` or from
+ *   `dashed-case` to `camelCase`).
+ *
+ * ## Event Handlers
+ *
+ * - Event handlers use `camelCase` such `onClick` and will be delegated when possible, bubbling
+ *   through the component tree, not the dom tree.
+ * - Native event handlers use the namespace `on:` such `on:click`, and wont be delegated. bubbling
+ *   the dom tree.
+ * - A global case-insensitive event handler can be added by extending `EventHandlersElement<T>`
+ * - A native `on:` event handler can be added by extending `CustomEvents<T>` interface
+ *
+ * ## Boolean Attributes (property setter that accepts `true | false`):
+ *
+ * - `(bool)true` adds the attribute `<video autoplay={true}/>` or in JSX as `<video autoplay/>`
+ * - `(bool)false` removes the attribute from the DOM `<video autoplay={false}/>`
+ * - `=""` may be accepted for the sake of parity with html `<video autoplay=""/>`
+ * - `"true" | "false"` are NOT allowed, these are strings that evaluate to `(bool)true`
+ *
+ * ## Enumerated Attributes (attribute accepts 1 string value out of many)
+ *
+ * - Accepts any of the enumerated values, such: `"perhaps" | "maybe"`
+ * - When one of the possible values is empty(in html that's for the attribute to be present), then it
+ *   will also accept `(bool)true` to make it consistent with boolean attributes.
+ *
+ * Such `popover` attribute provides `"" | "manual" | "auto" | "hint"`.
+ *
+ * By NOT allowing `(bool)true` we will have to write `<div popover="" />`. Therefore, To make it
+ * consistent with Boolean Attributes we accept `true | "" | "manual" | "auto" | "hint"`, such as:
+ * `<div popover={true} />` or in JSX `<div popover />` is allowed and equivalent to `<div
+ * popover="" />`
+ *
+ * ## Pseudo-Boolean Attributes (enumerated attributes that happen to accept the strings `"true" | "false"`)
+ *
+ * - Such `<div draggable="true"/>` or `<div draggable="false"/>`. The value of the attribute is a
+ *   string not a boolean.
+ * - `<div draggable={true}/>` is not valid because `(bool)true` is NOT transformed to the string
+ *   `"true"`. Likewise `<div draggable={false}/>` removes the attribute from the element.
+ * - MDN documentation https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/draggable
+ *
+ * ## All Of The Above In a nutshell
+ *
+ * - `(bool)true` adds an empty attribute
+ * - `(bool)false` removes the attribute
+ * - Attributes are lowercase
+ * - Event handlers are camelCase
+ * - Anything else is a `string` and used "as is"
+ * - Additionally, an attribute may be removed by `undefined`
+ *
+ * ## Using Properties
+ *
+ * - The namespace `prop:` could be used to directly set properties in native elements and
+ *   custom-elements. `<custom-element prop:myProp={true}/>` equivalent to `el.myProp = true`
+ *
+ * ## Interfaces
+ *
+ * Events
+ *
+ * 1. An event handler goes in `EventHandlersElement` when:
+ *
+ *    - `event` is global, that's to be defined in `HTMLElement` AND `SVGElement` AND `MathMLElement`
+ *    - `event` is defined in `Element` (as `HTMLElement/MathMLElement/SVGElement` -> `Element`)
+ * 2. `<body>`, `<svg>`, `<framesete>` are special as these include `window` events
+ * 3. Any other event is special for its own tag.
+ *
+ * Browser Hierarchy
+ *
+ * - $Element (ex HTMLDivElement <div>) -> ... -> HTMLElement -> Element -> Node
+ * - $Element (all math elements are MathMLElement) MathMLElement -> Element -> Node
+ * - $Element`(ex SVGMaskElement <mask>) -> ... -> SVGElement -> Element -> Node
+ *
+ * Attributes
+ *
+ *      <div> -> ... -> HTMLAttributes -> ElementAttributes
+ *      <svg> -> ... -> SVGAttributes -> ElementAttributes
+ *      <math> -> ... -> MathMLAttributes -> ElementAttributes
+ *
+ *      ElementAttributes = `Element` + `Node` attributes (aka global attributes)
+ *
+ *      HTMLAttributes = `HTMLElement` attributes (aka HTML global attributes)
+ *      SVGAttributes = `SVGElement` attributes (aka SVG global attributes)
+ *      MathMLAttributes = `MathMLElement` attributes (aka MATH global attributes)
+ *
+ *      CustomAttributes = Framework attributes
  */
+
 type DOMElement = Element;
 
 export namespace JSX {
-  // START - difference with `jsx.d.ts`
+  // START - difference between `jsx.d.ts` and `jsx-h.d.ts`
   type FunctionMaybe<T = unknown> = { (): T } | T;
   interface FunctionElement {
     (): Element;
   }
-  // END - difference with `jsx.d.ts`
-
-  /**
-   * The rest of differences between `jsx-h.d.ts` and `jsx.d.ts` are:
-   *
-   * - The use of `FunctionMaybe` on attributes
-   * - `interface DialogHtmlAttributes` declares event handlers that shouldnt use `FunctionMaybe`
-   */
 
   type Element =
     | Node
@@ -41,6 +125,7 @@ export namespace JSX {
     | boolean
     | null
     | undefined;
+  // END - difference between `jsx.d.ts` and `jsx-h.d.ts`
 
   interface ArrayElement extends Array<Element> {}
 
@@ -53,6 +138,9 @@ export namespace JSX {
   interface ElementChildrenAttribute {
     children: {};
   }
+
+  // Event handlers
+
   interface EventHandler<T, E extends Event> {
     (
       e: E & {
@@ -77,7 +165,8 @@ export namespace JSX {
   > = EHandler | BoundEventHandler<T, E, EHandler>;
 
   interface EventHandlerWithOptions<T, E extends Event, EHandler = EventHandler<T, E>>
-    extends AddEventListenerOptions {
+    extends AddEventListenerOptions,
+      EventListenerOptions {
     handleEvent: EHandler;
   }
 
@@ -134,6 +223,7 @@ export namespace JSX {
     E,
     FocusEventHandler<T, E>
   >;
+  // end event handlers
 
   type ClassList =
     | Record<string, boolean>
@@ -150,6 +240,7 @@ export namespace JSX {
   }
   interface CustomAttributes<T> {
     ref?: T | ((el: T) => void) | undefined;
+    children?: FunctionMaybe<Element | undefined>;
     $ServerOnly?: boolean | undefined;
   }
   type Accessor<T> = () => T;
@@ -158,8 +249,6 @@ export namespace JSX {
     [x: string]: (el: DOMElement, accessor: Accessor<any>) => void;
   }
   interface ExplicitProperties {}
-  interface ExplicitAttributes {}
-  interface ExplicitBoolAttributes {}
   interface CustomEvents {}
   type DirectiveAttributes = {
     [Key in keyof Directives as `use:${Key}`]?: Directives[Key];
@@ -183,369 +272,43 @@ export namespace JSX {
   type PropAttributes = {
     [Key in keyof ExplicitProperties as `prop:${Key}`]?: ExplicitProperties[Key];
   };
-  type AttrAttributes = {
-    [Key in keyof ExplicitAttributes as `attr:${Key}`]?: ExplicitAttributes[Key];
-  };
-  type BoolAttributes = {
-    [Key in keyof ExplicitBoolAttributes as `bool:${Key}`]?: ExplicitBoolAttributes[Key];
-  };
   type OnAttributes<T> = {
     [Key in keyof CustomEvents as `on:${Key}`]?: EventHandlerWithOptionsUnion<T, CustomEvents[Key]>;
   };
-  interface DOMAttributes<T>
-    extends CustomAttributes<T>,
-      DirectiveAttributes,
-      DirectiveFunctionAttributes<T>,
-      PropAttributes,
-      AttrAttributes,
-      BoolAttributes,
-      OnAttributes<T>,
-      CustomEventHandlersCamelCase<T>,
-      CustomEventHandlersLowerCase<T>,
-      CustomEventHandlersNamespaced<T> {
-    children?: FunctionMaybe<Element | undefined>;
-    innerHTML?: FunctionMaybe<string | undefined>;
-    innerText?: FunctionMaybe<string | number | undefined>;
-    textContent?: FunctionMaybe<string | number | undefined>;
-    // camel case events
-    onCopy?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    onCut?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    onPaste?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    onCompositionEnd?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    onCompositionStart?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    onCompositionUpdate?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    onFocusOut?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onFocusIn?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onEncrypted?: EventHandlerUnion<T, MediaEncryptedEvent> | undefined;
-    onDragExit?: EventHandlerUnion<T, DragEvent> | undefined;
-    // lower case events
-    oncopy?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    oncut?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    onpaste?: EventHandlerUnion<T, ClipboardEvent> | undefined;
-    oncompositionend?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    oncompositionstart?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    oncompositionupdate?: EventHandlerUnion<T, CompositionEvent> | undefined;
-    onfocusout?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onfocusin?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onencrypted?: EventHandlerUnion<T, MediaEncryptedEvent> | undefined;
-    ondragexit?: EventHandlerUnion<T, DragEvent> | undefined;
-    // lower case events
-    "on:copy"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
-    "on:cut"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
-    "on:paste"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
-    "on:compositionend"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
-    "on:compositionstart"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
-    "on:compositionupdate"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
-    "on:focusout"?:
-      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
-      | undefined;
-    "on:focusin"?:
-      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
-      | undefined;
-    "on:encrypted"?: EventHandlerWithOptionsUnion<T, MediaEncryptedEvent> | undefined;
-    "on:dragexit"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-  }
-  interface CustomEventHandlersCamelCase<T> {
-    onAbort?: EventHandlerUnion<T, UIEvent> | undefined;
-    onAnimationEnd?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onAnimationIteration?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onAnimationStart?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onAuxClick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onBeforeInput?: InputEventHandlerUnion<T, InputEvent> | undefined;
-    onBeforeToggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
-    onBlur?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onCanPlay?: EventHandlerUnion<T, Event> | undefined;
-    onCanPlayThrough?: EventHandlerUnion<T, Event> | undefined;
-    onChange?: ChangeEventHandlerUnion<T, Event> | undefined;
-    onClick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onContextMenu?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onDblClick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onDrag?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDragEnd?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDragEnter?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDragLeave?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDragOver?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDragStart?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDrop?: EventHandlerUnion<T, DragEvent> | undefined;
-    onDurationChange?: EventHandlerUnion<T, Event> | undefined;
-    onEmptied?: EventHandlerUnion<T, Event> | undefined;
-    onEnded?: EventHandlerUnion<T, Event> | undefined;
-    onError?: EventHandlerUnion<T, ErrorEvent> | undefined;
-    onFocus?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    onGotPointerCapture?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onInput?: InputEventHandlerUnion<T, InputEvent> | undefined;
-    onInvalid?: EventHandlerUnion<T, Event> | undefined;
-    onKeyDown?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onKeyPress?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onKeyUp?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onLoad?: EventHandlerUnion<T, Event> | undefined;
-    onLoadedData?: EventHandlerUnion<T, Event> | undefined;
-    onLoadedMetadata?: EventHandlerUnion<T, Event> | undefined;
-    onLoadStart?: EventHandlerUnion<T, Event> | undefined;
-    onLostPointerCapture?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onMouseDown?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseEnter?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseLeave?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseMove?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseOut?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseOver?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onMouseUp?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onPause?: EventHandlerUnion<T, Event> | undefined;
-    onPlay?: EventHandlerUnion<T, Event> | undefined;
-    onPlaying?: EventHandlerUnion<T, Event> | undefined;
-    onPointerCancel?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerDown?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerEnter?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerLeave?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerMove?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerOut?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerOver?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onPointerUp?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onProgress?: EventHandlerUnion<T, ProgressEvent> | undefined;
-    onRateChange?: EventHandlerUnion<T, Event> | undefined;
-    onReset?: EventHandlerUnion<T, Event> | undefined;
-    onScroll?: EventHandlerUnion<T, Event> | undefined;
-    onScrollEnd?: EventHandlerUnion<T, Event> | undefined;
-    onSeeked?: EventHandlerUnion<T, Event> | undefined;
-    onSeeking?: EventHandlerUnion<T, Event> | undefined;
-    onSelect?: EventHandlerUnion<T, Event> | undefined;
-    onStalled?: EventHandlerUnion<T, Event> | undefined;
-    onSubmit?: EventHandlerUnion<T, SubmitEvent> | undefined;
-    onSuspend?: EventHandlerUnion<T, Event> | undefined;
-    onTimeUpdate?: EventHandlerUnion<T, Event> | undefined;
-    onToggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
-    onTouchCancel?: EventHandlerUnion<T, TouchEvent> | undefined;
-    onTouchEnd?: EventHandlerUnion<T, TouchEvent> | undefined;
-    onTouchMove?: EventHandlerUnion<T, TouchEvent> | undefined;
-    onTouchStart?: EventHandlerUnion<T, TouchEvent> | undefined;
-    onTransitionStart?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    onTransitionEnd?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    onTransitionRun?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    onTransitionCancel?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    onVolumeChange?: EventHandlerUnion<T, Event> | undefined;
-    onWaiting?: EventHandlerUnion<T, Event> | undefined;
-    onWheel?: EventHandlerUnion<T, WheelEvent> | undefined;
-  }
-  /** @type {GlobalEventHandlers} */
-  interface CustomEventHandlersLowerCase<T> {
-    onabort?: EventHandlerUnion<T, UIEvent> | undefined;
-    onanimationend?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onanimationiteration?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onanimationstart?: EventHandlerUnion<T, AnimationEvent> | undefined;
-    onauxclick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onbeforeinput?: InputEventHandlerUnion<T, InputEvent> | undefined;
-    onbeforetoggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
-    onblur?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    oncanplay?: EventHandlerUnion<T, Event> | undefined;
-    oncanplaythrough?: EventHandlerUnion<T, Event> | undefined;
-    onchange?: ChangeEventHandlerUnion<T, Event> | undefined;
-    onclick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    oncontextmenu?: EventHandlerUnion<T, MouseEvent> | undefined;
-    ondblclick?: EventHandlerUnion<T, MouseEvent> | undefined;
-    ondrag?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondragend?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondragenter?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondragleave?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondragover?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondragstart?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondrop?: EventHandlerUnion<T, DragEvent> | undefined;
-    ondurationchange?: EventHandlerUnion<T, Event> | undefined;
-    onemptied?: EventHandlerUnion<T, Event> | undefined;
-    onended?: EventHandlerUnion<T, Event> | undefined;
-    onerror?: EventHandlerUnion<T, ErrorEvent> | undefined;
-    onfocus?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
-    ongotpointercapture?: EventHandlerUnion<T, PointerEvent> | undefined;
-    oninput?: InputEventHandlerUnion<T, InputEvent> | undefined;
-    oninvalid?: EventHandlerUnion<T, Event> | undefined;
-    onkeydown?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onkeypress?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onkeyup?: EventHandlerUnion<T, KeyboardEvent> | undefined;
-    onload?: EventHandlerUnion<T, Event> | undefined;
-    onloadeddata?: EventHandlerUnion<T, Event> | undefined;
-    onloadedmetadata?: EventHandlerUnion<T, Event> | undefined;
-    onloadstart?: EventHandlerUnion<T, Event> | undefined;
-    onlostpointercapture?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onmousedown?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmouseenter?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmouseleave?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmousemove?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmouseout?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmouseover?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onmouseup?: EventHandlerUnion<T, MouseEvent> | undefined;
-    onpause?: EventHandlerUnion<T, Event> | undefined;
-    onplay?: EventHandlerUnion<T, Event> | undefined;
-    onplaying?: EventHandlerUnion<T, Event> | undefined;
-    onpointercancel?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerdown?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerenter?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerleave?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointermove?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerout?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerover?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onpointerup?: EventHandlerUnion<T, PointerEvent> | undefined;
-    onprogress?: EventHandlerUnion<T, ProgressEvent> | undefined;
-    onratechange?: EventHandlerUnion<T, Event> | undefined;
-    onreset?: EventHandlerUnion<T, Event> | undefined;
-    onscroll?: EventHandlerUnion<T, Event> | undefined;
-    onscrollend?: EventHandlerUnion<T, Event> | undefined;
-    onseeked?: EventHandlerUnion<T, Event> | undefined;
-    onseeking?: EventHandlerUnion<T, Event> | undefined;
-    onselect?: EventHandlerUnion<T, Event> | undefined;
-    onstalled?: EventHandlerUnion<T, Event> | undefined;
-    onsubmit?: EventHandlerUnion<T, SubmitEvent> | undefined;
-    onsuspend?: EventHandlerUnion<T, Event> | undefined;
-    ontimeupdate?: EventHandlerUnion<T, Event> | undefined;
-    ontoggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
-    ontouchcancel?: EventHandlerUnion<T, TouchEvent> | undefined;
-    ontouchend?: EventHandlerUnion<T, TouchEvent> | undefined;
-    ontouchmove?: EventHandlerUnion<T, TouchEvent> | undefined;
-    ontouchstart?: EventHandlerUnion<T, TouchEvent> | undefined;
-    ontransitionstart?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    ontransitionend?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    ontransitionrun?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    ontransitioncancel?: EventHandlerUnion<T, TransitionEvent> | undefined;
-    onvolumechange?: EventHandlerUnion<T, Event> | undefined;
-    onwaiting?: EventHandlerUnion<T, Event> | undefined;
-    onwheel?: EventHandlerUnion<T, WheelEvent> | undefined;
-  }
-  interface CustomEventHandlersNamespaced<T> {
-    "on:abort"?: EventHandlerWithOptionsUnion<T, UIEvent> | undefined;
-    "on:animationend"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
-    "on:animationiteration"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
-    "on:animationstart"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
-    "on:auxclick"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:beforeinput"?:
-      | EventHandlerWithOptionsUnion<T, InputEvent, InputEventHandler<T, InputEvent>>
-      | undefined;
-    "on:beforetoggle"?: EventHandlerWithOptionsUnion<T, ToggleEvent> | undefined;
-    "on:blur"?:
-      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
-      | undefined;
-    "on:canplay"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:canplaythrough"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:change"?: EventHandlerWithOptionsUnion<T, Event, ChangeEventHandler<T, Event>> | undefined;
-    "on:click"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:contextmenu"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:dblclick"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:drag"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:dragend"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:dragenter"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:dragleave"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:dragover"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:dragstart"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:drop"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
-    "on:durationchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:emptied"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:ended"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:error"?: EventHandlerWithOptionsUnion<T, ErrorEvent> | undefined;
-    "on:focus"?:
-      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
-      | undefined;
-    "on:gotpointercapture"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:input"?:
-      | EventHandlerWithOptionsUnion<T, InputEvent, InputEventHandler<T, InputEvent>>
-      | undefined;
-    "on:invalid"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:keydown"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
-    "on:keypress"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
-    "on:keyup"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
-    "on:load"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:loadeddata"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:loadedmetadata"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:loadstart"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:lostpointercapture"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:mousedown"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mouseenter"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mouseleave"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mousemove"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mouseout"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mouseover"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:mouseup"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
-    "on:pause"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:play"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:playing"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:pointercancel"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerdown"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerenter"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerleave"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointermove"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerout"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerover"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:pointerup"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
-    "on:progress"?: EventHandlerWithOptionsUnion<T, ProgressEvent> | undefined;
-    "on:ratechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:reset"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:scroll"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:scrollend"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:seeked"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:seeking"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:select"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:stalled"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:submit"?: EventHandlerWithOptionsUnion<T, SubmitEvent> | undefined;
-    "on:suspend"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:timeupdate"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:toggle"?: EventHandlerWithOptionsUnion<T, ToggleEvent> | undefined;
-    "on:touchcancel"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
-    "on:touchend"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
-    "on:touchmove"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
-    "on:touchstart"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
-    "on:transitionstart"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
-    "on:transitionend"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
-    "on:transitionrun"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
-    "on:transitioncancel"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
-    "on:volumechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:waiting"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
-    "on:wheel"?: EventHandlerWithOptionsUnion<T, WheelEvent> | undefined;
-  }
+
+  // CSS
 
   interface CSSProperties extends csstype.PropertiesHyphen {
     // Override
     [key: `-${string}`]: string | number | undefined;
   }
 
-  type HTMLAutocapitalize = "off" | "none" | "on" | "sentences" | "words" | "characters";
-  type HTMLDir = "ltr" | "rtl" | "auto";
-  type HTMLFormEncType = "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain";
-  type HTMLFormMethod = "post" | "get" | "dialog";
-  type HTMLCrossorigin = "anonymous" | "use-credentials" | "";
-  type HTMLReferrerPolicy =
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin"
-    | "origin-when-cross-origin"
-    | "same-origin"
-    | "strict-origin"
-    | "strict-origin-when-cross-origin"
-    | "unsafe-url";
-  type HTMLIframeSandbox =
-    | "allow-downloads-without-user-activation"
-    | "allow-downloads"
-    | "allow-forms"
-    | "allow-modals"
-    | "allow-orientation-lock"
-    | "allow-pointer-lock"
-    | "allow-popups"
-    | "allow-popups-to-escape-sandbox"
-    | "allow-presentation"
-    | "allow-same-origin"
-    | "allow-scripts"
-    | "allow-storage-access-by-user-activation"
-    | "allow-top-navigation"
-    | "allow-top-navigation-by-user-activation"
-    | "allow-top-navigation-to-custom-protocols";
-  type HTMLLinkAs =
-    | "audio"
-    | "document"
-    | "embed"
-    | "fetch"
-    | "font"
-    | "image"
-    | "object"
-    | "script"
-    | "style"
-    | "track"
-    | "video"
-    | "worker";
+  // TODO: Should we allow this?
+  // type ClassKeys = `class:${string}`;
+  // type CSSKeys = Exclude<keyof csstype.PropertiesHyphen, `-${string}`>;
+
+  // type CSSAttributes = {
+  //   [key in CSSKeys as `style:${key}`]: csstype.PropertiesHyphen[key];
+  // };
+
+  // BOOLEAN
+
+  /**
+   * Boolean and Pseudo-Boolean Attributes Helpers.
+   *
+   * Please use the helpers to describe boolean and pseudo boolean attributes to make this file and
+   * also the typings easier to understand and explain.
+   */
+
+  type BooleanAttribute = true | false | "";
+
+  type EnumeratedPseudoBoolean = "false" | "true";
+
+  type EnumeratedAcceptsEmpty = "" | true;
+
+  type RemoveAttribute = undefined | false;
+
+  // ARIA
 
   // All the WAI-ARIA 1.1 attributes from https://www.w3.org/TR/wai-aria-1.1/
   interface AriaAttributes {
@@ -553,82 +316,111 @@ export namespace JSX {
      * Identifies the currently active element when DOM focus is on a composite widget, textbox,
      * group, or application.
      */
-    "aria-activedescendant"?: FunctionMaybe<string | undefined>;
+    "aria-activedescendant"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates whether assistive technologies will present all, or only parts of, the changed
      * region based on the change notifications defined by the aria-relevant attribute.
      */
-    "aria-atomic"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-atomic"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
+    /**
+     * Similar to the global aria-label. Defines a string value that labels the current element,
+     * which is intended to be converted into Braille.
+     *
+     * @see aria-label.
+     */
+    "aria-braillelabel"?: FunctionMaybe<string | RemoveAttribute>;
+    /**
+     * Defines a human-readable, author-localized abbreviated description for the role of an element
+     * intended to be converted into Braille. Braille is not a one-to-one transliteration of letters
+     * and numbers, but rather it includes various abbreviations, contractions, and characters that
+     * represent words (known as logograms).
+     *
+     * Instead of converting long role descriptions to Braille, the aria-brailleroledescription
+     * attribute allows for providing an abbreviated version of the aria-roledescription value,
+     * which is a human-readable, author-localized description for the role of an element, for
+     * improved user experience with braille interfaces.
+     *
+     * @see aria-roledescription.
+     */
+    "aria-brailleroledescription"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates whether inputting text could trigger display of one or more predictions of the
      * user's intended value for an input and specifies how predictions would be presented if they
      * are made.
      */
-    "aria-autocomplete"?: FunctionMaybe<"none" | "inline" | "list" | "both" | undefined>;
+    "aria-autocomplete"?: FunctionMaybe<"none" | "inline" | "list" | "both" | RemoveAttribute>;
     /**
      * Indicates an element is being modified and that assistive technologies MAY want to wait until
      * the modifications are complete before exposing them to the user.
      */
-    "aria-busy"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-busy"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates the current "checked" state of checkboxes, radio buttons, and other widgets.
      *
      * @see aria-pressed @see aria-selected.
      */
-    "aria-checked"?: FunctionMaybe<boolean | "false" | "mixed" | "true" | undefined>;
+    "aria-checked"?: FunctionMaybe<EnumeratedPseudoBoolean | "mixed" | RemoveAttribute>;
     /**
      * Defines the total number of columns in a table, grid, or treegrid.
      *
      * @see aria-colindex.
      */
-    "aria-colcount"?: FunctionMaybe<number | string | undefined>;
+    "aria-colcount"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Defines an element's column index or position with respect to the total number of columns
      * within a table, grid, or treegrid.
      *
      * @see aria-colcount @see aria-colspan.
      */
-    "aria-colindex"?: FunctionMaybe<number | string | undefined>;
+    "aria-colindex"?: FunctionMaybe<number | string | RemoveAttribute>;
+    /** Defines a human-readable text alternative of the numeric aria-colindex. */
+    "aria-colindextext"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Defines the number of columns spanned by a cell or gridcell within a table, grid, or
      * treegrid.
      *
      * @see aria-colindex @see aria-rowspan.
      */
-    "aria-colspan"?: FunctionMaybe<number | string | undefined>;
+    "aria-colspan"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Identifies the element (or elements) whose contents or presence are controlled by the current
      * element.
      *
      * @see aria-owns.
      */
-    "aria-controls"?: FunctionMaybe<string | undefined>;
+    "aria-controls"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates the element that represents the current item within a container or set of related
      * elements.
      */
     "aria-current"?: FunctionMaybe<
-      boolean | "false" | "true" | "page" | "step" | "location" | "date" | "time" | undefined
+      EnumeratedPseudoBoolean | "page" | "step" | "location" | "date" | "time" | RemoveAttribute
     >;
     /**
      * Identifies the element (or elements) that describes the object.
      *
      * @see aria-labelledby
      */
-    "aria-describedby"?: FunctionMaybe<string | undefined>;
+    "aria-describedby"?: FunctionMaybe<string | RemoveAttribute>;
+    /**
+     * Defines a string value that describes or annotates the current element.
+     *
+     * @see aria-describedby
+     */
+    "aria-description"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Identifies the element that provides a detailed, extended description for the object.
      *
      * @see aria-describedby.
      */
-    "aria-details"?: FunctionMaybe<string | undefined>;
+    "aria-details"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates that the element is perceivable but disabled, so it is not editable or otherwise
      * operable.
      *
      * @see aria-hidden @see aria-readonly.
      */
-    "aria-disabled"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-disabled"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates what functions can be performed when a dragged object is released on the drop
      * target.
@@ -636,85 +428,87 @@ export namespace JSX {
      * @deprecated In ARIA 1.1
      */
     "aria-dropeffect"?: FunctionMaybe<
-      "none" | "copy" | "execute" | "link" | "move" | "popup" | undefined
+      "none" | "copy" | "execute" | "link" | "move" | "popup" | RemoveAttribute
     >;
     /**
      * Identifies the element that provides an error message for the object.
      *
      * @see aria-invalid @see aria-describedby.
      */
-    "aria-errormessage"?: FunctionMaybe<string | undefined>;
+    "aria-errormessage"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates whether the element, or another grouping element it controls, is currently expanded
      * or collapsed.
      */
-    "aria-expanded"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-expanded"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Identifies the next element (or elements) in an alternate reading order of content which, at
      * the user's discretion, allows assistive technology to override the general default of reading
      * in document source order.
      */
-    "aria-flowto"?: FunctionMaybe<string | undefined>;
+    "aria-flowto"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Indicates an element's "grabbed" state in a drag-and-drop operation.
      *
      * @deprecated In ARIA 1.1
      */
-    "aria-grabbed"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-grabbed"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates the availability and type of interactive popup element, such as menu or dialog,
      * that can be triggered by an element.
      */
     "aria-haspopup"?: FunctionMaybe<
-      boolean | "false" | "true" | "menu" | "listbox" | "tree" | "grid" | "dialog" | undefined
+      EnumeratedPseudoBoolean | "menu" | "listbox" | "tree" | "grid" | "dialog" | RemoveAttribute
     >;
     /**
      * Indicates whether the element is exposed to an accessibility API.
      *
      * @see aria-disabled.
      */
-    "aria-hidden"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-hidden"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates the entered value does not conform to the format expected by the application.
      *
      * @see aria-errormessage.
      */
-    "aria-invalid"?: FunctionMaybe<boolean | "false" | "true" | "grammar" | "spelling" | undefined>;
+    "aria-invalid"?: FunctionMaybe<
+      EnumeratedPseudoBoolean | "grammar" | "spelling" | RemoveAttribute
+    >;
     /**
      * Indicates keyboard shortcuts that an author has implemented to activate or give focus to an
      * element.
      */
-    "aria-keyshortcuts"?: FunctionMaybe<string | undefined>;
+    "aria-keyshortcuts"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Defines a string value that labels the current element.
      *
      * @see aria-labelledby.
      */
-    "aria-label"?: FunctionMaybe<string | undefined>;
+    "aria-label"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Identifies the element (or elements) that labels the current element.
      *
      * @see aria-describedby.
      */
-    "aria-labelledby"?: FunctionMaybe<string | undefined>;
+    "aria-labelledby"?: FunctionMaybe<string | RemoveAttribute>;
     /** Defines the hierarchical level of an element within a structure. */
-    "aria-level"?: FunctionMaybe<number | string | undefined>;
+    "aria-level"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Indicates that an element will be updated, and describes the types of updates the user
      * agents, assistive technologies, and user can expect from the live region.
      */
-    "aria-live"?: FunctionMaybe<"off" | "assertive" | "polite" | undefined>;
+    "aria-live"?: FunctionMaybe<"off" | "assertive" | "polite" | RemoveAttribute>;
     /** Indicates whether an element is modal when displayed. */
-    "aria-modal"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-modal"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /** Indicates whether a text box accepts multiple lines of input or only a single line. */
-    "aria-multiline"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-multiline"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates that the user may select more than one item from the current selectable
      * descendants.
      */
-    "aria-multiselectable"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-multiselectable"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /** Indicates whether the element's orientation is horizontal, vertical, or unknown/ambiguous. */
-    "aria-orientation"?: FunctionMaybe<"horizontal" | "vertical" | undefined>;
+    "aria-orientation"?: FunctionMaybe<"horizontal" | "vertical" | RemoveAttribute>;
     /**
      * Identifies an element (or elements) in order to define a visual, functional, or contextual
      * parent/child relationship between DOM elements where the DOM hierarchy cannot be used to
@@ -722,32 +516,32 @@ export namespace JSX {
      *
      * @see aria-controls.
      */
-    "aria-owns"?: FunctionMaybe<string | undefined>;
+    "aria-owns"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Defines a short hint (a word or short phrase) intended to aid the user with data entry when
      * the control has no value. A hint could be a sample value or a brief description of the
      * expected format.
      */
-    "aria-placeholder"?: FunctionMaybe<string | undefined>;
+    "aria-placeholder"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Defines an element's number or position in the current set of listitems or treeitems. Not
      * required if all elements in the set are present in the DOM.
      *
      * @see aria-setsize.
      */
-    "aria-posinset"?: FunctionMaybe<number | string | undefined>;
+    "aria-posinset"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Indicates the current "pressed" state of toggle buttons.
      *
      * @see aria-checked @see aria-selected.
      */
-    "aria-pressed"?: FunctionMaybe<boolean | "false" | "mixed" | "true" | undefined>;
+    "aria-pressed"?: FunctionMaybe<EnumeratedPseudoBoolean | "mixed" | RemoveAttribute>;
     /**
      * Indicates that the element is not editable, but is otherwise operable.
      *
      * @see aria-disabled.
      */
-    "aria-readonly"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-readonly"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Indicates what notifications the user agent will trigger when the accessibility tree within a
      * live region is modified.
@@ -765,58 +559,61 @@ export namespace JSX {
       | "text"
       | "text additions"
       | "text removals"
-      | undefined
+      | RemoveAttribute
     >;
     /** Indicates that user input is required on the element before a form may be submitted. */
-    "aria-required"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-required"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /** Defines a human-readable, author-localized description for the role of an element. */
-    "aria-roledescription"?: FunctionMaybe<string | undefined>;
+    "aria-roledescription"?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * Defines the total number of rows in a table, grid, or treegrid.
      *
      * @see aria-rowindex.
      */
-    "aria-rowcount"?: FunctionMaybe<number | string | undefined>;
+    "aria-rowcount"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Defines an element's row index or position with respect to the total number of rows within a
      * table, grid, or treegrid.
      *
      * @see aria-rowcount @see aria-rowspan.
      */
-    "aria-rowindex"?: FunctionMaybe<number | string | undefined>;
+    "aria-rowindex"?: FunctionMaybe<number | string | RemoveAttribute>;
+    /** Defines a human-readable text alternative of aria-rowindex. */
+    "aria-rowindextext"?: FunctionMaybe<number | string | RemoveAttribute>;
+
     /**
      * Defines the number of rows spanned by a cell or gridcell within a table, grid, or treegrid.
      *
      * @see aria-rowindex @see aria-colspan.
      */
-    "aria-rowspan"?: FunctionMaybe<number | string | undefined>;
+    "aria-rowspan"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Indicates the current "selected" state of various widgets.
      *
      * @see aria-checked @see aria-pressed.
      */
-    "aria-selected"?: FunctionMaybe<boolean | "false" | "true" | undefined>;
+    "aria-selected"?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
     /**
      * Defines the number of items in the current set of listitems or treeitems. Not required if all
      * elements in the set are present in the DOM.
      *
      * @see aria-posinset.
      */
-    "aria-setsize"?: FunctionMaybe<number | string | undefined>;
+    "aria-setsize"?: FunctionMaybe<number | string | RemoveAttribute>;
     /** Indicates if items in a table or grid are sorted in ascending or descending order. */
-    "aria-sort"?: FunctionMaybe<"none" | "ascending" | "descending" | "other" | undefined>;
+    "aria-sort"?: FunctionMaybe<"none" | "ascending" | "descending" | "other" | RemoveAttribute>;
     /** Defines the maximum allowed value for a range widget. */
-    "aria-valuemax"?: FunctionMaybe<number | string | undefined>;
+    "aria-valuemax"?: FunctionMaybe<number | string | RemoveAttribute>;
     /** Defines the minimum allowed value for a range widget. */
-    "aria-valuemin"?: FunctionMaybe<number | string | undefined>;
+    "aria-valuemin"?: FunctionMaybe<number | string | RemoveAttribute>;
     /**
      * Defines the current value for a range widget.
      *
      * @see aria-valuetext.
      */
-    "aria-valuenow"?: FunctionMaybe<number | string | undefined>;
+    "aria-valuenow"?: FunctionMaybe<number | string | RemoveAttribute>;
     /** Defines the human readable text alternative of aria-valuenow for a range widget. */
-    "aria-valuetext"?: FunctionMaybe<string | undefined>;
+    "aria-valuetext"?: FunctionMaybe<string | RemoveAttribute>;
     role?: FunctionMaybe<
       | "alert"
       | "alertdialog"
@@ -888,154 +685,645 @@ export namespace JSX {
       | "tree"
       | "treegrid"
       | "treeitem"
-      | undefined
+      | RemoveAttribute
     >;
   }
 
-  // TODO: Should we allow this?
-  // type ClassKeys = `class:${string}`;
-  // type CSSKeys = Exclude<keyof csstype.PropertiesHyphen, `-${string}`>;
+  // EVENTS
 
-  // type CSSAttributes = {
-  //   [key in CSSKeys as `style:${key}`]: csstype.PropertiesHyphen[key];
-  // };
+  /**
+   * `Window` events, defined for `<body>`, `<svg>`, `<frameset>` tags.
+   *
+   * Excluding `EventHandlersElement` events already defined as globals that all tags share, such as
+   * `onblur`.
+   */
+  interface EventHandlersWindow<T> {
+    onAfterPrint?: EventHandlerUnion<T, Event> | undefined;
+    onBeforePrint?: EventHandlerUnion<T, Event> | undefined;
+    onBeforeUnload?: EventHandlerUnion<T, BeforeUnloadEvent> | undefined;
+    onGamepadConnected?: EventHandlerUnion<T, GamepadEvent> | undefined;
+    onGamepadDisconnected?: EventHandlerUnion<T, GamepadEvent> | undefined;
+    onHashchange?: EventHandlerUnion<T, HashChangeEvent> | undefined;
+    onLanguageChange?: EventHandlerUnion<T, Event> | undefined;
+    onMessage?: EventHandlerUnion<T, MessageEvent> | undefined;
+    onMessageError?: EventHandlerUnion<T, MessageEvent> | undefined;
+    onOffline?: EventHandlerUnion<T, Event> | undefined;
+    onOnline?: EventHandlerUnion<T, Event> | undefined;
+    onPageHide?: EventHandlerUnion<T, PageTransitionEvent> | undefined;
+    // TODO `PageRevealEvent` is currently undefined on TS
+    onPageReveal?: EventHandlerUnion<T, Event> | undefined;
+    onPageShow?: EventHandlerUnion<T, PageTransitionEvent> | undefined;
+    // TODO `PageSwapEvent` is currently undefined on TS
+    onPageSwap?: EventHandlerUnion<T, Event> | undefined;
+    onPopstate?: EventHandlerUnion<T, PopStateEvent> | undefined;
+    onRejectionHandled?: EventHandlerUnion<T, PromiseRejectionEvent> | undefined;
+    onStorage?: EventHandlerUnion<T, StorageEvent> | undefined;
+    onUnhandledRejection?: EventHandlerUnion<T, PromiseRejectionEvent> | undefined;
+    onUnload?: EventHandlerUnion<T, Event> | undefined;
 
-  interface HTMLAttributes<T> extends AriaAttributes, DOMAttributes<T> {
+    "on:afterprint"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:beforeprint"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:beforeunload"?: EventHandlerWithOptionsUnion<T, BeforeUnloadEvent> | undefined;
+    "on:gamepadconnected"?: EventHandlerWithOptionsUnion<T, GamepadEvent> | undefined;
+    "on:gamepaddisconnected"?: EventHandlerWithOptionsUnion<T, GamepadEvent> | undefined;
+    "on:hashchange"?: EventHandlerWithOptionsUnion<T, HashChangeEvent> | undefined;
+    "on:languagechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:message"?: EventHandlerWithOptionsUnion<T, MessageEvent> | undefined;
+    "on:messageerror"?: EventHandlerWithOptionsUnion<T, MessageEvent> | undefined;
+    "on:offline"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:online"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:pagehide"?: EventHandlerWithOptionsUnion<T, PageTransitionEvent> | undefined;
+    // TODO `PageRevealEvent` is currently undefined in TS
+    "on:pagereveal"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:pageshow"?: EventHandlerWithOptionsUnion<T, PageTransitionEvent> | undefined;
+    // TODO `PageSwapEvent` is currently undefined in TS
+    "on:pageswap"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:popstate"?: EventHandlerWithOptionsUnion<T, PopStateEvent> | undefined;
+    "on:rejectionhandled"?: EventHandlerWithOptionsUnion<T, PromiseRejectionEvent> | undefined;
+    "on:storage"?: EventHandlerWithOptionsUnion<T, StorageEvent> | undefined;
+    "on:unhandledrejection"?: EventHandlerWithOptionsUnion<T, PromiseRejectionEvent> | undefined;
+    "on:unload"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+  }
+
+  /**
+   * Global `EventHandlersElement`, defined for all tags.
+   *
+   * That's events defined and shared BY ALL of the `HTMLElement/SVGElement/MathMLElement`
+   * interfaces.
+   *
+   * Includes events defined for the `Element` interface.
+   */
+  interface EventHandlersElement<T> {
+    onAbort?: EventHandlerUnion<T, UIEvent> | undefined;
+    onAnimationCancel?: EventHandlerUnion<T, AnimationEvent> | undefined;
+    onAnimationEnd?: EventHandlerUnion<T, AnimationEvent> | undefined;
+    onAnimationIteration?: EventHandlerUnion<T, AnimationEvent> | undefined;
+    onAnimationStart?: EventHandlerUnion<T, AnimationEvent> | undefined;
+    onAuxClick?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onBeforeCopy?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onBeforeCut?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onBeforeInput?: InputEventHandlerUnion<T, InputEvent> | undefined;
+    onBeforeMatch?: EventHandlerUnion<T, Event> | undefined;
+    onBeforePaste?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onBeforeToggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
+    onBeforeXRSelect?: EventHandlerUnion<T, Event> | undefined;
+    onBlur?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
+    onCancel?: EventHandlerUnion<T, Event> | undefined;
+    onCanPlay?: EventHandlerUnion<T, Event> | undefined;
+    onCanPlayThrough?: EventHandlerUnion<T, Event> | undefined;
+    onChange?: ChangeEventHandlerUnion<T, Event> | undefined;
+    onClick?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onClose?: EventHandlerUnion<T, Event> | undefined;
+    // TODO `CommandEvent` is currently undefined in TS
+    onCommand?: EventHandlerUnion<T, Event> | undefined;
+    onCompositionEnd?: EventHandlerUnion<T, CompositionEvent> | undefined;
+    onCompositionStart?: EventHandlerUnion<T, CompositionEvent> | undefined;
+    onCompositionUpdate?: EventHandlerUnion<T, CompositionEvent> | undefined;
+    onContentVisibilityAutoStateChange?:
+      | EventHandlerUnion<T, ContentVisibilityAutoStateChangeEvent>
+      | undefined;
+    onContextLost?: EventHandlerUnion<T, Event> | undefined;
+    onContextMenu?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onContextRestored?: EventHandlerUnion<T, Event> | undefined;
+    onCopy?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onCueChange?: EventHandlerUnion<T, Event> | undefined;
+    onCut?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onDblClick?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onDrag?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragEnd?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragEnter?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragExit?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragLeave?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragOver?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDragStart?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDrop?: EventHandlerUnion<T, DragEvent> | undefined;
+    onDurationChange?: EventHandlerUnion<T, Event> | undefined;
+    onEmptied?: EventHandlerUnion<T, Event> | undefined;
+    onEnded?: EventHandlerUnion<T, Event> | undefined;
+    onError?: EventHandlerUnion<T, ErrorEvent> | undefined;
+    onFocus?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
+    onFocusIn?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
+    onFocusOut?: FocusEventHandlerUnion<T, FocusEvent> | undefined;
+    onFormData?: EventHandlerUnion<T, FormDataEvent> | undefined;
+    onFullscreenChange?: EventHandlerUnion<T, Event> | undefined;
+    onFullscreenError?: EventHandlerUnion<T, Event> | undefined;
+    onGotPointerCapture?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onInput?: InputEventHandlerUnion<T, InputEvent> | undefined;
+    onInvalid?: EventHandlerUnion<T, Event> | undefined;
+    onKeyDown?: EventHandlerUnion<T, KeyboardEvent> | undefined;
+    onKeyPress?: EventHandlerUnion<T, KeyboardEvent> | undefined;
+    onKeyUp?: EventHandlerUnion<T, KeyboardEvent> | undefined;
+    onLoad?: EventHandlerUnion<T, Event> | undefined;
+    onLoadedData?: EventHandlerUnion<T, Event> | undefined;
+    onLoadedMetadata?: EventHandlerUnion<T, Event> | undefined;
+    onLoadStart?: EventHandlerUnion<T, Event> | undefined;
+    onLostPointerCapture?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onMouseDown?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseEnter?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseLeave?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseMove?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseOut?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseOver?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onMouseUp?: EventHandlerUnion<T, MouseEvent> | undefined;
+    onPaste?: EventHandlerUnion<T, ClipboardEvent> | undefined;
+    onPause?: EventHandlerUnion<T, Event> | undefined;
+    onPlay?: EventHandlerUnion<T, Event> | undefined;
+    onPlaying?: EventHandlerUnion<T, Event> | undefined;
+    onPointerCancel?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerDown?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerEnter?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerLeave?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerMove?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerOut?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerOver?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerRawUpdate?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onPointerUp?: EventHandlerUnion<T, PointerEvent> | undefined;
+    onProgress?: EventHandlerUnion<T, ProgressEvent> | undefined;
+    onRateChange?: EventHandlerUnion<T, Event> | undefined;
+    onReset?: EventHandlerUnion<T, Event> | undefined;
+    onResize?: EventHandlerUnion<T, UIEvent> | undefined;
+    onScroll?: EventHandlerUnion<T, Event> | undefined;
+    onScrollEnd?: EventHandlerUnion<T, Event> | undefined;
+    // todo `SnapEvent` is currently undefined in TS
+    onScrollSnapChange?: EventHandlerUnion<T, Event> | undefined;
+    // todo `SnapEvent` is currently undefined in TS
+    onScrollSnapChanging?: EventHandlerUnion<T, Event> | undefined;
+    onSecurityPolicyViolation?: EventHandlerUnion<T, SecurityPolicyViolationEvent> | undefined;
+    onSeeked?: EventHandlerUnion<T, Event> | undefined;
+    onSeeking?: EventHandlerUnion<T, Event> | undefined;
+    onSelect?: EventHandlerUnion<T, Event> | undefined;
+    onSelectionChange?: EventHandlerUnion<T, Event> | undefined;
+    onSelectStart?: EventHandlerUnion<T, Event> | undefined;
+    onSlotChange?: EventHandlerUnion<T, Event> | undefined;
+    onStalled?: EventHandlerUnion<T, Event> | undefined;
+    onSubmit?: EventHandlerUnion<T, SubmitEvent> | undefined;
+    onSuspend?: EventHandlerUnion<T, Event> | undefined;
+    onTimeUpdate?: EventHandlerUnion<T, Event> | undefined;
+    onToggle?: EventHandlerUnion<T, ToggleEvent> | undefined;
+    onTouchCancel?: EventHandlerUnion<T, TouchEvent> | undefined;
+    onTouchEnd?: EventHandlerUnion<T, TouchEvent> | undefined;
+    onTouchMove?: EventHandlerUnion<T, TouchEvent> | undefined;
+    onTouchStart?: EventHandlerUnion<T, TouchEvent> | undefined;
+    onTransitionCancel?: EventHandlerUnion<T, TransitionEvent> | undefined;
+    onTransitionEnd?: EventHandlerUnion<T, TransitionEvent> | undefined;
+    onTransitionRun?: EventHandlerUnion<T, TransitionEvent> | undefined;
+    onTransitionStart?: EventHandlerUnion<T, TransitionEvent> | undefined;
+    onVolumeChange?: EventHandlerUnion<T, Event> | undefined;
+    onWaiting?: EventHandlerUnion<T, Event> | undefined;
+    onWheel?: EventHandlerUnion<T, WheelEvent> | undefined;
+
+    "on:abort"?: EventHandlerWithOptionsUnion<T, UIEvent> | undefined;
+    "on:animationcancel"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
+    "on:animationend"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
+    "on:animationiteration"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
+    "on:animationstart"?: EventHandlerWithOptionsUnion<T, AnimationEvent> | undefined;
+    "on:auxclick"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:beforecopy"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:beforecut"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:beforeinput"?:
+      | EventHandlerWithOptionsUnion<T, InputEvent, InputEventHandler<T, InputEvent>>
+      | undefined;
+    "on:beforematch"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:beforepaste"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:beforetoggle"?: EventHandlerWithOptionsUnion<T, ToggleEvent> | undefined;
+    "on:beforexrselect"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:blur"?:
+      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
+      | undefined;
+    "on:cancel"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:canplay"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:canplaythrough"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:change"?: EventHandlerWithOptionsUnion<T, Event, ChangeEventHandler<T, Event>> | undefined;
+    "on:click"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:close"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    // TODO `CommandEvent` is currently undefined in TS
+    "on:command"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:compositionend"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
+    "on:compositionstart"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
+    "on:compositionupdate"?: EventHandlerWithOptionsUnion<T, CompositionEvent> | undefined;
+    "on:contentvisibilityautostatechange"?:
+      | EventHandlerWithOptionsUnion<T, ContentVisibilityAutoStateChangeEvent>
+      | undefined;
+    "on:contextlost"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:contextmenu"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:contextrestored"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:copy"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:cuechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:cut"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:dblclick"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:drag"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragend"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragenter"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragexit"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragleave"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragover"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:dragstart"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:drop"?: EventHandlerWithOptionsUnion<T, DragEvent> | undefined;
+    "on:durationchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:emptied"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:ended"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:error"?: EventHandlerWithOptionsUnion<T, ErrorEvent> | undefined;
+    "on:focus"?:
+      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
+      | undefined;
+    "on:focusin"?:
+      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
+      | undefined;
+    "on:focusout"?:
+      | EventHandlerWithOptionsUnion<T, FocusEvent, FocusEventHandler<T, FocusEvent>>
+      | undefined;
+    "on:formdata"?: EventHandlerWithOptionsUnion<T, FormDataEvent> | undefined;
+    "on:fullscreenchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:fullscreenerror"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:gotpointercapture"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:input"?:
+      | EventHandlerWithOptionsUnion<T, InputEvent, InputEventHandler<T, InputEvent>>
+      | undefined;
+    "on:invalid"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:keydown"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
+    "on:keypress"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
+    "on:keyup"?: EventHandlerWithOptionsUnion<T, KeyboardEvent> | undefined;
+    "on:load"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:loadeddata"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:loadedmetadata"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:loadstart"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:lostpointercapture"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:mousedown"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mouseenter"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mouseleave"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mousemove"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mouseout"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mouseover"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:mouseup"?: EventHandlerWithOptionsUnion<T, MouseEvent> | undefined;
+    "on:paste"?: EventHandlerWithOptionsUnion<T, ClipboardEvent> | undefined;
+    "on:pause"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:play"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:playing"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:pointercancel"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerdown"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerenter"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerleave"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointermove"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerout"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerover"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerrawupdate"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:pointerup"?: EventHandlerWithOptionsUnion<T, PointerEvent> | undefined;
+    "on:progress"?: EventHandlerWithOptionsUnion<T, ProgressEvent> | undefined;
+    "on:ratechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:reset"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:resize"?: EventHandlerWithOptionsUnion<T, UIEvent> | undefined;
+    "on:scroll"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:scrollend"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    // todo `SnapEvent` is currently undefined in TS
+    "on:scrollsnapchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    // todo `SnapEvent` is currently undefined in TS
+    "on:scrollsnapchanging"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:securitypolicyviolation"?:
+      | EventHandlerWithOptionsUnion<T, SecurityPolicyViolationEvent>
+      | undefined;
+    "on:seeked"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:seeking"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:select"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:selectionchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:selectstart"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:slotchange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:stalled"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:submit"?: EventHandlerWithOptionsUnion<T, SubmitEvent> | undefined;
+    "on:suspend"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:timeupdate"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:toggle"?: EventHandlerWithOptionsUnion<T, ToggleEvent> | undefined;
+    "on:touchcancel"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
+    "on:touchend"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
+    "on:touchmove"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
+    "on:touchstart"?: EventHandlerWithOptionsUnion<T, TouchEvent> | undefined;
+    "on:transitioncancel"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
+    "on:transitionend"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
+    "on:transitionrun"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
+    "on:transitionstart"?: EventHandlerWithOptionsUnion<T, TransitionEvent> | undefined;
+    "on:volumechange"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:waiting"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+    "on:wheel"?: EventHandlerWithOptionsUnion<T, WheelEvent> | undefined;
+  }
+
+  type EventType =
+    | (keyof EventHandlersWindow<any> extends infer K
+        ? K extends `on:${infer T}`
+          ? T
+          : K extends `on${infer T}`
+          ? Lowercase<T>
+          : never
+        : never)
+    | (keyof EventHandlersElement<any> extends infer K
+        ? K extends `on:${infer T}`
+          ? T
+          : K extends `on${infer T}`
+          ? Lowercase<T>
+          : never
+        : never)
+    | (string & {});
+
+  // GLOBAL ATTRIBUTES
+
+  /**
+   * Global `Element` + `Node` interface keys, shared by all tags regardless of their namespace:
+   *
+   * 1. That's `keys` that are defined BY ALL `HTMLElement/SVGElement/MathMLElement` interfaces.
+   * 2. Includes `keys` defined by `Element` and `Node` interfaces.
+   */
+  interface ElementAttributes<T>
+    extends CustomAttributes<T>,
+      DirectiveAttributes,
+      DirectiveFunctionAttributes<T>,
+      PropAttributes,
+      OnAttributes<T>,
+      EventHandlersElement<T>,
+      AriaAttributes {
     // [key: ClassKeys]: boolean;
-    about?: FunctionMaybe<string | undefined>;
-    accesskey?: FunctionMaybe<string | undefined>;
-    autocapitalize?: FunctionMaybe<HTMLAutocapitalize | undefined>;
-    class?: FunctionMaybe<string | ClassList | undefined>;
-    color?: FunctionMaybe<string | undefined>;
-    contenteditable?: FunctionMaybe<
-      "true" | "false" | boolean | "plaintext-only" | "inherit" | undefined
-    >;
-    contextmenu?: FunctionMaybe<string | undefined>;
-    datatype?: FunctionMaybe<string | undefined>;
-    dir?: FunctionMaybe<HTMLDir | undefined>;
-    draggable?: FunctionMaybe<boolean | "false" | "true" | undefined>;
-    exportparts?: FunctionMaybe<string | undefined>;
-    hidden?: FunctionMaybe<boolean | "hidden" | "until-found" | undefined>;
-    id?: FunctionMaybe<string | undefined>;
-    inert?: FunctionMaybe<"true" | boolean | undefined>;
-    inlist?: FunctionMaybe<any | undefined>;
-    inputmode?: FunctionMaybe<
-      "decimal" | "email" | "none" | "numeric" | "search" | "tel" | "text" | "url" | undefined
-    >;
-    is?: FunctionMaybe<string | undefined>;
-    itemid?: FunctionMaybe<string | undefined>;
-    itemprop?: FunctionMaybe<string | undefined>;
-    itemref?: FunctionMaybe<string | undefined>;
-    itemscope?: FunctionMaybe<"true" | boolean | undefined>;
-    itemtype?: FunctionMaybe<string | undefined>;
-    lang?: FunctionMaybe<string | undefined>;
-    part?: FunctionMaybe<string | undefined>;
-    popover?: FunctionMaybe<boolean | "manual" | "auto" | undefined>;
-    prefix?: FunctionMaybe<string | undefined>;
-    property?: FunctionMaybe<string | undefined>;
-    resource?: FunctionMaybe<string | undefined>;
-    slot?: FunctionMaybe<string | undefined>;
-    spellcheck?: FunctionMaybe<"true" | boolean | undefined>;
-    style?: FunctionMaybe<CSSProperties | string | undefined>;
-    tabindex?: FunctionMaybe<number | string | undefined>;
-    title?: FunctionMaybe<string | undefined>;
-    translate?: FunctionMaybe<"yes" | "no" | undefined>;
-    typeof?: FunctionMaybe<string | undefined>;
-    vocab?: FunctionMaybe<string | undefined>;
 
-    /** @deprecated Use lowercase attributes */
-    accessKey?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    autoCapitalize?: FunctionMaybe<HTMLAutocapitalize | undefined>;
-    /** @deprecated Use lowercase attributes */
-    contentEditable?: FunctionMaybe<boolean | "plaintext-only" | "inherit" | undefined>;
-    /** @deprecated Use lowercase attributes */
-    contextMenu?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    exportParts?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    inputMode?: FunctionMaybe<
-      "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search" | undefined
-    >;
-    /** @deprecated Use lowercase attributes */
-    itemId?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    itemProp?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    itemRef?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    itemScope?: FunctionMaybe<boolean | undefined>;
-    /** @deprecated Use lowercase attributes */
-    itemType?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    tabIndex?: FunctionMaybe<number | string | undefined>;
+    // properties
+    innerHTML?: FunctionMaybe<string>;
+    textContent?: FunctionMaybe<string | number>;
+
+    // attributes
+    autofocus?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    class?: FunctionMaybe<string | ClassList | RemoveAttribute>;
+    elementtiming?: FunctionMaybe<string | RemoveAttribute>;
+    id?: FunctionMaybe<string | RemoveAttribute>;
+    nonce?: FunctionMaybe<string | RemoveAttribute>;
+    part?: FunctionMaybe<string | RemoveAttribute>;
+    slot?: FunctionMaybe<string | RemoveAttribute>;
+    style?: FunctionMaybe<CSSProperties | string | RemoveAttribute>;
+    tabindex?: FunctionMaybe<number | string | RemoveAttribute>;
   }
-  interface AnchorHTMLAttributes<T> extends HTMLAttributes<T> {
-    download?: FunctionMaybe<string | undefined>;
-    href?: FunctionMaybe<string | undefined>;
-    hreflang?: FunctionMaybe<string | undefined>;
-    ping?: FunctionMaybe<string | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    rel?: FunctionMaybe<string | undefined>;
-    target?: FunctionMaybe<"_self" | "_blank" | "_parent" | "_top" | (string & {}) | undefined>;
-    type?: FunctionMaybe<string | undefined>;
+  /** Global `SVGElement` interface keys only. */
+  interface SVGAttributes<T> extends ElementAttributes<T> {
+    id?: FunctionMaybe<string | RemoveAttribute>;
+    lang?: FunctionMaybe<string | RemoveAttribute>;
+    tabindex?: FunctionMaybe<number | string | RemoveAttribute>;
+    xmlns?: FunctionMaybe<string | RemoveAttribute>;
+  }
+  /** Global `MathMLElement` interface keys only. */
+  interface MathMLAttributes<T> extends ElementAttributes<T> {
+    dir?: FunctionMaybe<HTMLDir | RemoveAttribute>;
+    displaystyle?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    scriptlevel?: FunctionMaybe<string | RemoveAttribute>;
+    xmlns?: FunctionMaybe<string | RemoveAttribute>;
+
+    /** @deprecated */
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    /** @deprecated */
+    mathbackground?: FunctionMaybe<string | RemoveAttribute>;
+    /** @deprecated */
+    mathcolor?: FunctionMaybe<string | RemoveAttribute>;
+    /** @deprecated */
+    mathsize?: FunctionMaybe<string | RemoveAttribute>;
+  }
+  /** Global `HTMLElement` interface keys only. */
+  interface HTMLAttributes<T> extends ElementAttributes<T> {
+    // properties
+    innerText?: FunctionMaybe<string | number>;
+
+    // attributes
+    accesskey?: FunctionMaybe<string | RemoveAttribute>;
+    autocapitalize?: FunctionMaybe<HTMLAutocapitalize | RemoveAttribute>;
+    autocorrect?: FunctionMaybe<"on" | "off" | RemoveAttribute>;
+    contenteditable?: FunctionMaybe<
+      | EnumeratedPseudoBoolean
+      | EnumeratedAcceptsEmpty
+      | "plaintext-only"
+      | "inherit"
+      | RemoveAttribute
+    >;
+    dir?: FunctionMaybe<HTMLDir | RemoveAttribute>;
+    draggable?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
+    enterkeyhint?: FunctionMaybe<
+      "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | RemoveAttribute
+    >;
+    exportparts?: FunctionMaybe<string | RemoveAttribute>;
+    hidden?: FunctionMaybe<EnumeratedAcceptsEmpty | "hidden" | "until-found" | RemoveAttribute>;
+    inert?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    inputmode?: FunctionMaybe<
+      "decimal" | "email" | "none" | "numeric" | "search" | "tel" | "text" | "url" | RemoveAttribute
+    >;
+    is?: FunctionMaybe<string | RemoveAttribute>;
+    lang?: FunctionMaybe<string | RemoveAttribute>;
+    popover?: FunctionMaybe<EnumeratedAcceptsEmpty | "manual" | "auto" | RemoveAttribute>;
+    spellcheck?: FunctionMaybe<EnumeratedPseudoBoolean | EnumeratedAcceptsEmpty | RemoveAttribute>;
+    title?: FunctionMaybe<string | RemoveAttribute>;
+    translate?: FunctionMaybe<"yes" | "no" | RemoveAttribute>;
 
     /** @experimental */
-    attributionsrc?: FunctionMaybe<string | undefined>;
+    virtualkeyboardpolicy?: FunctionMaybe<
+      EnumeratedAcceptsEmpty | "auto" | "manual" | RemoveAttribute
+    >;
+    /** @experimental */
+    writingsuggestions?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
 
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
+    // Microdata
+    itemid?: FunctionMaybe<string | RemoveAttribute>;
+    itemprop?: FunctionMaybe<string | RemoveAttribute>;
+    itemref?: FunctionMaybe<string | RemoveAttribute>;
+    itemscope?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    itemtype?: FunctionMaybe<string | RemoveAttribute>;
+
+    // RDFa Attributes
+    about?: FunctionMaybe<string | RemoveAttribute>;
+    datatype?: FunctionMaybe<string | RemoveAttribute>;
+    inlist?: FunctionMaybe<any | RemoveAttribute>;
+    prefix?: FunctionMaybe<string | RemoveAttribute>;
+    property?: FunctionMaybe<string | RemoveAttribute>;
+    resource?: FunctionMaybe<string | RemoveAttribute>;
+    typeof?: FunctionMaybe<string | RemoveAttribute>;
+    vocab?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    charset?: FunctionMaybe<string | undefined>;
+    contextmenu?: FunctionMaybe<string | RemoveAttribute>;
+  }
+
+  // HTML
+
+  type HTMLAutocapitalize = "off" | "none" | "on" | "sentences" | "words" | "characters";
+  type HTMLAutocomplete =
+    | "additional-name"
+    | "address-level1"
+    | "address-level2"
+    | "address-level3"
+    | "address-level4"
+    | "address-line1"
+    | "address-line2"
+    | "address-line3"
+    | "bday"
+    | "bday-day"
+    | "bday-month"
+    | "bday-year"
+    | "billing"
+    | "cc-additional-name"
+    | "cc-csc"
+    | "cc-exp"
+    | "cc-exp-month"
+    | "cc-exp-year"
+    | "cc-family-name"
+    | "cc-given-name"
+    | "cc-name"
+    | "cc-number"
+    | "cc-type"
+    | "country"
+    | "country-name"
+    | "current-password"
+    | "email"
+    | "family-name"
+    | "fax"
+    | "given-name"
+    | "home"
+    | "honorific-prefix"
+    | "honorific-suffix"
+    | "impp"
+    | "language"
+    | "mobile"
+    | "name"
+    | "new-password"
+    | "nickname"
+    | "off"
+    | "on"
+    | "organization"
+    | "organization-title"
+    | "pager"
+    | "photo"
+    | "postal-code"
+    | "sex"
+    | "shipping"
+    | "street-address"
+    | "tel"
+    | "tel-area-code"
+    | "tel-country-code"
+    | "tel-extension"
+    | "tel-local"
+    | "tel-local-prefix"
+    | "tel-local-suffix"
+    | "tel-national"
+    | "transaction-amount"
+    | "transaction-currency"
+    | "url"
+    | "username"
+    | "work"
+    | (string & {});
+  type HTMLDir = "ltr" | "rtl" | "auto";
+  type HTMLFormEncType = "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain";
+  type HTMLFormMethod = "post" | "get" | "dialog";
+  type HTMLCrossorigin = "anonymous" | "use-credentials" | EnumeratedAcceptsEmpty;
+  type HTMLReferrerPolicy =
+    | "no-referrer"
+    | "no-referrer-when-downgrade"
+    | "origin"
+    | "origin-when-cross-origin"
+    | "same-origin"
+    | "strict-origin"
+    | "strict-origin-when-cross-origin"
+    | "unsafe-url";
+  type HTMLIframeSandbox =
+    | "allow-downloads-without-user-activation"
+    | "allow-downloads"
+    | "allow-forms"
+    | "allow-modals"
+    | "allow-orientation-lock"
+    | "allow-pointer-lock"
+    | "allow-popups"
+    | "allow-popups-to-escape-sandbox"
+    | "allow-presentation"
+    | "allow-same-origin"
+    | "allow-scripts"
+    | "allow-storage-access-by-user-activation"
+    | "allow-top-navigation"
+    | "allow-top-navigation-by-user-activation"
+    | "allow-top-navigation-to-custom-protocols";
+  type HTMLLinkAs =
+    | "audio"
+    | "document"
+    | "embed"
+    | "fetch"
+    | "font"
+    | "image"
+    | "object"
+    | "script"
+    | "style"
+    | "track"
+    | "video"
+    | "worker";
+
+  interface AnchorHTMLAttributes<T> extends HTMLAttributes<T> {
+    download?: FunctionMaybe<string | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    hreflang?: FunctionMaybe<string | RemoveAttribute>;
+    ping?: FunctionMaybe<string | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    rel?: FunctionMaybe<string | RemoveAttribute>;
+    target?: FunctionMaybe<
+      "_self" | "_blank" | "_parent" | "_top" | (string & {}) | RemoveAttribute
+    >;
+    type?: FunctionMaybe<string | RemoveAttribute>;
+
+    /** @experimental */
+    attributionsrc?: FunctionMaybe<string | RemoveAttribute>;
+
     /** @deprecated */
-    coords?: FunctionMaybe<string | undefined>;
+    charset?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    name?: FunctionMaybe<string | undefined>;
+    coords?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    rev?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    shape?: FunctionMaybe<"rect" | "circle" | "poly" | "default" | undefined>;
+    rev?: FunctionMaybe<string | RemoveAttribute>;
+    /** @deprecated */
+    shape?: FunctionMaybe<"rect" | "circle" | "poly" | "default" | RemoveAttribute>;
   }
   interface AudioHTMLAttributes<T> extends MediaHTMLAttributes<T> {}
   interface AreaHTMLAttributes<T> extends HTMLAttributes<T> {
-    alt?: FunctionMaybe<string | undefined>;
-    coords?: FunctionMaybe<string | undefined>;
-    download?: FunctionMaybe<string | undefined>;
-    href?: FunctionMaybe<string | undefined>;
-    ping?: FunctionMaybe<string | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    rel?: FunctionMaybe<string | undefined>;
-    shape?: FunctionMaybe<"rect" | "circle" | "poly" | "default" | undefined>;
-    target?: FunctionMaybe<"_self" | "_blank" | "_parent" | "_top" | (string & {}) | undefined>;
+    alt?: FunctionMaybe<string | RemoveAttribute>;
+    coords?: FunctionMaybe<string | RemoveAttribute>;
+    download?: FunctionMaybe<string | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    ping?: FunctionMaybe<string | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    rel?: FunctionMaybe<string | RemoveAttribute>;
+    shape?: FunctionMaybe<"rect" | "circle" | "poly" | "default" | RemoveAttribute>;
+    target?: FunctionMaybe<
+      "_self" | "_blank" | "_parent" | "_top" | (string & {}) | RemoveAttribute
+    >;
 
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
+    /** @experimental */
+    attributionsrc?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    nohref?: FunctionMaybe<"true" | boolean | undefined>;
+    nohref?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface BaseHTMLAttributes<T> extends HTMLAttributes<T> {
-    href?: FunctionMaybe<string | undefined>;
-    target?: FunctionMaybe<"_self" | "_blank" | "_parent" | "_top" | (string & {}) | undefined>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    target?: FunctionMaybe<
+      "_self" | "_blank" | "_parent" | "_top" | (string & {}) | RemoveAttribute
+    >;
+  }
+  interface BdoHTMLAttributes<T> extends HTMLAttributes<T> {
+    dir?: FunctionMaybe<"ltr" | "rtl" | RemoveAttribute>;
   }
   interface BlockquoteHTMLAttributes<T> extends HTMLAttributes<T> {
-    cite?: FunctionMaybe<string | undefined>;
+    cite?: FunctionMaybe<string | RemoveAttribute>;
   }
+  interface BodyHTMLAttributes<T> extends HTMLAttributes<T>, EventHandlersWindow<T> {}
   interface ButtonHTMLAttributes<T> extends HTMLAttributes<T> {
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    form?: FunctionMaybe<string | undefined>;
-    formaction?: FunctionMaybe<string | SerializableAttributeValue | undefined>;
-    formenctype?: FunctionMaybe<HTMLFormEncType | undefined>;
-    formmethod?: FunctionMaybe<HTMLFormMethod | undefined>;
-    formnovalidate?: FunctionMaybe<"true" | boolean | undefined>;
-    formtarget?: FunctionMaybe<"_self" | "_blank" | "_parent" | "_top" | (string & {}) | undefined>;
-    popovertarget?: FunctionMaybe<string | undefined>;
-    popovertargetaction?: FunctionMaybe<"hide" | "show" | "toggle" | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<"submit" | "reset" | "button" | "menu" | undefined>;
-    value?: FunctionMaybe<string | undefined>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    formaction?: FunctionMaybe<string | SerializableAttributeValue | RemoveAttribute>;
+    formenctype?: FunctionMaybe<HTMLFormEncType | RemoveAttribute>;
+    formmethod?: FunctionMaybe<HTMLFormMethod | RemoveAttribute>;
+    formnovalidate?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    formtarget?: FunctionMaybe<
+      "_self" | "_blank" | "_parent" | "_top" | (string & {}) | RemoveAttribute
+    >;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    popovertarget?: FunctionMaybe<string | RemoveAttribute>;
+    popovertargetaction?: FunctionMaybe<"hide" | "show" | "toggle" | RemoveAttribute>;
+    type?: FunctionMaybe<"submit" | "reset" | "button" | "menu" | RemoveAttribute>;
+    value?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @experimental */
     command?: FunctionMaybe<
@@ -1045,324 +1333,234 @@ export namespace JSX {
       | "hide-popover"
       | "toggle-popover"
       | (string & {})
-      | undefined
+      | RemoveAttribute
     >;
     /** @experimental */
-    commandfor?: FunctionMaybe<string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    formAction?: FunctionMaybe<string | SerializableAttributeValue | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formEnctype?: FunctionMaybe<HTMLFormEncType | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formMethod?: FunctionMaybe<HTMLFormMethod | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formNoValidate?: FunctionMaybe<boolean | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formTarget?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    popoverTarget?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    popoverTargetAction?: FunctionMaybe<"hide" | "show" | "toggle" | undefined>;
+    commandfor?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface CanvasHTMLAttributes<T> extends HTMLAttributes<T> {
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /**
      * @deprecated
      * @non-standard
      */
-    "moz-opaque"?: FunctionMaybe<"true" | boolean | undefined>;
+    "moz-opaque"?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+  }
+  interface CaptionHTMLAttributes<T> extends HTMLAttributes<T> {
+    /** @deprecated */
+    align?: FunctionMaybe<"left" | "center" | "right" | RemoveAttribute>;
   }
   interface ColHTMLAttributes<T> extends HTMLAttributes<T> {
-    span?: FunctionMaybe<number | string | undefined>;
+    span?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | undefined>;
+    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | RemoveAttribute>;
     /** @deprecated */
-    bgcolor?: FunctionMaybe<string | undefined>;
+    bgcolor?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    char?: FunctionMaybe<string | undefined>;
+    char?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    charoff?: FunctionMaybe<string | undefined>;
+    charoff?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | undefined>;
+    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | RemoveAttribute>;
     /** @deprecated */
-    width?: FunctionMaybe<number | string | undefined>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface ColgroupHTMLAttributes<T> extends HTMLAttributes<T> {
-    span?: FunctionMaybe<number | string | undefined>;
+    span?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | undefined>;
+    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | RemoveAttribute>;
     /** @deprecated */
-    bgcolor?: FunctionMaybe<string | undefined>;
+    bgcolor?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    char?: FunctionMaybe<string | undefined>;
+    char?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    charoff?: FunctionMaybe<string | undefined>;
+    charoff?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | undefined>;
+    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | RemoveAttribute>;
     /** @deprecated */
-    width?: FunctionMaybe<number | string | undefined>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface DataHTMLAttributes<T> extends HTMLAttributes<T> {
-    value?: FunctionMaybe<string | string[] | number | undefined>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
   }
   interface DetailsHtmlAttributes<T> extends HTMLAttributes<T> {
-    name?: FunctionMaybe<string | undefined>;
-    open?: FunctionMaybe<"true" | boolean | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    open?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface DialogHtmlAttributes<T> extends HTMLAttributes<T> {
-    open?: FunctionMaybe<"true" | boolean | undefined>;
-    tabindex?: FunctionMaybe<never | undefined>;
-
-    onclose?: EventHandlerUnion<T, Event> | undefined;
-    onClose?: EventHandlerUnion<T, Event> | undefined;
-    oncancel?: EventHandlerUnion<T, Event> | undefined;
-    onCancel?: EventHandlerUnion<T, Event> | undefined;
-  }
-  interface EmbedHTMLAttributes<T> extends HTMLAttributes<T> {
-    height?: FunctionMaybe<number | string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-
-    /** @deprecated */
-    align?: FunctionMaybe<"left" | "right" | "justify" | "center" | undefined>;
-    /** @deprecated */
-    name?: FunctionMaybe<string | undefined>;
-  }
-  interface FieldsetHTMLAttributes<T> extends HTMLAttributes<T> {
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    form?: FunctionMaybe<string | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-  }
-  interface FormHTMLAttributes<T> extends HTMLAttributes<T> {
-    "accept-charset"?: FunctionMaybe<string | undefined>;
-    action?: FunctionMaybe<string | SerializableAttributeValue | undefined>;
-    autocomplete?: FunctionMaybe<"on" | "off" | undefined>;
-    encoding?: FunctionMaybe<HTMLFormEncType | undefined>;
-    enctype?: FunctionMaybe<HTMLFormEncType | undefined>;
-    method?: FunctionMaybe<HTMLFormMethod | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    novalidate?: FunctionMaybe<"true" | boolean | undefined>;
-    rel?: FunctionMaybe<string | undefined>;
-    target?: FunctionMaybe<"_self" | "_blank" | "_parent" | "_top" | (string & {}) | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    noValidate?: FunctionMaybe<boolean | undefined>;
-
-    /** @deprecated */
-    accept?: FunctionMaybe<string | undefined>;
-  }
-  interface IframeHTMLAttributes<T> extends HTMLAttributes<T> {
-    allow?: FunctionMaybe<string | undefined>;
-    allowfullscreen?: FunctionMaybe<"true" | boolean | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    loading?: FunctionMaybe<"eager" | "lazy" | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    sandbox?: FunctionMaybe<HTMLIframeSandbox | string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    srcdoc?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
+    open?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    /**
+     * Do not add the `tabindex` property to the `<dialog>` element as it is not interactive and
+     * does not receive focus. The dialog's contents, including the close button contained in the
+     * dialog, can receive focus and be interactive.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog#usage_notes
+     */
+    tabindex?: never;
 
     /** @experimental */
-    adauctionheaders?: FunctionMaybe<"true" | boolean | undefined>;
+    closedby?: FunctionMaybe<"any" | "closerequest" | "none" | RemoveAttribute>;
+  }
+  interface EmbedHTMLAttributes<T> extends HTMLAttributes<T> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+
+    /** @deprecated */
+    align?: FunctionMaybe<"left" | "right" | "justify" | "center" | RemoveAttribute>;
+    /** @deprecated */
+    name?: FunctionMaybe<string | RemoveAttribute>;
+  }
+  interface FieldsetHTMLAttributes<T> extends HTMLAttributes<T> {
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+  }
+  interface FormHTMLAttributes<T> extends HTMLAttributes<T> {
+    "accept-charset"?: FunctionMaybe<string | RemoveAttribute>;
+    action?: FunctionMaybe<string | SerializableAttributeValue | RemoveAttribute>;
+    autocomplete?: FunctionMaybe<"on" | "off" | RemoveAttribute>;
+    encoding?: FunctionMaybe<HTMLFormEncType | RemoveAttribute>;
+    enctype?: FunctionMaybe<HTMLFormEncType | RemoveAttribute>;
+    method?: FunctionMaybe<HTMLFormMethod | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    novalidate?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    rel?: FunctionMaybe<string | RemoveAttribute>;
+    target?: FunctionMaybe<
+      "_self" | "_blank" | "_parent" | "_top" | (string & {}) | RemoveAttribute
+    >;
+
+    /** @deprecated */
+    accept?: FunctionMaybe<string | RemoveAttribute>;
+  }
+  interface IframeHTMLAttributes<T> extends HTMLAttributes<T> {
+    allow?: FunctionMaybe<string | RemoveAttribute>;
+    allowfullscreen?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    loading?: FunctionMaybe<"eager" | "lazy" | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    sandbox?: FunctionMaybe<HTMLIframeSandbox | string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    srcdoc?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+
+    /** @experimental */
+    adauctionheaders?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /**
      * @non-standard
      * @experimental
      */
-    browsingtopics?: FunctionMaybe<"true" | boolean | undefined>;
+    browsingtopics?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @experimental */
-    credentialless?: FunctionMaybe<"true" | boolean | undefined>;
+    credentialless?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @experimental */
-    csp?: FunctionMaybe<string | undefined>;
+    csp?: FunctionMaybe<string | RemoveAttribute>;
     /** @experimental */
-    privatetoken?: FunctionMaybe<string | undefined>;
+    privatetoken?: FunctionMaybe<string | RemoveAttribute>;
     /** @experimental */
-    sharedstoragewritable?: FunctionMaybe<"true" | boolean | undefined>;
+    sharedstoragewritable?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<string | undefined>;
+    align?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    allowpaymentrequest?: FunctionMaybe<"true" | boolean | undefined>;
+    allowpaymentrequest?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    allowtransparency?: FunctionMaybe<"true" | boolean | undefined>;
+    allowtransparency?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    frameborder?: FunctionMaybe<number | string | undefined>;
+    frameborder?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    longdesc?: FunctionMaybe<string | undefined>;
+    longdesc?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    marginheight?: FunctionMaybe<number | string | undefined>;
+    marginheight?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    marginwidth?: FunctionMaybe<number | string | undefined>;
+    marginwidth?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    scrolling?: FunctionMaybe<"yes" | "no" | "auto" | undefined>;
+    scrolling?: FunctionMaybe<"yes" | "no" | "auto" | RemoveAttribute>;
     /** @deprecated */
-    seamless?: FunctionMaybe<"true" | boolean | undefined>;
+    seamless?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface ImgHTMLAttributes<T> extends HTMLAttributes<T> {
-    alt?: FunctionMaybe<string | undefined>;
-    crossorigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    decoding?: FunctionMaybe<"sync" | "async" | "auto" | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    ismap?: FunctionMaybe<"true" | boolean | undefined>;
-    loading?: FunctionMaybe<"eager" | "lazy" | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    sizes?: FunctionMaybe<string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    srcset?: FunctionMaybe<string | undefined>;
-    usemap?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    elementtiming?: FunctionMaybe<string | undefined>;
-    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | undefined>;
+    alt?: FunctionMaybe<string | RemoveAttribute>;
+    browsingtopics?: FunctionMaybe<string | RemoveAttribute>;
+    crossorigin?: FunctionMaybe<HTMLCrossorigin | RemoveAttribute>;
+    decoding?: FunctionMaybe<"sync" | "async" | "auto" | RemoveAttribute>;
+    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    ismap?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    loading?: FunctionMaybe<"eager" | "lazy" | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    sizes?: FunctionMaybe<string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    srcset?: FunctionMaybe<string | RemoveAttribute>;
+    usemap?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @experimental */
-    attributionsrc?: FunctionMaybe<string | undefined>;
+    attributionsrc?: FunctionMaybe<string | RemoveAttribute>;
     /** @experimental */
-    sharedstoragewritable?: FunctionMaybe<"true" | boolean | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    crossOrigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    /** @deprecated Use lowercase attributes */
-    isMap?: FunctionMaybe<boolean | undefined>;
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    /** @deprecated Use lowercase attributes */
-    srcSet?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    useMap?: FunctionMaybe<string | undefined>;
+    sharedstoragewritable?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<"top" | "middle" | "bottom" | "left" | "right" | undefined>;
+    align?: FunctionMaybe<"top" | "middle" | "bottom" | "left" | "right" | RemoveAttribute>;
     /** @deprecated */
-    border?: FunctionMaybe<string | undefined>;
+    border?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    hspace?: FunctionMaybe<number | string | undefined>;
+    hspace?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    intrinsicsize?: FunctionMaybe<string | undefined>;
+    intrinsicsize?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    longdesc?: FunctionMaybe<string | undefined>;
+    longdesc?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    lowsrc?: FunctionMaybe<string | undefined>;
+    lowsrc?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    name?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    vspace?: FunctionMaybe<number | string | undefined>;
+    vspace?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
-    accept?: FunctionMaybe<string | undefined>;
-    alt?: FunctionMaybe<string | undefined>;
-    autocomplete?: FunctionMaybe<
-      | "additional-name"
-      | "address-level1"
-      | "address-level2"
-      | "address-level3"
-      | "address-level4"
-      | "address-line1"
-      | "address-line2"
-      | "address-line3"
-      | "bday"
-      | "bday-day"
-      | "bday-month"
-      | "bday-year"
-      | "billing"
-      | "cc-additional-name"
-      | "cc-csc"
-      | "cc-exp"
-      | "cc-exp-month"
-      | "cc-exp-year"
-      | "cc-family-name"
-      | "cc-given-name"
-      | "cc-name"
-      | "cc-number"
-      | "cc-type"
-      | "country"
-      | "country-name"
-      | "current-password"
-      | "email"
-      | "family-name"
-      | "fax"
-      | "given-name"
-      | "home"
-      | "honorific-prefix"
-      | "honorific-suffix"
-      | "impp"
-      | "language"
-      | "mobile"
-      | "name"
-      | "new-password"
-      | "nickname"
-      | "off"
-      | "on"
-      | "organization"
-      | "organization-title"
-      | "pager"
-      | "photo"
-      | "postal-code"
-      | "sex"
-      | "shipping"
-      | "street-address"
-      | "tel"
-      | "tel-area-code"
-      | "tel-country-code"
-      | "tel-extension"
-      | "tel-local"
-      | "tel-local-prefix"
-      | "tel-local-suffix"
-      | "tel-national"
-      | "transaction-amount"
-      | "transaction-currency"
-      | "url"
-      | "username"
-      | "work"
-      | (string & {})
-      | undefined
-    >;
-    autocorrect?: FunctionMaybe<"on" | "off" | undefined>;
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
-    capture?: FunctionMaybe<"user" | "environment" | undefined>;
-    checked?: FunctionMaybe<"true" | boolean | undefined>;
-    crossorigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    dirname?: FunctionMaybe<string | undefined>;
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    enterkeyhint?: FunctionMaybe<
-      "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | undefined
-    >;
-    form?: FunctionMaybe<string | undefined>;
-    formaction?: FunctionMaybe<string | SerializableAttributeValue | undefined>;
-    formenctype?: FunctionMaybe<HTMLFormEncType | undefined>;
-    formmethod?: FunctionMaybe<HTMLFormMethod | undefined>;
-    formnovalidate?: FunctionMaybe<"true" | boolean | undefined>;
-    formtarget?: FunctionMaybe<string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    list?: FunctionMaybe<string | undefined>;
-    max?: FunctionMaybe<number | string | undefined>;
-    maxlength?: FunctionMaybe<number | string | undefined>;
-    min?: FunctionMaybe<number | string | undefined>;
-    minlength?: FunctionMaybe<number | string | undefined>;
-    multiple?: FunctionMaybe<"true" | boolean | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    pattern?: FunctionMaybe<string | undefined>;
-    placeholder?: FunctionMaybe<string | undefined>;
-    popovertarget?: FunctionMaybe<string | undefined>;
-    popovertargetaction?: FunctionMaybe<"hide" | "show" | "toggle" | undefined>;
-    readonly?: FunctionMaybe<"true" | boolean | undefined>;
-    required?: FunctionMaybe<"true" | boolean | undefined>;
+    accept?: FunctionMaybe<string | RemoveAttribute>;
+    alpha?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    alt?: FunctionMaybe<string | RemoveAttribute>;
+    autocomplete?: FunctionMaybe<HTMLAutocomplete | RemoveAttribute>;
+    capture?: FunctionMaybe<"user" | "environment" | RemoveAttribute>;
+    checked?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    colorspace?: FunctionMaybe<string | RemoveAttribute>;
+    dirname?: FunctionMaybe<string | RemoveAttribute>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    formaction?: FunctionMaybe<string | SerializableAttributeValue | RemoveAttribute>;
+    formenctype?: FunctionMaybe<HTMLFormEncType | RemoveAttribute>;
+    formmethod?: FunctionMaybe<HTMLFormMethod | RemoveAttribute>;
+    formnovalidate?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    formtarget?: FunctionMaybe<string | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    list?: FunctionMaybe<string | RemoveAttribute>;
+    max?: FunctionMaybe<number | string | RemoveAttribute>;
+    maxlength?: FunctionMaybe<number | string | RemoveAttribute>;
+    min?: FunctionMaybe<number | string | RemoveAttribute>;
+    minlength?: FunctionMaybe<number | string | RemoveAttribute>;
+    multiple?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    pattern?: FunctionMaybe<string | RemoveAttribute>;
+    placeholder?: FunctionMaybe<string | RemoveAttribute>;
+    popovertarget?: FunctionMaybe<string | RemoveAttribute>;
+    popovertargetaction?: FunctionMaybe<"hide" | "show" | "toggle" | RemoveAttribute>;
+    readonly?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    required?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/search#results
-    results?: FunctionMaybe<number | undefined>;
-    size?: FunctionMaybe<number | string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    step?: FunctionMaybe<number | string | undefined>;
+    results?: FunctionMaybe<number | RemoveAttribute>;
+    size?: FunctionMaybe<number | string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    step?: FunctionMaybe<number | string | RemoveAttribute>;
     type?: FunctionMaybe<
       | "button"
       | "checkbox"
@@ -1386,536 +1584,420 @@ export namespace JSX {
       | "time"
       | "url"
       | "week"
-      | undefined
+      | (string & {})
+      | RemoveAttribute
     >;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @non-standard */
-    incremental?: FunctionMaybe<"true" | boolean | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    crossOrigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formAction?: FunctionMaybe<string | SerializableAttributeValue | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formEnctype?: FunctionMaybe<HTMLFormEncType | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formMethod?: FunctionMaybe<HTMLFormMethod | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formNoValidate?: FunctionMaybe<boolean | undefined>;
-    /** @deprecated Use lowercase attributes */
-    formTarget?: FunctionMaybe<string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    maxLength?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    minLength?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    readOnly?: FunctionMaybe<boolean | undefined>;
+    incremental?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<string | undefined>;
+    align?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    usemap?: FunctionMaybe<string | undefined>;
+    usemap?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ModHTMLAttributes<T> extends HTMLAttributes<T> {
-    cite?: FunctionMaybe<string | undefined>;
-    datetime?: FunctionMaybe<string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    dateTime?: FunctionMaybe<string | undefined>;
+    cite?: FunctionMaybe<string | RemoveAttribute>;
+    datetime?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface KeygenHTMLAttributes<T> extends HTMLAttributes<T> {
     /** @deprecated */
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
+    challenge?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    challenge?: FunctionMaybe<string | undefined>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    form?: FunctionMaybe<string | undefined>;
+    keyparams?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    keyparams?: FunctionMaybe<string | undefined>;
+    keytype?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    keytype?: FunctionMaybe<string | undefined>;
-    /** @deprecated */
-    name?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface LabelHTMLAttributes<T> extends HTMLAttributes<T> {
-    for?: FunctionMaybe<string | undefined>;
-    form?: FunctionMaybe<string | undefined>;
+    for?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface LiHTMLAttributes<T> extends HTMLAttributes<T> {
-    value?: FunctionMaybe<number | string | undefined>;
+    value?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @deprecated */
-    type?: FunctionMaybe<"1" | "a" | "A" | "i" | "I" | undefined>;
+    type?: FunctionMaybe<"1" | "a" | "A" | "i" | "I" | RemoveAttribute>;
   }
   interface LinkHTMLAttributes<T> extends HTMLAttributes<T> {
-    as?: FunctionMaybe<HTMLLinkAs | undefined>;
-    blocking?: FunctionMaybe<"render" | undefined>;
-    crossorigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | undefined>;
-    href?: FunctionMaybe<string | undefined>;
-    hreflang?: FunctionMaybe<string | undefined>;
-    imagesizes?: FunctionMaybe<string | undefined>;
-    imagesrcset?: FunctionMaybe<string | undefined>;
-    integrity?: FunctionMaybe<string | undefined>;
-    media?: FunctionMaybe<string | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    rel?: FunctionMaybe<string | undefined>;
-    sizes?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    crossOrigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
+    as?: FunctionMaybe<HTMLLinkAs | RemoveAttribute>;
+    blocking?: FunctionMaybe<"render" | RemoveAttribute>;
+    color?: FunctionMaybe<string | RemoveAttribute>;
+    crossorigin?: FunctionMaybe<HTMLCrossorigin | RemoveAttribute>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    hreflang?: FunctionMaybe<string | RemoveAttribute>;
+    imagesizes?: FunctionMaybe<string | RemoveAttribute>;
+    imagesrcset?: FunctionMaybe<string | RemoveAttribute>;
+    integrity?: FunctionMaybe<string | RemoveAttribute>;
+    media?: FunctionMaybe<string | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    rel?: FunctionMaybe<string | RemoveAttribute>;
+    sizes?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    charset?: FunctionMaybe<string | undefined>;
+    charset?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    rev?: FunctionMaybe<string | undefined>;
+    rev?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    target?: FunctionMaybe<string | undefined>;
+    target?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MapHTMLAttributes<T> extends HTMLAttributes<T> {
-    name?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MediaHTMLAttributes<T> extends HTMLAttributes<T> {
-    autoplay?: FunctionMaybe<"true" | boolean | undefined>;
-    controls?: FunctionMaybe<"true" | boolean | undefined>;
-    controlslist?: FunctionMaybe<string | undefined>;
-    crossorigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    disableremoteplayback?: FunctionMaybe<"true" | boolean | undefined>;
-    loop?: FunctionMaybe<"true" | boolean | undefined>;
-    muted?: FunctionMaybe<"true" | boolean | undefined>;
-    preload?: FunctionMaybe<"none" | "metadata" | "auto" | "" | undefined>;
-    src?: FunctionMaybe<string | undefined>;
+    autoplay?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    controls?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    controlslist?: FunctionMaybe<
+      | "nodownload"
+      | "nofullscreen"
+      | "noplaybackrate"
+      | "noremoteplayback"
+      | (string & {})
+      | RemoveAttribute
+    >;
+    crossorigin?: FunctionMaybe<HTMLCrossorigin | RemoveAttribute>;
+    disableremoteplayback?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    loop?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    muted?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    preload?: FunctionMaybe<
+      "none" | "metadata" | "auto" | EnumeratedAcceptsEmpty | RemoveAttribute
+    >;
+    src?: FunctionMaybe<string | RemoveAttribute>;
 
-    /** @deprecated Use lowercase attributes */
-    crossOrigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
+    onEncrypted?: EventHandlerUnion<T, MediaEncryptedEvent> | undefined;
+    "on:encrypted"?: EventHandlerWithOptionsUnion<T, MediaEncryptedEvent> | undefined;
 
-    /** @deprecated Use lowercase attributes */
-    mediaGroup?: FunctionMaybe<string | undefined>;
+    onWaitingForKey?: EventHandlerUnion<T, Event> | undefined;
+    "on:waitingforkey"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+
     /** @deprecated */
-    mediagroup?: FunctionMaybe<string | undefined>;
+    mediagroup?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MenuHTMLAttributes<T> extends HTMLAttributes<T> {
     /** @deprecated */
-    compact?: FunctionMaybe<"true" | boolean | undefined>;
+    compact?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    label?: FunctionMaybe<string | undefined>;
+    label?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    type?: FunctionMaybe<"context" | "toolbar" | undefined>;
+    type?: FunctionMaybe<"context" | "toolbar" | RemoveAttribute>;
   }
   interface MetaHTMLAttributes<T> extends HTMLAttributes<T> {
-    charset?: FunctionMaybe<string | undefined>;
-    content?: FunctionMaybe<string | undefined>;
     "http-equiv"?: FunctionMaybe<
       | "content-security-policy"
       | "content-type"
       | "default-style"
       | "x-ua-compatible"
       | "refresh"
-      | undefined
+      | RemoveAttribute
     >;
-    name?: FunctionMaybe<string | undefined>;
-    media?: FunctionMaybe<string | undefined>;
+    charset?: FunctionMaybe<string | RemoveAttribute>;
+    content?: FunctionMaybe<string | RemoveAttribute>;
+    media?: FunctionMaybe<string | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    scheme?: FunctionMaybe<string | undefined>;
+    scheme?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MeterHTMLAttributes<T> extends HTMLAttributes<T> {
-    form?: FunctionMaybe<string | undefined>;
-    high?: FunctionMaybe<number | string | undefined>;
-    low?: FunctionMaybe<number | string | undefined>;
-    max?: FunctionMaybe<number | string | undefined>;
-    min?: FunctionMaybe<number | string | undefined>;
-    optimum?: FunctionMaybe<number | string | undefined>;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    high?: FunctionMaybe<number | string | RemoveAttribute>;
+    low?: FunctionMaybe<number | string | RemoveAttribute>;
+    max?: FunctionMaybe<number | string | RemoveAttribute>;
+    min?: FunctionMaybe<number | string | RemoveAttribute>;
+    optimum?: FunctionMaybe<number | string | RemoveAttribute>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
   }
   interface QuoteHTMLAttributes<T> extends HTMLAttributes<T> {
-    cite?: FunctionMaybe<string | undefined>;
+    cite?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ObjectHTMLAttributes<T> extends HTMLAttributes<T> {
-    data?: FunctionMaybe<string | undefined>;
-    form?: FunctionMaybe<string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    useMap?: FunctionMaybe<string | undefined>;
+    data?: FunctionMaybe<string | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    wmode?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<string | undefined>;
+    align?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    archive?: FunctionMaybe<string | undefined>;
+    archive?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    border?: FunctionMaybe<string | undefined>;
+    border?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    classid?: FunctionMaybe<string | undefined>;
+    classid?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    code?: FunctionMaybe<string | undefined>;
+    code?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    codebase?: FunctionMaybe<string | undefined>;
+    codebase?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    codetype?: FunctionMaybe<string | undefined>;
+    codetype?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    declare?: FunctionMaybe<"true" | boolean | undefined>;
+    declare?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    hspace?: FunctionMaybe<number | string | undefined>;
+    hspace?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    standby?: FunctionMaybe<string | undefined>;
+    standby?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    usemap?: FunctionMaybe<string | undefined>;
+    usemap?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    vspace?: FunctionMaybe<number | string | undefined>;
+    vspace?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    typemustmatch?: FunctionMaybe<"true" | boolean | undefined>;
+    typemustmatch?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface OlHTMLAttributes<T> extends HTMLAttributes<T> {
-    reversed?: FunctionMaybe<"true" | boolean | undefined>;
-    start?: FunctionMaybe<number | string | undefined>;
-    type?: FunctionMaybe<"1" | "a" | "A" | "i" | "I" | undefined>;
+    reversed?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    start?: FunctionMaybe<number | string | RemoveAttribute>;
+    type?: FunctionMaybe<"1" | "a" | "A" | "i" | "I" | RemoveAttribute>;
 
     /**
      * @deprecated
      * @non-standard
      */
-    compact?: FunctionMaybe<"true" | boolean | undefined>;
+    compact?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface OptgroupHTMLAttributes<T> extends HTMLAttributes<T> {
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    label?: FunctionMaybe<string | undefined>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    label?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface OptionHTMLAttributes<T> extends HTMLAttributes<T> {
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    label?: FunctionMaybe<string | undefined>;
-    selected?: FunctionMaybe<"true" | boolean | undefined>;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    label?: FunctionMaybe<string | RemoveAttribute>;
+    selected?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
   }
   interface OutputHTMLAttributes<T> extends HTMLAttributes<T> {
-    form?: FunctionMaybe<string | undefined>;
-    for?: FunctionMaybe<string | undefined>;
-    name?: FunctionMaybe<string | undefined>;
+    for?: FunctionMaybe<string | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ParamHTMLAttributes<T> extends HTMLAttributes<T> {
     /** @deprecated */
-    name?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    type?: FunctionMaybe<string | undefined>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    value?: FunctionMaybe<string | number | undefined>;
+    value?: FunctionMaybe<string | number | RemoveAttribute>;
     /** @deprecated */
-    valuetype?: FunctionMaybe<"data" | "ref" | "object" | undefined>;
+    valuetype?: FunctionMaybe<"data" | "ref" | "object" | RemoveAttribute>;
   }
   interface ProgressHTMLAttributes<T> extends HTMLAttributes<T> {
-    max?: FunctionMaybe<number | string | undefined>;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
+    max?: FunctionMaybe<number | string | RemoveAttribute>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
   }
   interface ScriptHTMLAttributes<T> extends HTMLAttributes<T> {
-    async?: FunctionMaybe<"true" | boolean | undefined>;
-    blocking?: FunctionMaybe<"render" | undefined>;
-    crossorigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    defer?: FunctionMaybe<"true" | boolean | undefined>;
-    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | undefined>;
-    integrity?: FunctionMaybe<string | undefined>;
-    nomodule?: FunctionMaybe<"true" | boolean | undefined>;
-    nonce?: FunctionMaybe<string | undefined>;
-    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<"importmap" | "module" | "speculationrules" | (string & {}) | undefined>;
+    async?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    blocking?: FunctionMaybe<"render" | RemoveAttribute>;
+    crossorigin?: FunctionMaybe<HTMLCrossorigin | RemoveAttribute>;
+    defer?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    fetchpriority?: FunctionMaybe<"high" | "low" | "auto" | RemoveAttribute>;
+    for?: FunctionMaybe<string | RemoveAttribute>;
+    integrity?: FunctionMaybe<string | RemoveAttribute>;
+    nomodule?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    referrerpolicy?: FunctionMaybe<HTMLReferrerPolicy | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<
+      "importmap" | "module" | "speculationrules" | (string & {}) | RemoveAttribute
+    >;
 
     /** @experimental */
-    attributionsrc?: FunctionMaybe<string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    crossOrigin?: FunctionMaybe<HTMLCrossorigin | undefined>;
-    /** @deprecated Use lowercase attributes */
-    noModule?: FunctionMaybe<boolean | undefined>;
-    /** @deprecated Use lowercase attributes */
-    referrerPolicy?: FunctionMaybe<HTMLReferrerPolicy | undefined>;
+    attributionsrc?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    charset?: FunctionMaybe<string | undefined>;
+    charset?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    event?: FunctionMaybe<string | undefined>;
+    event?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    language?: FunctionMaybe<string | undefined>;
+    language?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface SelectHTMLAttributes<T> extends HTMLAttributes<T> {
-    autocomplete?: FunctionMaybe<string | undefined>;
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    form?: FunctionMaybe<string | undefined>;
-    multiple?: FunctionMaybe<"true" | boolean | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    required?: FunctionMaybe<"true" | boolean | undefined>;
-    size?: FunctionMaybe<number | string | undefined>;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
+    autocomplete?: FunctionMaybe<HTMLAutocomplete | RemoveAttribute>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    multiple?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    required?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    size?: FunctionMaybe<number | string | RemoveAttribute>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
   }
   interface HTMLSlotElementAttributes<T> extends HTMLAttributes<T> {
-    name?: FunctionMaybe<string | undefined>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface SourceHTMLAttributes<T> extends HTMLAttributes<T> {
-    media?: FunctionMaybe<string | undefined>;
-    sizes?: FunctionMaybe<string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    srcset?: FunctionMaybe<string | undefined>;
-    type?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    media?: FunctionMaybe<string | RemoveAttribute>;
+    sizes?: FunctionMaybe<string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    srcset?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface StyleHTMLAttributes<T> extends HTMLAttributes<T> {
-    blocking?: FunctionMaybe<"render" | undefined>;
-    media?: FunctionMaybe<string | undefined>;
-    nonce?: FunctionMaybe<string | undefined>;
+    blocking?: FunctionMaybe<"render" | RemoveAttribute>;
+    media?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    scoped?: FunctionMaybe<"true" | boolean | undefined>;
+    scoped?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    type?: FunctionMaybe<string | undefined>;
+    type?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface TdHTMLAttributes<T> extends HTMLAttributes<T> {
-    colspan?: FunctionMaybe<number | string | undefined>;
-    headers?: FunctionMaybe<string | undefined>;
-    rowspan?: FunctionMaybe<number | string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    colSpan?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    rowSpan?: FunctionMaybe<number | string | undefined>;
+    colspan?: FunctionMaybe<number | string | RemoveAttribute>;
+    headers?: FunctionMaybe<string | RemoveAttribute>;
+    rowspan?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @deprecated */
-    abbr?: FunctionMaybe<string | undefined>;
+    abbr?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | undefined>;
+    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | RemoveAttribute>;
     /** @deprecated */
-    axis?: FunctionMaybe<string | undefined>;
+    axis?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    bgcolor?: FunctionMaybe<string | undefined>;
+    bgcolor?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    char?: FunctionMaybe<string | undefined>;
+    char?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    charoff?: FunctionMaybe<string | undefined>;
+    charoff?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    height?: FunctionMaybe<number | string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @deprecated */
-    nowrap?: FunctionMaybe<"true" | boolean | undefined>;
+    nowrap?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    scope?: FunctionMaybe<"col" | "row" | "rowgroup" | "colgroup" | undefined>;
+    scope?: FunctionMaybe<"col" | "row" | "rowgroup" | "colgroup" | RemoveAttribute>;
     /** @deprecated */
-    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | undefined>;
+    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | RemoveAttribute>;
     /** @deprecated */
-    width?: FunctionMaybe<number | string | undefined>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface TemplateHTMLAttributes<T> extends HTMLAttributes<T> {
-    shadowrootmode?: FunctionMaybe<"open" | "closed" | undefined>;
-    shadowrootclonable?: FunctionMaybe<"true" | boolean | undefined>;
-    shadowrootdelegatesfocus?: FunctionMaybe<"true" | boolean | undefined>;
+    shadowrootclonable?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    shadowrootdelegatesfocus?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    shadowrootmode?: FunctionMaybe<"open" | "closed" | RemoveAttribute>;
+    shadowrootcustomelementregistry?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @experimental */
-    shadowrootserializable?: FunctionMaybe<"true" | boolean | undefined>;
-
-    /** @deprecated */
-    content?: FunctionMaybe<DocumentFragment | undefined>;
+    shadowrootserializable?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface TextareaHTMLAttributes<T> extends HTMLAttributes<T> {
-    autocomplete?: FunctionMaybe<
-      | "additional-name"
-      | "address-level1"
-      | "address-level2"
-      | "address-level3"
-      | "address-level4"
-      | "address-line1"
-      | "address-line2"
-      | "address-line3"
-      | "bday"
-      | "bday-day"
-      | "bday-month"
-      | "bday-year"
-      | "billing"
-      | "cc-additional-name"
-      | "cc-csc"
-      | "cc-exp"
-      | "cc-exp-month"
-      | "cc-exp-year"
-      | "cc-family-name"
-      | "cc-given-name"
-      | "cc-name"
-      | "cc-number"
-      | "cc-type"
-      | "country"
-      | "country-name"
-      | "current-password"
-      | "email"
-      | "family-name"
-      | "fax"
-      | "given-name"
-      | "home"
-      | "honorific-prefix"
-      | "honorific-suffix"
-      | "impp"
-      | "language"
-      | "mobile"
-      | "name"
-      | "new-password"
-      | "nickname"
-      | "off"
-      | "on"
-      | "organization"
-      | "organization-title"
-      | "pager"
-      | "photo"
-      | "postal-code"
-      | "sex"
-      | "shipping"
-      | "street-address"
-      | "tel"
-      | "tel-area-code"
-      | "tel-country-code"
-      | "tel-extension"
-      | "tel-local"
-      | "tel-local-prefix"
-      | "tel-local-suffix"
-      | "tel-national"
-      | "transaction-amount"
-      | "transaction-currency"
-      | "url"
-      | "username"
-      | "work"
-      | (string & {})
-      | undefined
-    >;
-    autocorrect?: FunctionMaybe<"on" | "off" | undefined>;
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
-    cols?: FunctionMaybe<number | string | undefined>;
-    dirname?: FunctionMaybe<string | undefined>;
-    disabled?: FunctionMaybe<"true" | boolean | undefined>;
-    enterkeyhint?: FunctionMaybe<
-      "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | undefined
-    >;
-    form?: FunctionMaybe<string | undefined>;
-    maxlength?: FunctionMaybe<number | string | undefined>;
-    minlength?: FunctionMaybe<number | string | undefined>;
-    name?: FunctionMaybe<string | undefined>;
-    placeholder?: FunctionMaybe<string | undefined>;
-    readonly?: FunctionMaybe<"true" | boolean | undefined>;
-    required?: FunctionMaybe<"true" | boolean | undefined>;
-    rows?: FunctionMaybe<number | string | undefined>;
-    value?: FunctionMaybe<string | string[] | number | undefined>;
-    wrap?: FunctionMaybe<"hard" | "soft" | "off" | undefined>;
+    autocomplete?: FunctionMaybe<HTMLAutocomplete | RemoveAttribute>;
+    cols?: FunctionMaybe<number | string | RemoveAttribute>;
+    dirname?: FunctionMaybe<string | RemoveAttribute>;
+    disabled?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
-    /** @deprecated Use lowercase attributes */
-    maxLength?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    minLength?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    readOnly?: FunctionMaybe<boolean | undefined>;
+    form?: FunctionMaybe<string | RemoveAttribute>;
+    maxlength?: FunctionMaybe<number | string | RemoveAttribute>;
+    minlength?: FunctionMaybe<number | string | RemoveAttribute>;
+    name?: FunctionMaybe<string | RemoveAttribute>;
+    placeholder?: FunctionMaybe<string | RemoveAttribute>;
+    readonly?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    required?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    rows?: FunctionMaybe<number | string | RemoveAttribute>;
+    value?: FunctionMaybe<string | string[] | number | RemoveAttribute>;
+    wrap?: FunctionMaybe<"hard" | "soft" | "off" | RemoveAttribute>;
   }
   interface ThHTMLAttributes<T> extends HTMLAttributes<T> {
-    abbr?: FunctionMaybe<string | undefined>;
-    colspan?: FunctionMaybe<number | string | undefined>;
-    headers?: FunctionMaybe<string | undefined>;
-    rowspan?: FunctionMaybe<number | string | undefined>;
-    scope?: FunctionMaybe<"col" | "row" | "rowgroup" | "colgroup" | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    colSpan?: FunctionMaybe<number | string | undefined>;
-    /** @deprecated Use lowercase attributes */
-    rowSpan?: FunctionMaybe<number | string | undefined>;
+    abbr?: FunctionMaybe<string | RemoveAttribute>;
+    colspan?: FunctionMaybe<number | string | RemoveAttribute>;
+    headers?: FunctionMaybe<string | RemoveAttribute>;
+    rowspan?: FunctionMaybe<number | string | RemoveAttribute>;
+    scope?: FunctionMaybe<"col" | "row" | "rowgroup" | "colgroup" | RemoveAttribute>;
 
     /** @deprecated */
-    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | undefined>;
+    align?: FunctionMaybe<"left" | "center" | "right" | "justify" | "char" | RemoveAttribute>;
     /** @deprecated */
-    axis?: FunctionMaybe<string | undefined>;
+    axis?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    bgcolor?: FunctionMaybe<string | undefined>;
+    bgcolor?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    char?: FunctionMaybe<string | undefined>;
+    char?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    charoff?: FunctionMaybe<string | undefined>;
+    charoff?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    height?: FunctionMaybe<string | undefined>;
+    height?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    nowrap?: FunctionMaybe<"true" | boolean | undefined>;
+    nowrap?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | undefined>;
+    valign?: FunctionMaybe<"baseline" | "bottom" | "middle" | "top" | RemoveAttribute>;
     /** @deprecated */
-    width?: FunctionMaybe<number | string | undefined>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface TimeHTMLAttributes<T> extends HTMLAttributes<T> {
-    datetime?: FunctionMaybe<string | undefined>;
-
-    /** @deprecated Use lowercase attributes */
-    dateTime?: FunctionMaybe<string | undefined>;
+    datetime?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface TrackHTMLAttributes<T> extends HTMLAttributes<T> {
-    default?: FunctionMaybe<"true" | boolean | undefined>;
-    kind?: // MDN
-    FunctionMaybe<
+    default?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    kind?: FunctionMaybe<
       | "alternative"
       | "descriptions"
       | "main"
       | "main-desc"
       | "translation"
       | "commentary"
-      // ??
       | "subtitles"
       | "captions"
       | "chapters"
       | "metadata"
-      | undefined
+      | RemoveAttribute
     >;
-    label?: FunctionMaybe<string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    srclang?: FunctionMaybe<string | undefined>;
+    label?: FunctionMaybe<string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    srclang?: FunctionMaybe<string | RemoveAttribute>;
 
-    /** @deprecated Use lowercase attributes */
-    mediaGroup?: FunctionMaybe<string | undefined>;
     /** @deprecated */
-    mediagroup?: FunctionMaybe<string | undefined>;
+    mediagroup?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface VideoHTMLAttributes<T> extends MediaHTMLAttributes<T> {
-    height?: FunctionMaybe<number | string | undefined>;
-    playsinline?: FunctionMaybe<"true" | boolean | undefined>;
-    poster?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    disablepictureinpicture?: FunctionMaybe<"true" | boolean | undefined>;
-    disableremoteplayback?: FunctionMaybe<boolean>;
+    disablepictureinpicture?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    playsinline?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    poster?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+
+    onEnterPictureInPicture?: EventHandlerUnion<T, PictureInPictureEvent> | undefined;
+    "on:enterpictureinpicture"?: EventHandlerWithOptionsUnion<T, PictureInPictureEvent> | undefined;
+
+    onLeavePictureInPicture?: EventHandlerUnion<T, PictureInPictureEvent> | undefined;
+    "on:leavepictureinpicture"?: EventHandlerWithOptionsUnion<T, PictureInPictureEvent> | undefined;
   }
 
   interface WebViewHTMLAttributes<T> extends HTMLAttributes<T> {
-    allowpopups?: FunctionMaybe<"true" | boolean | undefined>;
-    disableblinkfeatures?: FunctionMaybe<string | undefined>;
-    disablewebsecurity?: FunctionMaybe<"true" | boolean | undefined>;
-    enableblinkfeatures?: FunctionMaybe<string | undefined>;
-    httpreferrer?: FunctionMaybe<string | undefined>;
-    nodeintegration?: FunctionMaybe<"true" | boolean | undefined>;
-    nodeintegrationinsubframes?: FunctionMaybe<"true" | boolean | undefined>;
-    partition?: FunctionMaybe<string | undefined>;
-    plugins?: FunctionMaybe<"true" | boolean | undefined>;
-    preload?: FunctionMaybe<string | undefined>;
-    src?: FunctionMaybe<string | undefined>;
-    useragent?: FunctionMaybe<string | undefined>;
-    webpreferences?: FunctionMaybe<string | undefined>;
+    allowpopups?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    disableblinkfeatures?: FunctionMaybe<string | RemoveAttribute>;
+    disablewebsecurity?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    enableblinkfeatures?: FunctionMaybe<string | RemoveAttribute>;
+    httpreferrer?: FunctionMaybe<string | RemoveAttribute>;
+    nodeintegration?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    nodeintegrationinsubframes?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    partition?: FunctionMaybe<string | RemoveAttribute>;
+    plugins?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    preload?: FunctionMaybe<string | RemoveAttribute>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
+    useragent?: FunctionMaybe<string | RemoveAttribute>;
+    webpreferences?: FunctionMaybe<string | RemoveAttribute>;
 
     // does this exists?
-    allowfullscreen?: FunctionMaybe<"true" | boolean | undefined>;
-    autofocus?: FunctionMaybe<"true" | boolean | undefined>;
-    autosize?: FunctionMaybe<"true" | boolean | undefined>;
+    allowfullscreen?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    autosize?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @deprecated */
-    blinkfeatures?: FunctionMaybe<string | undefined>;
+    blinkfeatures?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    disableguestresize?: FunctionMaybe<"true" | boolean | undefined>;
+    disableguestresize?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
     /** @deprecated */
-    guestinstance?: FunctionMaybe<string | undefined>;
+    guestinstance?: FunctionMaybe<string | RemoveAttribute>;
   }
+
+  // SVG
 
   type SVGPreserveAspectRatio =
     | "none"
@@ -1977,60 +2059,53 @@ export namespace JSX {
     | "defer xMidYMax slice"
     | "defer xMaxYMax slice";
   type SVGUnits = "userSpaceOnUse" | "objectBoundingBox";
-  interface CoreSVGAttributes<T> extends AriaAttributes, DOMAttributes<T> {
-    id?: FunctionMaybe<string | undefined>;
-    lang?: FunctionMaybe<string | undefined>;
-    tabindex?: FunctionMaybe<number | string | undefined>;
 
-    /** @deprecated Use lowercase attributes */
-    tabIndex?: FunctionMaybe<number | string | undefined>;
-  }
   interface StylableSVGAttributes {
-    class?: FunctionMaybe<string | ClassList | undefined>;
-    style?: FunctionMaybe<CSSProperties | string | undefined>;
+    class?: FunctionMaybe<string | ClassList | RemoveAttribute>;
+    style?: FunctionMaybe<CSSProperties | string | RemoveAttribute>;
   }
   interface TransformableSVGAttributes {
-    transform?: FunctionMaybe<string | undefined>;
+    transform?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ConditionalProcessingSVGAttributes {
-    requiredExtensions?: FunctionMaybe<string | undefined>;
-    requiredFeatures?: FunctionMaybe<string | undefined>;
-    systemLanguage?: FunctionMaybe<string | undefined>;
+    requiredExtensions?: FunctionMaybe<string | RemoveAttribute>;
+    requiredFeatures?: FunctionMaybe<string | RemoveAttribute>;
+    systemLanguage?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ExternalResourceSVGAttributes {
-    externalResourcesRequired?: FunctionMaybe<"true" | "false" | undefined>;
+    externalResourcesRequired?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
   }
   interface AnimationTimingSVGAttributes {
-    begin?: FunctionMaybe<string | undefined>;
-    dur?: FunctionMaybe<string | undefined>;
-    end?: FunctionMaybe<string | undefined>;
-    min?: FunctionMaybe<string | undefined>;
-    max?: FunctionMaybe<string | undefined>;
-    restart?: FunctionMaybe<"always" | "whenNotActive" | "never" | undefined>;
-    repeatCount?: FunctionMaybe<number | "indefinite" | undefined>;
-    repeatDur?: FunctionMaybe<string | undefined>;
-    fill?: FunctionMaybe<"freeze" | "remove" | undefined>;
+    begin?: FunctionMaybe<string | RemoveAttribute>;
+    dur?: FunctionMaybe<string | RemoveAttribute>;
+    end?: FunctionMaybe<string | RemoveAttribute>;
+    fill?: FunctionMaybe<"freeze" | "remove" | RemoveAttribute>;
+    max?: FunctionMaybe<string | RemoveAttribute>;
+    min?: FunctionMaybe<string | RemoveAttribute>;
+    repeatCount?: FunctionMaybe<number | "indefinite" | RemoveAttribute>;
+    repeatDur?: FunctionMaybe<string | RemoveAttribute>;
+    restart?: FunctionMaybe<"always" | "whenNotActive" | "never" | RemoveAttribute>;
   }
   interface AnimationValueSVGAttributes {
-    calcMode?: FunctionMaybe<"discrete" | "linear" | "paced" | "spline" | undefined>;
-    values?: FunctionMaybe<string | undefined>;
-    keyTimes?: FunctionMaybe<string | undefined>;
-    keySplines?: FunctionMaybe<string | undefined>;
-    from?: FunctionMaybe<number | string | undefined>;
-    to?: FunctionMaybe<number | string | undefined>;
-    by?: FunctionMaybe<number | string | undefined>;
+    by?: FunctionMaybe<number | string | RemoveAttribute>;
+    calcMode?: FunctionMaybe<"discrete" | "linear" | "paced" | "spline" | RemoveAttribute>;
+    from?: FunctionMaybe<number | string | RemoveAttribute>;
+    keySplines?: FunctionMaybe<string | RemoveAttribute>;
+    keyTimes?: FunctionMaybe<string | RemoveAttribute>;
+    to?: FunctionMaybe<number | string | RemoveAttribute>;
+    values?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface AnimationAdditionSVGAttributes {
-    attributeName?: FunctionMaybe<string | undefined>;
-    additive?: FunctionMaybe<"replace" | "sum" | undefined>;
-    accumulate?: FunctionMaybe<"none" | "sum" | undefined>;
+    accumulate?: FunctionMaybe<"none" | "sum" | RemoveAttribute>;
+    additive?: FunctionMaybe<"replace" | "sum" | RemoveAttribute>;
+    attributeName?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface AnimationAttributeTargetSVGAttributes {
-    attributeName?: FunctionMaybe<string | undefined>;
-    attributeType?: FunctionMaybe<"CSS" | "XML" | "auto" | undefined>;
+    attributeName?: FunctionMaybe<string | RemoveAttribute>;
+    attributeType?: FunctionMaybe<"CSS" | "XML" | "auto" | RemoveAttribute>;
   }
   interface PresentationSVGAttributes {
-    "alignment-baseline"?:
+    "alignment-baseline"?: FunctionMaybe<
       | "auto"
       | "baseline"
       | "before-edge"
@@ -2044,23 +2119,21 @@ export namespace JSX {
       | "hanging"
       | "mathematical"
       | "inherit"
-      | undefined;
-    "baseline-shift"?: FunctionMaybe<number | string | undefined>;
-    clip?: FunctionMaybe<string | undefined>;
-    "clip-path"?: FunctionMaybe<string | undefined>;
-    "clip-rule"?: FunctionMaybe<"nonzero" | "evenodd" | "inherit" | undefined>;
-    color?: FunctionMaybe<string | undefined>;
-    "color-interpolation"?: FunctionMaybe<"auto" | "sRGB" | "linearRGB" | "inherit" | undefined>;
+      | RemoveAttribute
+    >;
+    "baseline-shift"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "clip-path"?: FunctionMaybe<string | RemoveAttribute>;
+    "clip-rule"?: FunctionMaybe<"nonzero" | "evenodd" | "inherit" | RemoveAttribute>;
+    "color-interpolation"?: FunctionMaybe<
+      "auto" | "sRGB" | "linearRGB" | "inherit" | RemoveAttribute
+    >;
     "color-interpolation-filters"?: FunctionMaybe<
-      "auto" | "sRGB" | "linearRGB" | "inherit" | undefined
+      "auto" | "sRGB" | "linearRGB" | "inherit" | RemoveAttribute
     >;
-    "color-profile"?: FunctionMaybe<string | undefined>;
+    "color-profile"?: FunctionMaybe<string | RemoveAttribute>;
     "color-rendering"?: FunctionMaybe<
-      "auto" | "optimizeSpeed" | "optimizeQuality" | "inherit" | undefined
+      "auto" | "optimizeSpeed" | "optimizeQuality" | "inherit" | RemoveAttribute
     >;
-    cursor?: FunctionMaybe<string | undefined>;
-    direction?: FunctionMaybe<"ltr" | "rtl" | "inherit" | undefined>;
-    display?: FunctionMaybe<string | undefined>;
     "dominant-baseline"?: FunctionMaybe<
       | "auto"
       | "text-bottom"
@@ -2072,37 +2145,30 @@ export namespace JSX {
       | "hanging"
       | "text-top"
       | "inherit"
-      | undefined
+      | RemoveAttribute
     >;
-    "enable-background"?: FunctionMaybe<string | undefined>;
-    fill?: FunctionMaybe<string | undefined>;
-    "fill-opacity"?: FunctionMaybe<number | string | "inherit" | undefined>;
-    "fill-rule"?: FunctionMaybe<"nonzero" | "evenodd" | "inherit" | undefined>;
-    filter?: FunctionMaybe<string | undefined>;
-    "flood-color"?: FunctionMaybe<string | undefined>;
-    "flood-opacity"?: FunctionMaybe<number | string | "inherit" | undefined>;
-    "font-family"?: FunctionMaybe<string | undefined>;
-    "font-size"?: FunctionMaybe<string | undefined>;
-    "font-size-adjust"?: FunctionMaybe<number | string | undefined>;
-    "font-stretch"?: FunctionMaybe<string | undefined>;
-    "font-style"?: FunctionMaybe<"normal" | "italic" | "oblique" | "inherit" | undefined>;
-    "font-variant"?: FunctionMaybe<string | undefined>;
-    "font-weight"?: FunctionMaybe<number | string | undefined>;
-    "glyph-orientation-horizontal"?: FunctionMaybe<string | undefined>;
-    "glyph-orientation-vertical"?: FunctionMaybe<string | undefined>;
+    "enable-background"?: FunctionMaybe<string | RemoveAttribute>;
+    "fill-opacity"?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    "fill-rule"?: FunctionMaybe<"nonzero" | "evenodd" | "inherit" | RemoveAttribute>;
+    "flood-color"?: FunctionMaybe<string | RemoveAttribute>;
+    "flood-opacity"?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    "font-family"?: FunctionMaybe<string | RemoveAttribute>;
+    "font-size"?: FunctionMaybe<string | RemoveAttribute>;
+    "font-size-adjust"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "font-stretch"?: FunctionMaybe<string | RemoveAttribute>;
+    "font-style"?: FunctionMaybe<"normal" | "italic" | "oblique" | "inherit" | RemoveAttribute>;
+    "font-variant"?: FunctionMaybe<string | RemoveAttribute>;
+    "font-weight"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "glyph-orientation-horizontal"?: FunctionMaybe<string | RemoveAttribute>;
+    "glyph-orientation-vertical"?: FunctionMaybe<string | RemoveAttribute>;
     "image-rendering"?: FunctionMaybe<
-      "auto" | "optimizeQuality" | "optimizeSpeed" | "inherit" | undefined
+      "auto" | "optimizeQuality" | "optimizeSpeed" | "inherit" | RemoveAttribute
     >;
-    kerning?: FunctionMaybe<string | undefined>;
-    "letter-spacing"?: FunctionMaybe<number | string | undefined>;
-    "lighting-color"?: FunctionMaybe<string | undefined>;
-    "marker-end"?: FunctionMaybe<string | undefined>;
-    "marker-mid"?: FunctionMaybe<string | undefined>;
-    "marker-start"?: FunctionMaybe<string | undefined>;
-    mask?: FunctionMaybe<string | undefined>;
-    opacity?: FunctionMaybe<number | string | "inherit" | undefined>;
-    overflow?: FunctionMaybe<"visible" | "hidden" | "scroll" | "auto" | "inherit" | undefined>;
-    pathLength?: FunctionMaybe<string | number | undefined>;
+    "letter-spacing"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "lighting-color"?: FunctionMaybe<string | RemoveAttribute>;
+    "marker-end"?: FunctionMaybe<string | RemoveAttribute>;
+    "marker-mid"?: FunctionMaybe<string | RemoveAttribute>;
+    "marker-start"?: FunctionMaybe<string | RemoveAttribute>;
     "pointer-events"?: FunctionMaybe<
       | "bounding-box"
       | "visiblePainted"
@@ -2116,43 +2182,74 @@ export namespace JSX {
       | "all"
       | "none"
       | "inherit"
-      | undefined
+      | RemoveAttribute
     >;
     "shape-rendering"?: FunctionMaybe<
-      "auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision" | "inherit" | undefined
+      "auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision" | "inherit" | RemoveAttribute
     >;
-    "stop-color"?: FunctionMaybe<string | undefined>;
-    "stop-opacity"?: FunctionMaybe<number | string | "inherit" | undefined>;
-    stroke?: FunctionMaybe<string | undefined>;
-    "stroke-dasharray"?: FunctionMaybe<string | undefined>;
-    "stroke-dashoffset"?: FunctionMaybe<number | string | undefined>;
-    "stroke-linecap"?: FunctionMaybe<"butt" | "round" | "square" | "inherit" | undefined>;
+    "stop-color"?: FunctionMaybe<string | RemoveAttribute>;
+    "stop-opacity"?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    "stroke-dasharray"?: FunctionMaybe<string | RemoveAttribute>;
+    "stroke-dashoffset"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "stroke-linecap"?: FunctionMaybe<"butt" | "round" | "square" | "inherit" | RemoveAttribute>;
     "stroke-linejoin"?: FunctionMaybe<
-      "arcs" | "bevel" | "miter" | "miter-clip" | "round" | "inherit" | undefined
+      "arcs" | "bevel" | "miter" | "miter-clip" | "round" | "inherit" | RemoveAttribute
     >;
-    "stroke-miterlimit"?: FunctionMaybe<number | string | "inherit" | undefined>;
-    "stroke-opacity"?: FunctionMaybe<number | string | "inherit" | undefined>;
-    "stroke-width"?: FunctionMaybe<number | string | undefined>;
-    "text-anchor"?: FunctionMaybe<"start" | "middle" | "end" | "inherit" | undefined>;
+    "stroke-miterlimit"?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    "stroke-opacity"?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    "stroke-width"?: FunctionMaybe<number | string | RemoveAttribute>;
+    "text-anchor"?: FunctionMaybe<"start" | "middle" | "end" | "inherit" | RemoveAttribute>;
     "text-decoration"?: FunctionMaybe<
-      "none" | "underline" | "overline" | "line-through" | "blink" | "inherit" | undefined
+      "none" | "underline" | "overline" | "line-through" | "blink" | "inherit" | RemoveAttribute
     >;
     "text-rendering"?: FunctionMaybe<
-      "auto" | "optimizeSpeed" | "optimizeLegibility" | "geometricPrecision" | "inherit" | undefined
+      | "auto"
+      | "optimizeSpeed"
+      | "optimizeLegibility"
+      | "geometricPrecision"
+      | "inherit"
+      | RemoveAttribute
     >;
-    "unicode-bidi"?: FunctionMaybe<string | undefined>;
-    visibility?: FunctionMaybe<"visible" | "hidden" | "collapse" | "inherit" | undefined>;
-    "word-spacing"?: FunctionMaybe<number | string | undefined>;
+    "unicode-bidi"?: FunctionMaybe<string | RemoveAttribute>;
+    "word-spacing"?: FunctionMaybe<number | string | RemoveAttribute>;
     "writing-mode"?: FunctionMaybe<
-      "lr-tb" | "rl-tb" | "tb-rl" | "lr" | "rl" | "tb" | "inherit" | undefined
+      "lr-tb" | "rl-tb" | "tb-rl" | "lr" | "rl" | "tb" | "inherit" | RemoveAttribute
     >;
+    clip?: FunctionMaybe<string | RemoveAttribute>;
+    color?: FunctionMaybe<string | RemoveAttribute>;
+    cursor?: FunctionMaybe<string | RemoveAttribute>;
+    direction?: FunctionMaybe<"ltr" | "rtl" | "inherit" | RemoveAttribute>;
+    display?: FunctionMaybe<string | RemoveAttribute>;
+    fill?: FunctionMaybe<string | RemoveAttribute>;
+    filter?: FunctionMaybe<string | RemoveAttribute>;
+    kerning?: FunctionMaybe<string | RemoveAttribute>;
+    mask?: FunctionMaybe<string | RemoveAttribute>;
+    opacity?: FunctionMaybe<number | string | "inherit" | RemoveAttribute>;
+    overflow?: FunctionMaybe<
+      "visible" | "hidden" | "scroll" | "auto" | "inherit" | RemoveAttribute
+    >;
+    pathLength?: FunctionMaybe<string | number | RemoveAttribute>;
+    stroke?: FunctionMaybe<string | RemoveAttribute>;
+    visibility?: FunctionMaybe<"visible" | "hidden" | "collapse" | "inherit" | RemoveAttribute>;
   }
   interface AnimationElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ExternalResourceSVGAttributes,
-      ConditionalProcessingSVGAttributes {}
+      ConditionalProcessingSVGAttributes {
+    // TODO TimeEvent is currently undefined on TS
+    onBegin?: EventHandlerUnion<T, Event> | undefined;
+    "on:begin"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+
+    // TODO TimeEvent is currently undefined on TS
+    onEnd?: EventHandlerUnion<T, Event> | undefined;
+    "on:end"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+
+    // TODO TimeEvent is currently undefined on TS
+    onRepeat?: EventHandlerUnion<T, Event> | undefined;
+    "on:repeat"?: EventHandlerWithOptionsUnion<T, Event> | undefined;
+  }
   interface ContainerElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ShapeElementSVGAttributes<T>,
       Pick<
         PresentationSVGAttributes,
@@ -2166,36 +2263,36 @@ export namespace JSX {
         | "color-rendering"
       > {}
   interface FilterPrimitiveElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       Pick<PresentationSVGAttributes, "color-interpolation-filters"> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    result?: FunctionMaybe<string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    result?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface SingleInputFilterSVGAttributes {
-    in?: FunctionMaybe<string | undefined>;
+    in?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface DoubleInputFilterSVGAttributes {
-    in?: FunctionMaybe<string | undefined>;
-    in2?: FunctionMaybe<string | undefined>;
+    in?: FunctionMaybe<string | RemoveAttribute>;
+    in2?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface FitToViewBoxSVGAttributes {
-    viewBox?: FunctionMaybe<string | undefined>;
-    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | undefined>;
+    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | RemoveAttribute>;
+    viewBox?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface GradientElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes {
-    gradientUnits?: FunctionMaybe<SVGUnits | undefined>;
-    gradientTransform?: FunctionMaybe<string | undefined>;
-    spreadMethod?: FunctionMaybe<"pad" | "reflect" | "repeat" | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+    gradientTransform?: FunctionMaybe<string | RemoveAttribute>;
+    gradientUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    spreadMethod?: FunctionMaybe<"pad" | "reflect" | "repeat" | RemoveAttribute>;
   }
   interface GraphicsElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       Pick<
         PresentationSVGAttributes,
         | "clip-rule"
@@ -2209,14 +2306,14 @@ export namespace JSX {
         | "color-interpolation"
         | "color-rendering"
       > {}
-  interface LightSourceElementSVGAttributes<T> extends CoreSVGAttributes<T> {}
+  interface LightSourceElementSVGAttributes<T> extends SVGAttributes<T> {}
   interface NewViewportSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       Pick<PresentationSVGAttributes, "overflow" | "clip"> {
-    viewBox?: FunctionMaybe<string | undefined>;
+    viewBox?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface ShapeElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       Pick<
         PresentationSVGAttributes,
         | "color"
@@ -2235,7 +2332,7 @@ export namespace JSX {
         | "pathLength"
       > {}
   interface TextContentElementSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       Pick<
         PresentationSVGAttributes,
         | "font-family"
@@ -2273,7 +2370,7 @@ export namespace JSX {
      * @deprecated
      * @non-standard
      */
-    zoomAndPan?: FunctionMaybe<"disable" | "magnify" | undefined>;
+    zoomAndPan?: FunctionMaybe<"disable" | "magnify" | RemoveAttribute>;
   }
   interface AnimateSVGAttributes<T>
     extends AnimationElementSVGAttributes<T>,
@@ -2287,10 +2384,10 @@ export namespace JSX {
       AnimationTimingSVGAttributes,
       AnimationValueSVGAttributes,
       AnimationAdditionSVGAttributes {
-    path?: FunctionMaybe<string | undefined>;
-    keyPoints?: FunctionMaybe<string | undefined>;
-    rotate?: FunctionMaybe<number | string | "auto" | "auto-reverse" | undefined>;
-    origin?: FunctionMaybe<"default" | undefined>;
+    keyPoints?: FunctionMaybe<string | RemoveAttribute>;
+    origin?: FunctionMaybe<"default" | RemoveAttribute>;
+    path?: FunctionMaybe<string | RemoveAttribute>;
+    rotate?: FunctionMaybe<number | string | "auto" | "auto-reverse" | RemoveAttribute>;
   }
   interface AnimateTransformSVGAttributes<T>
     extends AnimationElementSVGAttributes<T>,
@@ -2298,26 +2395,27 @@ export namespace JSX {
       AnimationTimingSVGAttributes,
       AnimationValueSVGAttributes,
       AnimationAdditionSVGAttributes {
-    type?: FunctionMaybe<"translate" | "scale" | "rotate" | "skewX" | "skewY" | undefined>;
+    type?: FunctionMaybe<"translate" | "scale" | "rotate" | "skewX" | "skewY" | RemoveAttribute>;
   }
   interface CircleSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
       ShapeElementSVGAttributes<T>,
       ConditionalProcessingSVGAttributes,
       StylableSVGAttributes,
-      TransformableSVGAttributes {
-    cx?: FunctionMaybe<number | string | undefined>;
-    cy?: FunctionMaybe<number | string | undefined>;
-    r?: FunctionMaybe<number | string | undefined>;
+      TransformableSVGAttributes,
+      Pick<PresentationSVGAttributes, "clip-path"> {
+    cx?: FunctionMaybe<number | string | RemoveAttribute>;
+    cy?: FunctionMaybe<number | string | RemoveAttribute>;
+    r?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface ClipPathSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ConditionalProcessingSVGAttributes,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
       Pick<PresentationSVGAttributes, "clip-path"> {
-    clipPathUnits?: FunctionMaybe<SVGUnits | undefined>;
+    clipPathUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
   }
   interface DefsSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
@@ -2325,31 +2423,34 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes {}
-  interface DescSVGAttributes<T> extends CoreSVGAttributes<T>, StylableSVGAttributes {}
+  interface DescSVGAttributes<T> extends SVGAttributes<T>, StylableSVGAttributes {}
   interface EllipseSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
       ShapeElementSVGAttributes<T>,
       ConditionalProcessingSVGAttributes,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
-      TransformableSVGAttributes {
-    cx?: FunctionMaybe<number | string | undefined>;
-    cy?: FunctionMaybe<number | string | undefined>;
-    rx?: FunctionMaybe<number | string | undefined>;
-    ry?: FunctionMaybe<number | string | undefined>;
+      TransformableSVGAttributes,
+      Pick<PresentationSVGAttributes, "clip-path"> {
+    cx?: FunctionMaybe<number | string | RemoveAttribute>;
+    cy?: FunctionMaybe<number | string | RemoveAttribute>;
+    rx?: FunctionMaybe<number | string | RemoveAttribute>;
+    ry?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeBlendSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       DoubleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    mode?: FunctionMaybe<"normal" | "multiply" | "screen" | "darken" | "lighten" | undefined>;
+    mode?: FunctionMaybe<"normal" | "multiply" | "screen" | "darken" | "lighten" | RemoveAttribute>;
   }
   interface FeColorMatrixSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    type?: FunctionMaybe<"matrix" | "saturate" | "hueRotate" | "luminanceToAlpha" | undefined>;
-    values?: FunctionMaybe<string | undefined>;
+    type?: FunctionMaybe<
+      "matrix" | "saturate" | "hueRotate" | "luminanceToAlpha" | RemoveAttribute
+    >;
+    values?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface FeComponentTransferSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
@@ -2359,126 +2460,126 @@ export namespace JSX {
     extends FilterPrimitiveElementSVGAttributes<T>,
       DoubleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    operator?: FunctionMaybe<"over" | "in" | "out" | "atop" | "xor" | "arithmetic" | undefined>;
-    k1?: FunctionMaybe<number | string | undefined>;
-    k2?: FunctionMaybe<number | string | undefined>;
-    k3?: FunctionMaybe<number | string | undefined>;
-    k4?: FunctionMaybe<number | string | undefined>;
+    k1?: FunctionMaybe<number | string | RemoveAttribute>;
+    k2?: FunctionMaybe<number | string | RemoveAttribute>;
+    k3?: FunctionMaybe<number | string | RemoveAttribute>;
+    k4?: FunctionMaybe<number | string | RemoveAttribute>;
+    operator?: FunctionMaybe<
+      "over" | "in" | "out" | "atop" | "xor" | "arithmetic" | RemoveAttribute
+    >;
   }
   interface FeConvolveMatrixSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    order?: FunctionMaybe<number | string | undefined>;
-    kernelMatrix?: FunctionMaybe<string | undefined>;
-    divisor?: FunctionMaybe<number | string | undefined>;
-    bias?: FunctionMaybe<number | string | undefined>;
-    targetX?: FunctionMaybe<number | string | undefined>;
-    targetY?: FunctionMaybe<number | string | undefined>;
-    edgeMode?: FunctionMaybe<"duplicate" | "wrap" | "none" | undefined>;
-    kernelUnitLength?: FunctionMaybe<number | string | undefined>;
-    preserveAlpha?: FunctionMaybe<"true" | "false" | undefined>;
+    bias?: FunctionMaybe<number | string | RemoveAttribute>;
+    divisor?: FunctionMaybe<number | string | RemoveAttribute>;
+    edgeMode?: FunctionMaybe<"duplicate" | "wrap" | "none" | RemoveAttribute>;
+    kernelMatrix?: FunctionMaybe<string | RemoveAttribute>;
+    kernelUnitLength?: FunctionMaybe<number | string | RemoveAttribute>;
+    order?: FunctionMaybe<number | string | RemoveAttribute>;
+    preserveAlpha?: FunctionMaybe<EnumeratedPseudoBoolean | RemoveAttribute>;
+    targetX?: FunctionMaybe<number | string | RemoveAttribute>;
+    targetY?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeDiffuseLightingSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes,
       Pick<PresentationSVGAttributes, "color" | "lighting-color"> {
-    surfaceScale?: FunctionMaybe<number | string | undefined>;
-    diffuseConstant?: FunctionMaybe<number | string | undefined>;
-    kernelUnitLength?: FunctionMaybe<number | string | undefined>;
+    diffuseConstant?: FunctionMaybe<number | string | RemoveAttribute>;
+    kernelUnitLength?: FunctionMaybe<number | string | RemoveAttribute>;
+    surfaceScale?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeDisplacementMapSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       DoubleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    scale?: FunctionMaybe<number | string | undefined>;
-    xChannelSelector?: FunctionMaybe<"R" | "G" | "B" | "A" | undefined>;
-    yChannelSelector?: FunctionMaybe<"R" | "G" | "B" | "A" | undefined>;
+    scale?: FunctionMaybe<number | string | RemoveAttribute>;
+    xChannelSelector?: FunctionMaybe<"R" | "G" | "B" | "A" | RemoveAttribute>;
+    yChannelSelector?: FunctionMaybe<"R" | "G" | "B" | "A" | RemoveAttribute>;
   }
   interface FeDistantLightSVGAttributes<T> extends LightSourceElementSVGAttributes<T> {
-    azimuth?: FunctionMaybe<number | string | undefined>;
-    elevation?: FunctionMaybe<number | string | undefined>;
+    azimuth?: FunctionMaybe<number | string | RemoveAttribute>;
+    elevation?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeDropShadowSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       FilterPrimitiveElementSVGAttributes<T>,
       StylableSVGAttributes,
       Pick<PresentationSVGAttributes, "color" | "flood-color" | "flood-opacity"> {
-    dx?: FunctionMaybe<number | string | undefined>;
-    dy?: FunctionMaybe<number | string | undefined>;
-    stdDeviation?: FunctionMaybe<number | string | undefined>;
+    dx?: FunctionMaybe<number | string | RemoveAttribute>;
+    dy?: FunctionMaybe<number | string | RemoveAttribute>;
+    stdDeviation?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeFloodSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       StylableSVGAttributes,
       Pick<PresentationSVGAttributes, "color" | "flood-color" | "flood-opacity"> {}
-  interface FeFuncSVGAttributes<T> extends CoreSVGAttributes<T> {
-    type?: FunctionMaybe<"identity" | "table" | "discrete" | "linear" | "gamma" | undefined>;
-    tableValues?: FunctionMaybe<string | undefined>;
-    slope?: FunctionMaybe<number | string | undefined>;
-    intercept?: FunctionMaybe<number | string | undefined>;
-    amplitude?: FunctionMaybe<number | string | undefined>;
-    exponent?: FunctionMaybe<number | string | undefined>;
-    offset?: FunctionMaybe<number | string | undefined>;
+  interface FeFuncSVGAttributes<T> extends SVGAttributes<T> {
+    amplitude?: FunctionMaybe<number | string | RemoveAttribute>;
+    exponent?: FunctionMaybe<number | string | RemoveAttribute>;
+    intercept?: FunctionMaybe<number | string | RemoveAttribute>;
+    offset?: FunctionMaybe<number | string | RemoveAttribute>;
+    slope?: FunctionMaybe<number | string | RemoveAttribute>;
+    tableValues?: FunctionMaybe<string | RemoveAttribute>;
+    type?: FunctionMaybe<"identity" | "table" | "discrete" | "linear" | "gamma" | RemoveAttribute>;
   }
   interface FeGaussianBlurSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    stdDeviation?: FunctionMaybe<number | string | undefined>;
+    stdDeviation?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeImageSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes {
-    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | RemoveAttribute>;
   }
   interface FeMergeSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       StylableSVGAttributes {}
-  interface FeMergeNodeSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
-      SingleInputFilterSVGAttributes {}
+  interface FeMergeNodeSVGAttributes<T> extends SVGAttributes<T>, SingleInputFilterSVGAttributes {}
   interface FeMorphologySVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    operator?: FunctionMaybe<"erode" | "dilate" | undefined>;
-    radius?: FunctionMaybe<number | string | undefined>;
+    operator?: FunctionMaybe<"erode" | "dilate" | RemoveAttribute>;
+    radius?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeOffsetSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes {
-    dx?: FunctionMaybe<number | string | undefined>;
-    dy?: FunctionMaybe<number | string | undefined>;
+    dx?: FunctionMaybe<number | string | RemoveAttribute>;
+    dy?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FePointLightSVGAttributes<T> extends LightSourceElementSVGAttributes<T> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    z?: FunctionMaybe<number | string | undefined>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
+    z?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeSpecularLightingSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       SingleInputFilterSVGAttributes,
       StylableSVGAttributes,
       Pick<PresentationSVGAttributes, "color" | "lighting-color"> {
-    surfaceScale?: FunctionMaybe<string | undefined>;
-    specularConstant?: FunctionMaybe<string | undefined>;
-    specularExponent?: FunctionMaybe<string | undefined>;
-    kernelUnitLength?: FunctionMaybe<number | string | undefined>;
+    kernelUnitLength?: FunctionMaybe<number | string | RemoveAttribute>;
+    specularConstant?: FunctionMaybe<string | RemoveAttribute>;
+    specularExponent?: FunctionMaybe<string | RemoveAttribute>;
+    surfaceScale?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface FeSpotLightSVGAttributes<T> extends LightSourceElementSVGAttributes<T> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    z?: FunctionMaybe<number | string | undefined>;
-    pointsAtX?: FunctionMaybe<number | string | undefined>;
-    pointsAtY?: FunctionMaybe<number | string | undefined>;
-    pointsAtZ?: FunctionMaybe<number | string | undefined>;
-    specularExponent?: FunctionMaybe<number | string | undefined>;
-    limitingConeAngle?: FunctionMaybe<number | string | undefined>;
+    limitingConeAngle?: FunctionMaybe<number | string | RemoveAttribute>;
+    pointsAtX?: FunctionMaybe<number | string | RemoveAttribute>;
+    pointsAtY?: FunctionMaybe<number | string | RemoveAttribute>;
+    pointsAtZ?: FunctionMaybe<number | string | RemoveAttribute>;
+    specularExponent?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
+    z?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface FeTileSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
@@ -2487,23 +2588,23 @@ export namespace JSX {
   interface FeTurbulanceSVGAttributes<T>
     extends FilterPrimitiveElementSVGAttributes<T>,
       StylableSVGAttributes {
-    baseFrequency?: FunctionMaybe<number | string | undefined>;
-    numOctaves?: FunctionMaybe<number | string | undefined>;
-    seed?: FunctionMaybe<number | string | undefined>;
-    stitchTiles?: FunctionMaybe<"stitch" | "noStitch" | undefined>;
-    type?: FunctionMaybe<"fractalNoise" | "turbulence" | undefined>;
+    baseFrequency?: FunctionMaybe<number | string | RemoveAttribute>;
+    numOctaves?: FunctionMaybe<number | string | RemoveAttribute>;
+    seed?: FunctionMaybe<number | string | RemoveAttribute>;
+    stitchTiles?: FunctionMaybe<"stitch" | "noStitch" | RemoveAttribute>;
+    type?: FunctionMaybe<"fractalNoise" | "turbulence" | RemoveAttribute>;
   }
   interface FilterSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes {
-    filterUnits?: FunctionMaybe<SVGUnits | undefined>;
-    primitiveUnits?: FunctionMaybe<SVGUnits | undefined>;
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    filterRes?: FunctionMaybe<number | string | undefined>;
+    filterRes?: FunctionMaybe<number | string | RemoveAttribute>;
+    filterUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    primitiveUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface ForeignObjectSVGAttributes<T>
     extends NewViewportSVGAttributes<T>,
@@ -2512,10 +2613,10 @@ export namespace JSX {
       StylableSVGAttributes,
       TransformableSVGAttributes,
       Pick<PresentationSVGAttributes, "display" | "visibility"> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface GSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
@@ -2523,20 +2624,20 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "display" | "visibility"> {}
+      Pick<PresentationSVGAttributes, "clip-path" | "display" | "visibility"> {}
   interface ImageSVGAttributes<T>
     extends NewViewportSVGAttributes<T>,
       GraphicsElementSVGAttributes<T>,
       ConditionalProcessingSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "color-profile" | "image-rendering"> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    preserveAspectRatio?: FunctionMaybe<ImagePreserveAspectRatio | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "color-profile" | "image-rendering"> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    preserveAspectRatio?: FunctionMaybe<ImagePreserveAspectRatio | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface LineSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
@@ -2545,45 +2646,46 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "marker-start" | "marker-mid" | "marker-end"> {
-    x1?: FunctionMaybe<number | string | undefined>;
-    y1?: FunctionMaybe<number | string | undefined>;
-    x2?: FunctionMaybe<number | string | undefined>;
-    y2?: FunctionMaybe<number | string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "marker-start" | "marker-mid" | "marker-end"> {
+    x1?: FunctionMaybe<number | string | RemoveAttribute>;
+    x2?: FunctionMaybe<number | string | RemoveAttribute>;
+    y1?: FunctionMaybe<number | string | RemoveAttribute>;
+    y2?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface LinearGradientSVGAttributes<T> extends GradientElementSVGAttributes<T> {
-    x1?: FunctionMaybe<number | string | undefined>;
-    x2?: FunctionMaybe<number | string | undefined>;
-    y1?: FunctionMaybe<number | string | undefined>;
-    y2?: FunctionMaybe<number | string | undefined>;
+    x1?: FunctionMaybe<number | string | RemoveAttribute>;
+    x2?: FunctionMaybe<number | string | RemoveAttribute>;
+    y1?: FunctionMaybe<number | string | RemoveAttribute>;
+    y2?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface MarkerSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       FitToViewBoxSVGAttributes,
-      Pick<PresentationSVGAttributes, "overflow" | "clip"> {
-    markerUnits?: FunctionMaybe<"strokeWidth" | "userSpaceOnUse" | undefined>;
-    refX?: FunctionMaybe<number | string | undefined>;
-    refY?: FunctionMaybe<number | string | undefined>;
-    markerWidth?: FunctionMaybe<number | string | undefined>;
-    markerHeight?: FunctionMaybe<number | string | undefined>;
-    orient?: FunctionMaybe<string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "overflow" | "clip"> {
+    markerHeight?: FunctionMaybe<number | string | RemoveAttribute>;
+    markerUnits?: FunctionMaybe<"strokeWidth" | "userSpaceOnUse" | RemoveAttribute>;
+    markerWidth?: FunctionMaybe<number | string | RemoveAttribute>;
+    orient?: FunctionMaybe<string | RemoveAttribute>;
+    refX?: FunctionMaybe<number | string | RemoveAttribute>;
+    refY?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface MaskSVGAttributes<T>
     extends Omit<ContainerElementSVGAttributes<T>, "opacity" | "filter">,
       ConditionalProcessingSVGAttributes,
       ExternalResourceSVGAttributes,
-      StylableSVGAttributes {
-    maskUnits?: FunctionMaybe<SVGUnits | undefined>;
-    maskContentUnits?: FunctionMaybe<SVGUnits | undefined>;
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
+      StylableSVGAttributes,
+      Pick<PresentationSVGAttributes, "clip-path"> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    maskContentUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    maskUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
-  interface MetadataSVGAttributes<T> extends CoreSVGAttributes<T> {}
-  interface MPathSVGAttributes<T> extends CoreSVGAttributes<T> {}
+  interface MetadataSVGAttributes<T> extends SVGAttributes<T> {}
+  interface MPathSVGAttributes<T> extends SVGAttributes<T> {}
   interface PathSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
       ShapeElementSVGAttributes<T>,
@@ -2591,9 +2693,9 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "marker-start" | "marker-mid" | "marker-end"> {
-    d?: FunctionMaybe<string | undefined>;
-    pathLength?: FunctionMaybe<number | string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "marker-start" | "marker-mid" | "marker-end"> {
+    d?: FunctionMaybe<string | RemoveAttribute>;
+    pathLength?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface PatternSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
@@ -2601,15 +2703,15 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       FitToViewBoxSVGAttributes,
-      Pick<PresentationSVGAttributes, "overflow" | "clip"> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    patternUnits?: FunctionMaybe<SVGUnits | undefined>;
-    patternContentUnits?: FunctionMaybe<SVGUnits | undefined>;
-    patternTransform?: FunctionMaybe<string | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "overflow" | "clip"> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    patternContentUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    patternTransform?: FunctionMaybe<string | RemoveAttribute>;
+    patternUnits?: FunctionMaybe<SVGUnits | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface PolygonSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
@@ -2618,8 +2720,8 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "marker-start" | "marker-mid" | "marker-end"> {
-    points?: FunctionMaybe<string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "marker-start" | "marker-mid" | "marker-end"> {
+    points?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface PolylineSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
@@ -2628,15 +2730,15 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "marker-start" | "marker-mid" | "marker-end"> {
-    points?: FunctionMaybe<string | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "marker-start" | "marker-mid" | "marker-end"> {
+    points?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface RadialGradientSVGAttributes<T> extends GradientElementSVGAttributes<T> {
-    cx?: FunctionMaybe<number | string | undefined>;
-    cy?: FunctionMaybe<number | string | undefined>;
-    r?: FunctionMaybe<number | string | undefined>;
-    fx?: FunctionMaybe<number | string | undefined>;
-    fy?: FunctionMaybe<number | string | undefined>;
+    cx?: FunctionMaybe<number | string | RemoveAttribute>;
+    cy?: FunctionMaybe<number | string | RemoveAttribute>;
+    fx?: FunctionMaybe<number | string | RemoveAttribute>;
+    fy?: FunctionMaybe<number | string | RemoveAttribute>;
+    r?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface RectSVGAttributes<T>
     extends GraphicsElementSVGAttributes<T>,
@@ -2644,23 +2746,24 @@ export namespace JSX {
       ConditionalProcessingSVGAttributes,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
-      TransformableSVGAttributes {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    rx?: FunctionMaybe<number | string | undefined>;
-    ry?: FunctionMaybe<number | string | undefined>;
+      TransformableSVGAttributes,
+      Pick<PresentationSVGAttributes, "clip-path"> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    rx?: FunctionMaybe<number | string | RemoveAttribute>;
+    ry?: FunctionMaybe<number | string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface SetSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends AnimationElementSVGAttributes<T>,
       StylableSVGAttributes,
       AnimationTimingSVGAttributes {}
   interface StopSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       StylableSVGAttributes,
       Pick<PresentationSVGAttributes, "color" | "stop-color" | "stop-opacity"> {
-    offset?: FunctionMaybe<number | string | undefined>;
+    offset?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface SvgSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
@@ -2670,20 +2773,20 @@ export namespace JSX {
       StylableSVGAttributes,
       FitToViewBoxSVGAttributes,
       ZoomAndPanSVGAttributes,
-      PresentationSVGAttributes {
-    "xmlns:xlink"?: FunctionMaybe<string | undefined>;
-    contentScriptType?: FunctionMaybe<string | undefined>;
-    contentStyleType?: FunctionMaybe<string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    x?: FunctionMaybe<number | string | undefined>;
-    xmlns?: FunctionMaybe<string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
+      PresentationSVGAttributes,
+      EventHandlersWindow<T> {
+    "xmlns:xlink"?: FunctionMaybe<string | RemoveAttribute>;
+    contentScriptType?: FunctionMaybe<string | RemoveAttribute>;
+    contentStyleType?: FunctionMaybe<string | RemoveAttribute>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
 
     /** @deprecated */
-    baseProfile?: FunctionMaybe<string | undefined>;
+    baseProfile?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    version?: FunctionMaybe<string | undefined>;
+    version?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface SwitchSVGAttributes<T>
     extends ContainerElementSVGAttributes<T>,
@@ -2697,15 +2800,16 @@ export namespace JSX {
       NewViewportSVGAttributes<T>,
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
-      FitToViewBoxSVGAttributes {
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | undefined>;
-    refX?: FunctionMaybe<number | string | undefined>;
-    refY?: FunctionMaybe<number | string | undefined>;
-    viewBox?: FunctionMaybe<string | undefined>;
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
+      FitToViewBoxSVGAttributes,
+      Pick<PresentationSVGAttributes, "clip-path"> {
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    preserveAspectRatio?: FunctionMaybe<SVGPreserveAspectRatio | RemoveAttribute>;
+    refX?: FunctionMaybe<number | string | RemoveAttribute>;
+    refY?: FunctionMaybe<number | string | RemoveAttribute>;
+    viewBox?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface TextSVGAttributes<T>
     extends TextContentElementSVGAttributes<T>,
@@ -2714,14 +2818,14 @@ export namespace JSX {
       ExternalResourceSVGAttributes,
       StylableSVGAttributes,
       TransformableSVGAttributes,
-      Pick<PresentationSVGAttributes, "writing-mode" | "text-rendering"> {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    dx?: FunctionMaybe<number | string | undefined>;
-    dy?: FunctionMaybe<number | string | undefined>;
-    rotate?: FunctionMaybe<number | string | undefined>;
-    textLength?: FunctionMaybe<number | string | undefined>;
-    lengthAdjust?: FunctionMaybe<"spacing" | "spacingAndGlyphs" | undefined>;
+      Pick<PresentationSVGAttributes, "clip-path" | "writing-mode" | "text-rendering"> {
+    dx?: FunctionMaybe<number | string | RemoveAttribute>;
+    dy?: FunctionMaybe<number | string | RemoveAttribute>;
+    lengthAdjust?: FunctionMaybe<"spacing" | "spacingAndGlyphs" | RemoveAttribute>;
+    rotate?: FunctionMaybe<number | string | RemoveAttribute>;
+    textLength?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface TextPathSVGAttributes<T>
     extends TextContentElementSVGAttributes<T>,
@@ -2732,10 +2836,10 @@ export namespace JSX {
         PresentationSVGAttributes,
         "alignment-baseline" | "baseline-shift" | "display" | "visibility"
       > {
-    startOffset?: FunctionMaybe<number | string | undefined>;
-    method?: FunctionMaybe<"align" | "stretch" | undefined>;
-    spacing?: FunctionMaybe<"auto" | "exact" | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    method?: FunctionMaybe<"align" | "stretch" | RemoveAttribute>;
+    spacing?: FunctionMaybe<"auto" | "exact" | RemoveAttribute>;
+    startOffset?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface TSpanSVGAttributes<T>
     extends TextContentElementSVGAttributes<T>,
@@ -2746,95 +2850,83 @@ export namespace JSX {
         PresentationSVGAttributes,
         "alignment-baseline" | "baseline-shift" | "display" | "visibility"
       > {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    dx?: FunctionMaybe<number | string | undefined>;
-    dy?: FunctionMaybe<number | string | undefined>;
-    rotate?: FunctionMaybe<number | string | undefined>;
-    textLength?: FunctionMaybe<number | string | undefined>;
-    lengthAdjust?: FunctionMaybe<"spacing" | "spacingAndGlyphs" | undefined>;
+    dx?: FunctionMaybe<number | string | RemoveAttribute>;
+    dy?: FunctionMaybe<number | string | RemoveAttribute>;
+    lengthAdjust?: FunctionMaybe<"spacing" | "spacingAndGlyphs" | RemoveAttribute>;
+    rotate?: FunctionMaybe<number | string | RemoveAttribute>;
+    textLength?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   /** @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use */
   interface UseSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       StylableSVGAttributes,
       ConditionalProcessingSVGAttributes,
       GraphicsElementSVGAttributes<T>,
       PresentationSVGAttributes,
       ExternalResourceSVGAttributes,
       TransformableSVGAttributes {
-    x?: FunctionMaybe<number | string | undefined>;
-    y?: FunctionMaybe<number | string | undefined>;
-    width?: FunctionMaybe<number | string | undefined>;
-    height?: FunctionMaybe<number | string | undefined>;
-    href?: FunctionMaybe<string | undefined>;
+    height?: FunctionMaybe<number | string | RemoveAttribute>;
+    href?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<number | string | RemoveAttribute>;
+    x?: FunctionMaybe<number | string | RemoveAttribute>;
+    y?: FunctionMaybe<number | string | RemoveAttribute>;
   }
   interface ViewSVGAttributes<T>
-    extends CoreSVGAttributes<T>,
+    extends SVGAttributes<T>,
       ExternalResourceSVGAttributes,
       FitToViewBoxSVGAttributes,
       ZoomAndPanSVGAttributes {
-    viewTarget?: FunctionMaybe<string | undefined>;
+    viewTarget?: FunctionMaybe<string | RemoveAttribute>;
   }
 
-  interface MathMLAttributes<T> extends HTMLAttributes<T> {
-    displaystyle?: FunctionMaybe<"true" | boolean | undefined>;
-    /** @deprecated */
-    href?: FunctionMaybe<string | undefined>;
-    /** @deprecated */
-    mathbackground?: FunctionMaybe<string | undefined>;
-    /** @deprecated */
-    mathcolor?: FunctionMaybe<string | undefined>;
-    /** @deprecated */
-    mathsize?: FunctionMaybe<string | undefined>;
-    nonce?: FunctionMaybe<string | undefined>;
-    scriptlevel?: FunctionMaybe<string | undefined>;
-  }
+  // MATH
 
   interface MathMLAnnotationElementAttributes<T> extends MathMLAttributes<T> {
-    encoding?: FunctionMaybe<string | undefined>;
+    encoding?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    src?: FunctionMaybe<string | undefined>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLAnnotationXmlElementAttributes<T> extends MathMLAttributes<T> {
-    encoding?: FunctionMaybe<string | undefined>;
+    encoding?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    src?: FunctionMaybe<string | undefined>;
+    src?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMactionElementAttributes<T> extends MathMLAttributes<T> {
     /**
      * @deprecated
      * @non-standard
      */
-    actiontype?: FunctionMaybe<"statusline" | "toggle" | undefined>;
+    actiontype?: FunctionMaybe<"statusline" | "toggle" | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    selection?: FunctionMaybe<string | undefined>;
+    selection?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMathElementAttributes<T> extends MathMLAttributes<T> {
-    display?: FunctionMaybe<"block" | "inline" | undefined>;
+    display?: FunctionMaybe<"block" | "inline" | RemoveAttribute>;
   }
   interface MathMLMerrorElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMfracElementAttributes<T> extends MathMLAttributes<T> {
-    linethickness?: FunctionMaybe<string | undefined>;
+    linethickness?: FunctionMaybe<string | RemoveAttribute>;
 
     /**
      * @deprecated
      * @non-standard
      */
-    denomalign?: FunctionMaybe<"center" | "left" | "right" | undefined>;
+    denomalign?: FunctionMaybe<"center" | "left" | "right" | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    numalign?: FunctionMaybe<"center" | "left" | "right" | undefined>;
+    numalign?: FunctionMaybe<"center" | "left" | "right" | RemoveAttribute>;
   }
   interface MathMLMiElementAttributes<T> extends MathMLAttributes<T> {
-    mathvariant?: FunctionMaybe<"normal" | undefined>;
+    mathvariant?: FunctionMaybe<"normal" | RemoveAttribute>;
   }
 
   interface MathMLMmultiscriptsElementAttributes<T> extends MathMLAttributes<T> {
@@ -2842,39 +2934,39 @@ export namespace JSX {
      * @deprecated
      * @non-standard
      */
-    subscriptshift?: FunctionMaybe<string | undefined>;
+    subscriptshift?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    superscriptshift?: FunctionMaybe<string | undefined>;
+    superscriptshift?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMnElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMoElementAttributes<T> extends MathMLAttributes<T> {
-    fence?: FunctionMaybe<"true" | boolean | undefined>;
-    form?: FunctionMaybe<"prefix" | "infix" | "postfix" | undefined>;
-    largeop?: FunctionMaybe<"true" | boolean | undefined>;
-    lspace?: FunctionMaybe<string | undefined>;
-    maxsize?: FunctionMaybe<string | undefined>;
-    minsize?: FunctionMaybe<string | undefined>;
-    movablelimits?: FunctionMaybe<"true" | boolean | undefined>;
-    rspace?: FunctionMaybe<string | undefined>;
-    separator?: FunctionMaybe<"true" | boolean | undefined>;
-    stretchy?: FunctionMaybe<"true" | boolean | undefined>;
-    symmetric?: FunctionMaybe<"true" | boolean | undefined>;
+    fence?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    form?: FunctionMaybe<"prefix" | "infix" | "postfix" | RemoveAttribute>;
+    largeop?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    lspace?: FunctionMaybe<string | RemoveAttribute>;
+    maxsize?: FunctionMaybe<string | RemoveAttribute>;
+    minsize?: FunctionMaybe<string | RemoveAttribute>;
+    movablelimits?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    rspace?: FunctionMaybe<string | RemoveAttribute>;
+    separator?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    stretchy?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    symmetric?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
 
     /** @non-standard */
-    accent?: FunctionMaybe<"true" | boolean | undefined>;
+    accent?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface MathMLMoverElementAttributes<T> extends MathMLAttributes<T> {
-    accent?: FunctionMaybe<"true" | boolean | undefined>;
+    accent?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface MathMLMpaddedElementAttributes<T> extends MathMLAttributes<T> {
-    depth?: FunctionMaybe<string | undefined>;
-    height?: FunctionMaybe<string | undefined>;
-    lspace?: FunctionMaybe<string | undefined>;
-    voffset?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<string | undefined>;
+    depth?: FunctionMaybe<string | RemoveAttribute>;
+    height?: FunctionMaybe<string | RemoveAttribute>;
+    lspace?: FunctionMaybe<string | RemoveAttribute>;
+    voffset?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMphantomElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMprescriptsElementAttributes<T> extends MathMLAttributes<T> {}
@@ -2882,14 +2974,14 @@ export namespace JSX {
   interface MathMLMrowElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMsElementAttributes<T> extends MathMLAttributes<T> {
     /** @deprecated */
-    lquote?: FunctionMaybe<string | undefined>;
+    lquote?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    rquote?: FunctionMaybe<string | undefined>;
+    rquote?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMspaceElementAttributes<T> extends MathMLAttributes<T> {
-    depth?: FunctionMaybe<string | undefined>;
-    height?: FunctionMaybe<string | undefined>;
-    width?: FunctionMaybe<string | undefined>;
+    depth?: FunctionMaybe<string | RemoveAttribute>;
+    height?: FunctionMaybe<string | RemoveAttribute>;
+    width?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMsqrtElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMstyleElementAttributes<T> extends MathMLAttributes<T> {
@@ -2897,116 +2989,116 @@ export namespace JSX {
      * @deprecated
      * @non-standard
      */
-    background?: FunctionMaybe<string | undefined>;
+    background?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    color?: FunctionMaybe<string | undefined>;
+    color?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    fontsize?: FunctionMaybe<string | undefined>;
+    fontsize?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    fontstyle?: FunctionMaybe<string | undefined>;
+    fontstyle?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    fontweight?: FunctionMaybe<string | undefined>;
+    fontweight?: FunctionMaybe<string | RemoveAttribute>;
 
     /** @deprecated */
-    scriptminsize?: FunctionMaybe<string | undefined>;
+    scriptminsize?: FunctionMaybe<string | RemoveAttribute>;
     /** @deprecated */
-    scriptsizemultiplier?: FunctionMaybe<string | undefined>;
+    scriptsizemultiplier?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMsubElementAttributes<T> extends MathMLAttributes<T> {
     /**
      * @deprecated
      * @non-standard
      */
-    subscriptshift?: FunctionMaybe<string | undefined>;
+    subscriptshift?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMsubsupElementAttributes<T> extends MathMLAttributes<T> {
     /**
      * @deprecated
      * @non-standard
      */
-    subscriptshift?: FunctionMaybe<string | undefined>;
+    subscriptshift?: FunctionMaybe<string | RemoveAttribute>;
     /**
      * @deprecated
      * @non-standard
      */
-    superscriptshift?: FunctionMaybe<string | undefined>;
+    superscriptshift?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMsupElementAttributes<T> extends MathMLAttributes<T> {
     /**
      * @deprecated
      * @non-standard
      */
-    superscriptshift?: FunctionMaybe<string | undefined>;
+    superscriptshift?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMtableElementAttributes<T> extends MathMLAttributes<T> {
     /** @non-standard */
-    align?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | undefined>;
+    align?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | RemoveAttribute>;
     /** @non-standard */
-    columnalign?: FunctionMaybe<"center" | "left" | "right" | undefined>;
+    columnalign?: FunctionMaybe<"center" | "left" | "right" | RemoveAttribute>;
     /** @non-standard */
-    columnlines?: FunctionMaybe<"dashed" | "none" | "solid" | undefined>;
+    columnlines?: FunctionMaybe<"dashed" | "none" | "solid" | RemoveAttribute>;
     /** @non-standard */
-    columnspacing?: FunctionMaybe<string | undefined>;
+    columnspacing?: FunctionMaybe<string | RemoveAttribute>;
     /** @non-standard */
-    frame?: FunctionMaybe<"dashed" | "none" | "solid" | undefined>;
+    frame?: FunctionMaybe<"dashed" | "none" | "solid" | RemoveAttribute>;
     /** @non-standard */
-    framespacing?: FunctionMaybe<string | undefined>;
+    framespacing?: FunctionMaybe<string | RemoveAttribute>;
     /** @non-standard */
-    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | undefined>;
+    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | RemoveAttribute>;
     /** @non-standard */
-    rowlines?: FunctionMaybe<"dashed" | "none" | "solid" | undefined>;
+    rowlines?: FunctionMaybe<"dashed" | "none" | "solid" | RemoveAttribute>;
     /** @non-standard */
-    rowspacing?: FunctionMaybe<string | undefined>;
+    rowspacing?: FunctionMaybe<string | RemoveAttribute>;
     /** @non-standard */
-    width?: FunctionMaybe<string | undefined>;
+    width?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMtdElementAttributes<T> extends MathMLAttributes<T> {
-    columnspan?: FunctionMaybe<number | string | undefined>;
-    rowspan?: FunctionMaybe<number | string | undefined>;
+    columnspan?: FunctionMaybe<number | string | RemoveAttribute>;
+    rowspan?: FunctionMaybe<number | string | RemoveAttribute>;
     /** @non-standard */
-    columnalign?: FunctionMaybe<"center" | "left" | "right" | undefined>;
+    columnalign?: FunctionMaybe<"center" | "left" | "right" | RemoveAttribute>;
     /** @non-standard */
-    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | undefined>;
+    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | RemoveAttribute>;
   }
   interface MathMLMtextElementAttributes<T> extends MathMLAttributes<T> {}
   interface MathMLMtrElementAttributes<T> extends MathMLAttributes<T> {
     /** @non-standard */
-    columnalign?: FunctionMaybe<"center" | "left" | "right" | undefined>;
+    columnalign?: FunctionMaybe<"center" | "left" | "right" | RemoveAttribute>;
     /** @non-standard */
-    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | undefined>;
+    rowalign?: FunctionMaybe<"axis" | "baseline" | "bottom" | "center" | "top" | RemoveAttribute>;
   }
   interface MathMLMunderElementAttributes<T> extends MathMLAttributes<T> {
-    accentunder?: FunctionMaybe<"true" | boolean | undefined>;
+    accentunder?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface MathMLMunderoverElementAttributes<T> extends MathMLAttributes<T> {
-    accent?: FunctionMaybe<"true" | boolean | undefined>;
-    accentunder?: FunctionMaybe<"true" | boolean | undefined>;
+    accent?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
+    accentunder?: FunctionMaybe<BooleanAttribute | RemoveAttribute>;
   }
   interface MathMLSemanticsElementAttributes<T> extends MathMLAttributes<T> {}
 
-  /* MathMLDeprecatedElements */
-
   interface MathMLMencloseElementAttributes<T> extends MathMLAttributes<T> {
     /** @non-standard */
-    notation?: FunctionMaybe<string | undefined>;
+    notation?: FunctionMaybe<string | RemoveAttribute>;
   }
   interface MathMLMfencedElementAttributes<T> extends MathMLAttributes<T> {
-    close?: FunctionMaybe<string | undefined>;
-    open?: FunctionMaybe<string | undefined>;
-    separators?: FunctionMaybe<string | undefined>;
+    close?: FunctionMaybe<string | RemoveAttribute>;
+    open?: FunctionMaybe<string | RemoveAttribute>;
+    separators?: FunctionMaybe<string | RemoveAttribute>;
   }
+
+  // TAGS
 
   /** @type {HTMLElementTagNameMap} */
   interface HTMLElementTags {
@@ -3064,7 +3156,7 @@ export namespace JSX {
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdo
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
      */
-    bdo: HTMLAttributes<HTMLElement>;
+    bdo: BdoHTMLAttributes<HTMLElement>;
     /**
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLQuoteElement
@@ -3074,7 +3166,7 @@ export namespace JSX {
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/body
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLBodyElement
      */
-    body: HTMLAttributes<HTMLBodyElement>;
+    body: BodyHTMLAttributes<HTMLBodyElement>;
     /**
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLBRElement
@@ -3094,7 +3186,7 @@ export namespace JSX {
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/caption
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLTableCaptionElement
      */
-    caption: HTMLAttributes<HTMLTableCaptionElement>;
+    caption: CaptionHTMLAttributes<HTMLTableCaptionElement>;
     /**
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/cite
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
@@ -3593,12 +3685,6 @@ export namespace JSX {
      * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLUnknownElement
      */
     menuitem: HTMLAttributes<HTMLUnknownElement>;
-    /**
-     * @deprecated
-     * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/xxxxx
-     * @url https://developer.mozilla.org/en-US/docs/Web/API/HTMLUnknownElement
-     */
-    noindex: HTMLAttributes<HTMLUnknownElement>;
     /**
      * @deprecated
      * @url https://developer.mozilla.org/en-US/docs/Web/HTML/Element/param

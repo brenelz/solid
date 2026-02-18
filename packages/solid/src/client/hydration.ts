@@ -16,6 +16,15 @@ import {
 } from "@solidjs/signals";
 import { JSX } from "../jsx.js";
 
+declare module "@solidjs/signals" {
+  interface MemoOptions<T> {
+    deferStream?: boolean;
+  }
+  interface SignalOptions<T> {
+    deferStream?: boolean;
+  }
+}
+
 export type HydrationContext = {};
 
 type SharedConfig = {

@@ -41,6 +41,10 @@
     "test": {
       "outputs": []
     },
+    "@solidjs/web#test": {
+      "dependsOn": ["solid-js#build"],
+      "outputs": []
+    },
     "test-integration#test": {
       "dependsOn": ["solid-js#build"]
     },

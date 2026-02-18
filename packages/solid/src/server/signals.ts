@@ -115,12 +115,12 @@ export function createSignal<T>(value: Exclude<T, Function>, options?: SignalOpt
 export function createSignal<T>(
   fn: ComputeFunction<T>,
   initialValue?: T,
-  options?: SignalOptions<T> & { deferStream?: boolean }
+  options?: SignalOptions<T>
 ): Signal<T>;
 export function createSignal<T>(
   first?: T | ComputeFunction<T>,
   second?: T | SignalOptions<T>,
-  third?: SignalOptions<T> & { deferStream?: boolean }
+  third?: SignalOptions<T>
 ): Signal<T | undefined> {
   // Function form delegates to createMemo-based writable signal
   if (typeof first === "function") {
@@ -154,12 +154,12 @@ export function createMemo<Next extends Prev, Prev = Next>(
 export function createMemo<Next extends Prev, Init = Next, Prev = Next>(
   compute: ComputeFunction<Init | Prev, Next>,
   value: Init,
-  options?: MemoOptions<Next> & { deferStream?: boolean }
+  options?: MemoOptions<Next>
 ): Accessor<Next>;
 export function createMemo<Next extends Prev, Init, Prev>(
   compute: ComputeFunction<Init | Prev, Next>,
   value?: Init,
-  options?: MemoOptions<Next> & { deferStream?: boolean }
+  options?: MemoOptions<Next>
 ): Accessor<Next> {
   // Capture SSR context at creation time — async re-computations (via .then callbacks)
   // may run after a concurrent request has overwritten sharedConfig.context.

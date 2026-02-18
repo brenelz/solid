@@ -10,6 +10,9 @@ export function renderToString<T>(
   options?: {
     nonce?: string;
     renderId?: string;
+    noScripts?: boolean;
+    plugins?: any[];
+    onError?: (err: any) => void;
   }
 ): string {
   throwInBrowser(renderToString);
@@ -20,6 +23,9 @@ export function renderToStringAsync<T>(
     timeoutMs?: number;
     nonce?: string;
     renderId?: string;
+    noScripts?: boolean;
+    plugins?: any[];
+    onError?: (err: any) => void;
   }
 ): Promise<string> {
   throwInBrowser(renderToStringAsync);
@@ -29,12 +35,16 @@ export function renderToStream<T>(
   options?: {
     nonce?: string;
     renderId?: string;
+    noScripts?: boolean;
+    plugins?: any[];
     onCompleteShell?: (info: { write: (v: string) => void }) => void;
     onCompleteAll?: (info: { write: (v: string) => void }) => void;
+    onError?: (err: any) => void;
   }
 ): {
-  pipe: (writable: { write: (v: string) => void }) => void;
-  pipeTo: (writable: WritableStream) => void;
+  then: (fn: (html: string) => void) => void;
+  pipe: (writable: { write: (v: string) => void; end: () => void }) => void;
+  pipeTo: (writable: WritableStream) => Promise<void>;
 } {
   throwInBrowser(renderToStream);
 }

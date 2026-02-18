@@ -27,7 +27,7 @@ export default defineConfig({
     threads: false,
     isolate: false,
     globals: true,
-    exclude: ["**/node_modules/**", "wip_tests/**"]
+    exclude: ["**/node_modules/**", "wip_tests/**", "test/server/**"]
   },
   resolve: {
     conditions: ["development", "browser"],
