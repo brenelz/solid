@@ -124,6 +124,20 @@ export function createSignal<T>(
 ): Signal<T | undefined> {
   // Function form delegates to createMemo-based writable signal
   if (typeof first === "function") {
+    const ssrSource = third?.ssrSource;
+    if (ssrSource === "initial" || ssrSource === "client") {
+      // Skip computation — allocate owner for ID parity, return simple signal with initialValue
+      createOwner();
+      let value = second as T;
+      return [
+        () => value,
+        v => {
+          return ((value as any) = typeof v === "function" ? (v as (prev: T) => T)(value as T) : v);
+        }
+      ] as Signal<T | undefined>;
+    }
+    const memoOpts =
+      third?.deferStream || ssrSource ? { deferStream: third?.deferStream, ssrSource } : undefined;
     const memo = createMemo<Signal<T>>(
       p => {
         let value = (first as (prev?: T) => T)(p ? p[0]() : (second as T));
@@ -135,7 +149,7 @@ export function createSignal<T>(
         ] as Signal<T>;
       },
       undefined as any,
-      third?.deferStream ? { deferStream: true } : undefined
+      memoOpts
     );
     return [() => memo()[0](), (v => memo()[1](v as any)) as Setter<T | undefined>];
   }
@@ -180,7 +194,7 @@ export function createMemo<Next extends Prev, Init, Prev>(
         runWithObserver(comp, () => comp.compute(comp.value))
       );
       comp.computed = true;
-      processResult(comp, result, owner, ctx, options?.deferStream);
+      processResult(comp, result, owner, ctx, options?.deferStream, options?.ssrSource);
     } catch (err) {
       if (err instanceof NotReadyError) {
         // Chain re-computation when dependency resolves (mirrors archived createAsync's processSource pattern)
@@ -191,8 +205,11 @@ export function createMemo<Next extends Prev, Init, Prev>(
     }
   }
 
-  // Eager by default, lazy only if explicitly requested
-  if (!options?.lazy) {
+  const ssrSource = options?.ssrSource;
+  if (ssrSource === "initial" || ssrSource === "client") {
+    // Skip computation — use initialValue, no serialization. Owner created for ID parity.
+    comp.computed = true;
+  } else if (!options?.lazy) {
     update();
   }
 
@@ -208,13 +225,93 @@ export function createMemo<Next extends Prev, Init, Prev>(
   };
 }
 
+// === Deep Proxy for Patch Tracking (projections with async iterables) ===
+
+export type PatchOp =
+  | [path: PropertyKey[]]
+  | [path: PropertyKey[], value: any]
+  | [path: PropertyKey[], value: any, insert: 1];
+
+export function createDeepProxy<T extends object>(
+  target: T,
+  patches: PatchOp[],
+  basePath: PropertyKey[] = []
+): T {
+  const childProxies = new Map<PropertyKey, any>();
+
+  const handler: ProxyHandler<any> = {
+    get(obj, key, receiver) {
+      if (Array.isArray(obj)) {
+        if (key === "shift") {
+          return function () {
+            if (obj.length === 0) return undefined;
+            const removed = obj[0];
+            Array.prototype.shift.call(obj);
+            childProxies.clear();
+            patches.push([[...basePath, 0]]);
+            return removed;
+          };
+        }
+        if (key === "unshift") {
+          return function (...items: any[]) {
+            const result = Array.prototype.unshift.apply(obj, items);
+            childProxies.clear();
+            for (let i = 0; i < items.length; i++) {
+              patches.push([[...basePath, i], items[i], 1]);
+            }
+            return result;
+          };
+        }
+        if (key === "splice") {
+          return function (start: number, deleteCount?: number, ...items: any[]) {
+            const len = obj.length;
+            const s = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
+            const d =
+              deleteCount === undefined ? len - s : Math.min(Math.max(deleteCount, 0), len - s);
+            const removed = Array.prototype.splice.apply(obj, [s, d, ...items]);
+            childProxies.clear();
+            for (let i = 0; i < d; i++) patches.push([[...basePath, s]]);
+            for (let i = 0; i < items.length; i++)
+              patches.push([[...basePath, s + i], items[i], 1]);
+            return removed;
+          };
+        }
+      }
+
+      const value = Reflect.get(obj, key, receiver);
+      if (value !== null && typeof value === "object" && typeof key !== "symbol") {
+        if (!childProxies.has(key)) {
+          childProxies.set(key, createDeepProxy(value, patches, [...basePath, key]));
+        }
+        return childProxies.get(key);
+      }
+      return value;
+    },
+
+    set(obj, key, value) {
+      childProxies.delete(key);
+      patches.push([[...basePath, key], value]);
+      return Reflect.set(obj, key, value);
+    },
+
+    deleteProperty(obj, key) {
+      childProxies.delete(key);
+      patches.push([[...basePath, key]]);
+      return Reflect.deleteProperty(obj, key);
+    }
+  };
+
+  return new Proxy(target, handler);
+}
+
 /** Process async results from a computation (Promise / AsyncIterable) */
 function processResult<T>(
   comp: ServerComputation<T>,
   result: any,
   owner: Owner,
   ctx: any,
-  deferStream?: boolean
+  deferStream?: boolean,
+  ssrSource?: string
 ) {
   const id = owner.id;
   const uninitialized = comp.value === undefined;
@@ -224,9 +321,9 @@ function processResult<T>(
       (v: T) => {
         (result as any).s = 1;
         (result as any).v = comp.value = v;
-        comp.error = undefined; // clear NotReadyError after resolution
+        comp.error = undefined;
       },
-      () => {} // rejection handled downstream by Loading's IIFE catch
+      () => {}
     );
     if (ctx?.serialize && id) ctx.serialize(id, result, deferStream);
     if (uninitialized) {
@@ -238,17 +335,60 @@ function processResult<T>(
   const iterator = result?.[Symbol.asyncIterator];
   if (typeof iterator === "function") {
     const iter = iterator.call(result);
-    const promise = iter.next().then(
-      (v: IteratorResult<T>) => {
-        (promise as any).s = 1;
-        (promise as any).v = comp.value = v.value;
-        comp.error = undefined; // clear NotReadyError after resolution
-      },
-      () => {} // rejection handled downstream by Loading's IIFE catch
-    );
-    if (ctx?.serialize && id) ctx.serialize(id, promise, deferStream);
-    if (uninitialized) {
-      comp.error = new NotReadyError(promise);
+
+    if (ssrSource === "hybrid") {
+      // First-value-only: consume first yield, serialize as Promise
+      const promise = iter.next().then(
+        (v: IteratorResult<T>) => {
+          (promise as any).s = 1;
+          (promise as any).v = comp.value = v.value;
+          comp.error = undefined;
+        },
+        () => {}
+      );
+      if (ctx?.serialize && id) ctx.serialize(id, promise, deferStream);
+      if (uninitialized) {
+        comp.error = new NotReadyError(promise);
+      }
+    } else {
+      // Full streaming ("server" or default): eagerly start the first iteration
+      // (starts the generator), then provide a tapped wrapper for seroval to
+      // consume all values (first replayed, subsequent lazy).
+      const firstNext = iter.next();
+
+      const firstReady = firstNext.then(
+        (r: IteratorResult<T>) => {
+          if (!r.done) {
+            comp.value = r.value;
+            comp.error = undefined;
+          }
+        },
+        () => {}
+      );
+
+      let servedFirst = false;
+      const tapped = {
+        [Symbol.asyncIterator]: () => ({
+          next() {
+            if (!servedFirst) {
+              servedFirst = true;
+              return firstNext.then((r: IteratorResult<T>) => {
+                if (!r.done) comp.value = r.value;
+                return r;
+              });
+            }
+            return iter.next().then((r: IteratorResult<T>) => {
+              if (!r.done) comp.value = r.value;
+              return r;
+            });
+          }
+        })
+      };
+
+      if (ctx?.serialize && id) ctx.serialize(id, tapped, deferStream);
+      if (uninitialized) {
+        comp.error = new NotReadyError(firstReady);
+      }
     }
     return;
   }
@@ -373,16 +513,119 @@ export function createStore<T extends object>(
 
 export const createOptimisticStore = createStore;
 
+/**
+ * Wraps a store in a Proxy that throws NotReadyError on property reads
+ * while the async data is pending. Once markReady() is called, reads
+ * pass through to the underlying state.
+ */
+function createPendingProxy<T extends object>(
+  state: T,
+  source: Promise<any>
+): [proxy: Store<T>, markReady: () => void] {
+  let pending = true;
+  const proxy = new Proxy(state, {
+    get(obj, key, receiver) {
+      if (pending && typeof key !== "symbol") {
+        throw new NotReadyError(source);
+      }
+      return Reflect.get(obj, key, receiver);
+    }
+  });
+  return [proxy as Store<T>, () => (pending = false)];
+}
+
 export function createProjection<T extends object>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   initialValue: T = {} as T,
-  options?: { deferStream?: boolean }
+  options?: { deferStream?: boolean; ssrSource?: string }
 ): Store<T> {
   const ctx = sharedConfig.context;
   const owner = createOwner();
   const [state] = createStore(initialValue);
 
-  const result = runWithOwner(owner, () => fn(state as T));
+  if (options?.ssrSource === "initial" || options?.ssrSource === "client") {
+    return state;
+  }
+
+  const ssrSource = options?.ssrSource;
+  const useProxy = ssrSource !== "hybrid";
+  const patches: PatchOp[] = [];
+  const draft = useProxy ? createDeepProxy(state as any, patches) : (state as any as T);
+
+  const result = runWithOwner(owner, () => fn(draft));
+
+  // Async iterable (generator)
+  const iteratorFn = (result as any)?.[Symbol.asyncIterator];
+  if (typeof iteratorFn === "function") {
+    const iter = iteratorFn.call(result);
+
+    if (ssrSource === "hybrid") {
+      // First-value-only: consume first yield, serialize state as Promise
+      const promise = iter.next().then(
+        (r: IteratorResult<void | T>) => {
+          if (r.value !== undefined && r.value !== state) {
+            Object.assign(state, r.value);
+          }
+          (promise as any).s = 1;
+          (promise as any).v = state;
+          markReady();
+        },
+        () => {}
+      );
+      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise, options?.deferStream);
+      const [pending, markReady] = createPendingProxy(state, promise);
+      return pending;
+    } else {
+      // Full streaming: eagerly start first iteration, then provide tapped
+      // wrapper for seroval. First yield is the full state snapshot (aligned
+      // with Promise serialization). Subsequent yields are patch batches.
+      const firstNext = iter.next();
+
+      const firstReady = firstNext.then(
+        (r: IteratorResult<void | T>) => {
+          patches.length = 0;
+          if (!r.done) {
+            if (r.value !== undefined && r.value !== draft) {
+              Object.assign(state, r.value as T);
+            }
+          }
+          markReady();
+        },
+        () => {
+          markReady();
+        }
+      );
+
+      let servedFirst = false;
+      const tapped = {
+        [Symbol.asyncIterator]: () => ({
+          next() {
+            if (!servedFirst) {
+              servedFirst = true;
+              return firstNext.then((r: IteratorResult<void | T>) => {
+                if (!r.done) return { done: false, value: state };
+                return { done: true, value: undefined };
+              });
+            }
+            return iter.next().then((r: IteratorResult<void | T>) => {
+              const flushed = patches.splice(0);
+              if (!r.done) {
+                if (r.value !== undefined && r.value !== draft) {
+                  Object.assign(state, r.value as T);
+                }
+                return { done: false, value: flushed };
+              }
+              return { done: true, value: undefined };
+            });
+          }
+        })
+      };
+
+      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, tapped, options?.deferStream);
+      const [pending, markReady] = createPendingProxy(state, firstReady);
+      return pending;
+    }
+  }
 
   if (result instanceof Promise) {
     const promise = result.then(
@@ -392,15 +635,17 @@ export function createProjection<T extends object>(
         }
         (promise as any).s = 1;
         (promise as any).v = state;
+        markReady();
       },
       () => {}
     );
     if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise, options?.deferStream);
-    return state;
+    const [pending, markReady] = createPendingProxy(state, promise);
+    return pending;
   }
 
   // Synchronous: fn either mutated state directly (void) or returned a new value
-  if (result !== undefined && result !== state) {
+  if (result !== undefined && result !== state && result !== draft) {
     Object.assign(state, result as T);
   }
   return state;

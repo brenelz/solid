@@ -68,6 +68,8 @@ export {
   sharedConfig,
   Loading,
   enableHydration,
+  isHydrating,
+  onHydrationEnd,
   createMemo,
   createSignal,
   createStore,

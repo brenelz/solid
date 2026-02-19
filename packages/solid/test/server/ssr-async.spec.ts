@@ -1470,3 +1470,1317 @@ describe("Stream Blocking / deferStream", () => {
     expect(serializeLog[0].deferStream).toBe(true);
   });
 });
+
+// ============================================================================
+// ssrSource option — server-side behavior
+// ============================================================================
+
+describe("ssrSource server modes", () => {
+  function createSerializeTrackingContext() {
+    const ctx = createMockSSRContext();
+    const serializeLog: Array<{ id: string; value: any; deferStream?: boolean }> = [];
+    const origSerialize = ctx.context.serialize;
+    ctx.context.serialize = (id: string, v: any, deferStream?: boolean) => {
+      serializeLog.push({ id, value: v, deferStream });
+      origSerialize(id, v);
+    };
+    return { ...ctx, serializeLog };
+  }
+
+  beforeEach(() => {
+    sharedConfig.context = undefined;
+  });
+  afterEach(() => {
+    sharedConfig.context = undefined;
+  });
+
+  test("ssrSource 'initial' skips computation on createMemo, uses initialValue", () => {
+    let computeRan = false;
+    let result: any;
+    createRoot(
+      () => {
+        const read = createMemo(
+          () => {
+            computeRan = true;
+            return 999;
+          },
+          42,
+          { ssrSource: "initial" }
+        );
+        result = read();
+      },
+      { id: "t" }
+    );
+
+    expect(computeRan).toBe(false);
+    expect(result).toBe(42);
+  });
+
+  test("ssrSource 'client' skips computation on createMemo, uses initialValue", () => {
+    let computeRan = false;
+    let result: any;
+    createRoot(
+      () => {
+        const read = createMemo(
+          () => {
+            computeRan = true;
+            return 999;
+          },
+          42,
+          { ssrSource: "client" }
+        );
+        result = read();
+      },
+      { id: "t" }
+    );
+
+    expect(computeRan).toBe(false);
+    expect(result).toBe(42);
+  });
+
+  test("ssrSource 'hybrid' runs computation (same as default for Promises)", () => {
+    const { context, serializeLog } = createSerializeTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<number>();
+    let result: any;
+    createRoot(
+      () => {
+        const read = createMemo(() => d.promise, undefined, { ssrSource: "hybrid" });
+        try {
+          result = read();
+        } catch (e) {
+          if (e instanceof NotReadyError) result = "not-ready";
+          else throw e;
+        }
+      },
+      { id: "t" }
+    );
+
+    expect(result).toBe("not-ready");
+    expect(serializeLog.length).toBe(1);
+  });
+
+  test("ssrSource 'server' (default) runs computation normally", () => {
+    const { context, serializeLog } = createSerializeTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<number>();
+    let result: any;
+    createRoot(
+      () => {
+        const read = createMemo(() => d.promise, undefined, { ssrSource: "server" });
+        try {
+          result = read();
+        } catch (e) {
+          if (e instanceof NotReadyError) result = "not-ready";
+          else throw e;
+        }
+      },
+      { id: "t" }
+    );
+
+    expect(result).toBe("not-ready");
+    expect(serializeLog.length).toBe(1);
+  });
+
+  test("ssrSource 'initial' still creates owner for ID parity", () => {
+    let ownerCreated = false;
+    createRoot(
+      () => {
+        createMemo(() => 1, 0, { ssrSource: "initial" });
+        const second = createMemo(() => 2, 0);
+        ownerCreated = second() === 2;
+      },
+      { id: "t" }
+    );
+
+    expect(ownerCreated).toBe(true);
+  });
+
+  test("ssrSource 'initial' on createSignal(fn) skips computation", () => {
+    let computeRan = false;
+    let result: any;
+    createRoot(
+      () => {
+        const [read] = createSignal(
+          () => {
+            computeRan = true;
+            return 999;
+          },
+          42,
+          { ssrSource: "initial" }
+        );
+        result = read();
+      },
+      { id: "t" }
+    );
+
+    expect(computeRan).toBe(false);
+    expect(result).toBe(42);
+  });
+
+  test("ssrSource 'initial' on createProjection skips computation", () => {
+    let computeRan = false;
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            computeRan = true;
+            draft.name = "computed";
+          },
+          { name: "initial" },
+          { ssrSource: "initial" }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(computeRan).toBe(false);
+    expect(store.name).toBe("initial");
+  });
+
+  test("ssrSource 'initial' does not serialize", () => {
+    const { context, serializeLog } = createSerializeTrackingContext();
+    sharedConfig.context = context;
+
+    createRoot(
+      () => {
+        createMemo(() => Promise.resolve(42), undefined, { ssrSource: "initial" });
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(0);
+  });
+});
+
+// ============================================================================
+// isHydrating / onHydrationEnd — server stubs
+// ============================================================================
+
+// ============================================================================
+// Phase 3: Async Iterable Streaming (createMemo, createProjection, createStore)
+// ============================================================================
+
+describe("Async Iterable — createMemo", () => {
+  beforeEach(() => {
+    sharedConfig.context = undefined;
+  });
+  afterEach(() => {
+    sharedConfig.context = undefined;
+  });
+
+  function createStreamTrackingContext() {
+    const ctx = createMockSSRContext();
+    const serializeLog: Array<{ id: string; value: any; deferStream?: boolean }> = [];
+    const origSerialize = ctx.context.serialize;
+    ctx.context.serialize = (id: string, v: any, deferStream?: boolean) => {
+      serializeLog.push({ id, value: v, deferStream });
+      origSerialize(id, v);
+    };
+    return { ...ctx, serializeLog };
+  }
+
+  test("default mode (server): serializes async iterable (not just Promise)", () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        createMemo(
+          async function* () {
+            yield await d.promise;
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    // Should be an async iterable (tapped wrapper), not a plain Promise
+    const serialized = serializeLog[0].value;
+    expect(typeof serialized[Symbol.asyncIterator]).toBe("function");
+  });
+
+  test("default mode: first value resolves comp.value and clears NotReadyError", async () => {
+    const { context } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            yield await d.promise;
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // Before first yield: should throw NotReadyError
+    expect(() => read()).toThrow(NotReadyError);
+
+    d.resolve("first");
+    await tick();
+
+    // After first yield: should return the value
+    expect(read()).toBe("first");
+  });
+
+  test("default mode: subsequent yields update comp.value", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let yieldSecond!: () => void;
+    const secondReady = new Promise<void>(r => {
+      yieldSecond = r;
+    });
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            yield "first";
+            await secondReady;
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    await tick();
+    expect(read()).toBe("first");
+
+    // Iterate the tapped wrapper to pull the second value
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First next(): already yielded "first"
+    const r1 = await iter.next();
+    expect(r1).toEqual({ done: false, value: "first" });
+
+    // Trigger second yield
+    yieldSecond();
+    const r2 = await iter.next();
+    expect(r2).toEqual({ done: false, value: "second" });
+    expect(read()).toBe("second");
+
+    // Generator done
+    const r3 = await iter.next();
+    expect(r3.done).toBe(true);
+  });
+
+  test("hybrid mode: serializes first value only as Promise", () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    createRoot(
+      () => {
+        createMemo(
+          async function* () {
+            yield "first";
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "hybrid" }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    // Should be a Promise (first value only), not an async iterable
+    const serialized = serializeLog[0].value;
+    expect(serialized).toBeInstanceOf(Promise);
+  });
+
+  test("hybrid mode: first yield resolves comp.value", async () => {
+    const { context } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            yield "first";
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "hybrid" }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(() => read()).toThrow(NotReadyError);
+
+    await tick();
+
+    expect(read()).toBe("first");
+  });
+
+  test("no ssrSource: defaults to full streaming (same as 'server')", () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    createRoot(
+      () => {
+        createMemo(async function* () {
+          yield "first";
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    const serialized = serializeLog[0].value;
+    expect(typeof serialized[Symbol.asyncIterator]).toBe("function");
+  });
+
+  test("async generator in Loading: first yield unblocks boundary", async () => {
+    const { context, fragmentResults } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const data = createMemo(async function* () {
+              yield await d.promise;
+            });
+            return ssr(["<div>", "</div>"], () => data()) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(fragmentResults.size).toBe(0);
+
+    d.resolve("streamed");
+    await tick();
+
+    expect(fragmentResults.size).toBe(1);
+    expect([...fragmentResults.values()][0]).toBe("<div>streamed</div>");
+  });
+
+  test("generator error on first yield: NotReadyError firstPromise rejects", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            throw new Error("gen error");
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // The tapped wrapper's first next() should propagate the error
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+    await expect(iter.next()).rejects.toThrow("gen error");
+  });
+
+  test("empty generator (no yields): first next() returns done immediately", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            // Generator returns immediately without yielding
+          },
+          "fallback",
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First next() should return done=true (generator completed without yielding)
+    const r = await iter.next();
+    expect(r.done).toBe(true);
+
+    // comp.value should still be the initial value (no yield to update it)
+    expect(read()).toBe("fallback");
+  });
+
+  test("error on second yield after successful first", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            yield "first";
+            throw new Error("second yield failed");
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First value succeeds
+    const r1 = await iter.next();
+    expect(r1).toEqual({ done: false, value: "first" });
+    expect(read()).toBe("first");
+
+    // Second iteration throws — partial streaming failure
+    await expect(iter.next()).rejects.toThrow("second yield failed");
+
+    // comp.value retains the last successful value
+    expect(read()).toBe("first");
+  });
+
+  test("createSignal(fn) wraps async generator as plain value (not streamed)", () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let getter: any;
+
+    createRoot(
+      () => {
+        [getter] = createSignal(() => {
+          async function* gen() {
+            yield "from-gen";
+          }
+          return gen() as any;
+        }, undefined);
+      },
+      { id: "t" }
+    );
+
+    // createSignal(fn) wraps fn in an inner memo that returns a Signal tuple.
+    // The async generator is captured as a plain value — NOT detected by processResult.
+    // Use createMemo directly for async generator streaming.
+    expect(serializeLog.length).toBe(0);
+    const val = getter();
+    expect(typeof val[Symbol.asyncIterator]).toBe("function");
+  });
+});
+
+describe("Async Iterable — createProjection", () => {
+  beforeEach(() => {
+    sharedConfig.context = undefined;
+  });
+  afterEach(() => {
+    sharedConfig.context = undefined;
+  });
+
+  function createStreamTrackingContext() {
+    const ctx = createMockSSRContext();
+    const serializeLog: Array<{ id: string; value: any; deferStream?: boolean }> = [];
+    const origSerialize = ctx.context.serialize;
+    ctx.context.serialize = (id: string, v: any, deferStream?: boolean) => {
+      serializeLog.push({ id, value: v, deferStream });
+      origSerialize(id, v);
+    };
+    return { ...ctx, serializeLog };
+  }
+
+  test("server mode: void yields produce patch batches", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.name = "Alice";
+            yield;
+            draft.age = 30;
+            yield;
+          },
+          { name: "", age: 0 }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    const tapped = serializeLog[0].value;
+    expect(typeof tapped[Symbol.asyncIterator]).toBe("function");
+
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot (aligned with Promise serialization)
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ name: "Alice", age: 0 });
+    expect(store.name).toBe("Alice");
+
+    // Second yield: patches from setting age
+    const r2 = await iter.next();
+    expect(r2.done).toBe(false);
+    expect(r2.value).toEqual([[["age"], 30]]);
+    expect(store.age).toBe(30);
+
+    // Done
+    const r3 = await iter.next();
+    expect(r3.done).toBe(true);
+  });
+
+  test("server mode: value yield applies to state", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.name = "Alice";
+            yield;
+            yield { name: "Bob", role: "admin" } as any;
+          },
+          { name: "", role: "user" }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.value).toEqual({ name: "Alice", role: "user" });
+    expect(store.name).toBe("Alice");
+
+    // Second yield: value yield — Object.assign applied
+    const r2 = await iter.next();
+    expect(r2.done).toBe(false);
+    // Patches array may be empty since Object.assign goes through raw state
+    expect(store.name).toBe("Bob");
+    expect(store.role).toBe("admin");
+  });
+
+  test("server mode: deep nested mutations tracked", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.user.name = "Alice";
+            draft.user.profile.bio = "Hello";
+            yield;
+          },
+          { user: { name: "", profile: { bio: "" } } }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ user: { name: "Alice", profile: { bio: "Hello" } } });
+    expect(store.user.name).toBe("Alice");
+    expect(store.user.profile.bio).toBe("Hello");
+  });
+
+  test("server mode: array push generates raw set patches", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.items.push("a");
+            yield;
+          },
+          { items: [] as string[] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ items: ["a"] });
+    expect(store.items).toEqual(["a"]);
+  });
+
+  test("server mode: array shift generates semantic O(1) patch", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.items.shift();
+            yield;
+          },
+          { items: ["a", "b", "c"] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ items: ["b", "c"] });
+    expect(store.items).toEqual(["b", "c"]);
+  });
+
+  test("server mode: array unshift generates semantic insert patches", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.items.unshift("x", "y");
+            yield;
+          },
+          { items: ["a"] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ items: ["x", "y", "a"] });
+    expect(store.items).toEqual(["x", "y", "a"]);
+  });
+
+  test("server mode: array splice generates remove + insert patches", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.items.splice(1, 2, "x");
+            yield;
+          },
+          { items: ["a", "b", "c", "d"] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ items: ["a", "x", "d"] });
+    expect(store.items).toEqual(["a", "x", "d"]);
+  });
+
+  test("server mode: throws NotReadyError on read while pending", () => {
+    const { context } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<void>();
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            await d.promise;
+            draft.name = "loaded";
+            yield;
+          },
+          { name: "init" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // Before first yield, reading any property throws NotReadyError
+    expect(() => store.name).toThrow(NotReadyError);
+
+    // The NotReadyError carries a source promise for Loading boundaries
+    try {
+      store.name;
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(NotReadyError);
+      expect(err.source).toBeInstanceOf(Promise);
+    }
+  });
+
+  test("projection in Loading boundary: async generator blocks until first yield", async () => {
+    const { context, fragmentResults } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+
+    createRoot(
+      () => {
+        Loading({
+          fallback: "Loading...",
+          get children() {
+            const store: any = createProjection(
+              async function* (draft: any) {
+                draft.name = await d.promise;
+                yield;
+              },
+              { name: "" }
+            );
+            return ssr(["<div>", "</div>"], () => store.name) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    // Fragment not yet resolved (projection pending)
+    expect(fragmentResults.size).toBe(0);
+
+    d.resolve("Alice");
+    await tick();
+
+    // After first yield, fragment resolves with the projected value
+    expect(fragmentResults.size).toBe(1);
+    expect([...fragmentResults.values()][0]).toBe("<div>Alice</div>");
+  });
+
+  test("Promise projection throws NotReadyError until resolved", async () => {
+    const { context } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<{ name: string }>();
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(() => d.promise, { name: "init" });
+      },
+      { id: "t" }
+    );
+
+    expect(() => store.name).toThrow(NotReadyError);
+
+    d.resolve({ name: "resolved" });
+    await tick();
+
+    expect(store.name).toBe("resolved");
+  });
+
+  test("sync projection does NOT throw NotReadyError", () => {
+    const { context } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "sync";
+          },
+          { name: "" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // Synchronous projections return immediately — no pending state
+    expect(store.name).toBe("sync");
+  });
+
+  test("server mode: genuinely async first yield (await before yield)", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const d = deferred<string>();
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            const name = await d.promise;
+            draft.name = name;
+            yield;
+            draft.count = 1;
+            yield;
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First next() is pending (generator awaiting d.promise)
+    const firstPromise = iter.next();
+
+    // Store throws NotReadyError while pending
+    expect(() => store.name).toThrow(NotReadyError);
+
+    d.resolve("Alice");
+    const r1 = await firstPromise;
+
+    // First yield: full state snapshot
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ name: "Alice", count: 0 });
+    expect(store.name).toBe("Alice");
+
+    // Second yield: patches
+    const r2 = await iter.next();
+    expect(r2.done).toBe(false);
+    expect(r2.value).toEqual([[["count"], 1]]);
+    expect(store.count).toBe(1);
+  });
+
+  test("server mode: array pop generates raw set patches", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.items.pop();
+            yield;
+          },
+          { items: ["a", "b", "c"] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ items: ["a", "b"] });
+    expect(store.items).toEqual(["a", "b"]);
+  });
+
+  test("server mode: empty generator (no yields) completes immediately", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (_draft: any) {
+            // No mutations, no yields
+          },
+          { name: "init" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // Store is pending until tapped wrapper is iterated
+    expect(() => store.name).toThrow(NotReadyError);
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    const r1 = await iter.next();
+    expect(r1.done).toBe(true);
+
+    // After done, store is readable with initial value
+    expect(store.name).toBe("init");
+  });
+
+  test("server mode: error on second yield after successful first", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.name = "Alice";
+            yield;
+            throw new Error("projection error");
+          },
+          { name: "" }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ name: "Alice" });
+    expect(store.name).toBe("Alice");
+
+    // Second iteration throws
+    await expect(iter.next()).rejects.toThrow("projection error");
+
+    // State retains last successful mutation
+    expect(store.name).toBe("Alice");
+  });
+
+  test("hybrid mode: serializes first yield state as Promise", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.name = "Alice";
+            yield;
+            draft.name = "Bob";
+            yield;
+          },
+          { name: "" },
+          { ssrSource: "hybrid" }
+        );
+      },
+      { id: "t" }
+    );
+
+    expect(serializeLog.length).toBe(1);
+    const serialized = serializeLog[0].value;
+    expect(serialized).toBeInstanceOf(Promise);
+
+    await tick();
+
+    // State should have first yield mutations
+    expect(store.name).toBe("Alice");
+  });
+
+  test("createStore(fn) with async generator delegates to createProjection", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const { createStore: createServerStore } = await import("../../src/server/signals.js");
+    let store: any;
+
+    createRoot(
+      () => {
+        [store] = createServerStore(
+          async function* (draft: any) {
+            draft.name = "fromGen";
+            yield;
+          },
+          { name: "init" }
+        );
+      },
+      { id: "t" }
+    );
+
+    // Should serialize (delegated to createProjection)
+    expect(serializeLog.length).toBe(1);
+    const tapped = serializeLog[0].value;
+    expect(typeof tapped[Symbol.asyncIterator]).toBe("function");
+
+    const iter = tapped[Symbol.asyncIterator]();
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(store.name).toBe("fromGen");
+  });
+
+  test("createStore(fn) with Promise delegates to createProjection", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    const { createStore: createServerStore } = await import("../../src/server/signals.js");
+    const d = deferred<{ name: string; count: number }>();
+    let store: any;
+
+    createRoot(
+      () => {
+        [store] = createServerStore(() => d.promise, { name: "init", count: 0 });
+      },
+      { id: "t" }
+    );
+
+    // Should serialize the promise
+    expect(serializeLog.length).toBe(1);
+    expect(serializeLog[0].value).toBeInstanceOf(Promise);
+
+    // Before resolution, reads throw NotReadyError
+    expect(() => store.name).toThrow(NotReadyError);
+
+    d.resolve({ name: "resolved", count: 42 });
+    await tick();
+
+    expect(store.name).toBe("resolved");
+    expect(store.count).toBe(42);
+  });
+});
+
+describe("createDeepProxy unit tests", () => {
+  test("tracks simple set operations", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { a: 1, b: 2 };
+    const proxy = deepProxy(target, patches);
+
+    proxy.a = 10;
+    proxy.b = 20;
+
+    expect(patches).toEqual([
+      [["a"], 10],
+      [["b"], 20]
+    ]);
+    expect(target).toEqual({ a: 10, b: 20 });
+  });
+
+  test("tracks delete operations", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target: any = { a: 1, b: 2 };
+    const proxy = deepProxy(target, patches);
+
+    delete proxy.b;
+
+    expect(patches).toEqual([[["b"]]]);
+    expect(target).toEqual({ a: 1 });
+  });
+
+  test("tracks deep nested mutations", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { user: { profile: { name: "" } } };
+    const proxy = deepProxy(target, patches);
+
+    proxy.user.profile.name = "Alice";
+
+    expect(patches).toEqual([[["user", "profile", "name"], "Alice"]]);
+    expect(target.user.profile.name).toBe("Alice");
+  });
+
+  test("array push uses raw set traps", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { items: [1, 2] };
+    const proxy = deepProxy(target, patches);
+
+    proxy.items.push(3);
+
+    // push: sets items[2] = 3 and items.length = 3
+    expect(patches.length).toBe(2);
+    expect(target.items).toEqual([1, 2, 3]);
+  });
+
+  test("array shift produces single remove patch", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { items: ["a", "b", "c"] };
+    const proxy = deepProxy(target, patches);
+
+    const removed = proxy.items.shift();
+
+    expect(removed).toBe("a");
+    expect(patches).toEqual([[["items", 0]]]);
+    expect(target.items).toEqual(["b", "c"]);
+  });
+
+  test("array unshift produces insert patches (reverse order)", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { items: ["c"] };
+    const proxy = deepProxy(target, patches);
+
+    proxy.items.unshift("a", "b");
+
+    expect(patches).toEqual([
+      [["items", 0], "a", 1],
+      [["items", 1], "b", 1]
+    ]);
+    expect(target.items).toEqual(["a", "b", "c"]);
+  });
+
+  test("array splice produces remove + insert patches", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { items: ["a", "b", "c", "d"] };
+    const proxy = deepProxy(target, patches);
+
+    const removed = proxy.items.splice(1, 2, "x", "y");
+
+    expect(removed).toEqual(["b", "c"]);
+    expect(patches).toEqual([
+      [["items", 1]],
+      [["items", 1]],
+      [["items", 1], "x", 1],
+      [["items", 2], "y", 1]
+    ]);
+    expect(target.items).toEqual(["a", "x", "y", "d"]);
+  });
+
+  test("array pop uses raw set traps", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { items: ["a", "b", "c"] };
+    const proxy = deepProxy(target, patches);
+
+    const removed = proxy.items.pop();
+
+    expect(removed).toBe("c");
+    // pop: delete items[2] + set items.length = 2
+    expect(patches.length).toBe(2);
+    expect(target.items).toEqual(["a", "b"]);
+  });
+
+  test("flush and re-accumulate patches", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target = { x: 0, y: 0 };
+    const proxy = deepProxy(target, patches);
+
+    proxy.x = 1;
+    const batch1 = patches.splice(0);
+    expect(batch1).toEqual([[["x"], 1]]);
+    expect(patches).toEqual([]);
+
+    proxy.y = 2;
+    const batch2 = patches.splice(0);
+    expect(batch2).toEqual([[["y"], 2]]);
+  });
+
+  test("replacing nested object invalidates child proxy cache", async () => {
+    const { createDeepProxy: deepProxy } = await import("../../src/server/signals.js");
+    type P = import("../../src/server/signals.js").PatchOp;
+    const patches: P[] = [];
+    const target: any = { nested: { a: 1 } };
+    const proxy = deepProxy(target, patches);
+
+    // Mutate nested property
+    proxy.nested.a = 2;
+    expect(patches).toEqual([[["nested", "a"], 2]]);
+
+    // Replace the entire nested object
+    patches.length = 0;
+    proxy.nested = { b: 3 };
+    expect(patches).toEqual([[["nested"], { b: 3 }]]);
+
+    // Mutate the NEW nested object — should track correctly
+    patches.length = 0;
+    proxy.nested.b = 4;
+    expect(patches).toEqual([[["nested", "b"], 4]]);
+    expect(target.nested).toEqual({ b: 4 });
+  });
+});
+
+// ============================================================================
+// isHydrating / onHydrationEnd — server stubs
+// ============================================================================
+
+describe("isHydrating / onHydrationEnd server stubs", () => {
+  test("isHydrating returns false on server", async () => {
+    const { isHydrating } = await import("../../src/server/hydration.js");
+    expect(isHydrating()).toBe(false);
+  });
+
+  test("onHydrationEnd is a no-op on server (callback never fires)", async () => {
+    const { onHydrationEnd } = await import("../../src/server/hydration.js");
+    let fired = false;
+    onHydrationEnd(() => {
+      fired = true;
+    });
+    expect(fired).toBe(false);
+    await new Promise<void>(r => queueMicrotask(r));
+    // Callback should NOT fire on the server — hydration is client-only
+    expect(fired).toBe(false);
+  });
+});

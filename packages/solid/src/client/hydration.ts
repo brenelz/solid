@@ -19,9 +19,13 @@ import { JSX } from "../jsx.js";
 declare module "@solidjs/signals" {
   interface MemoOptions<T> {
     deferStream?: boolean;
+    ssrSource?: "server" | "hybrid" | "initial" | "client";
+    deferHydration?: boolean;
   }
   interface SignalOptions<T> {
     deferStream?: boolean;
+    ssrSource?: "server" | "hybrid" | "initial" | "client";
+    deferHydration?: boolean;
   }
 }
 
@@ -48,6 +52,51 @@ export const sharedConfig: SharedConfig = {
     return getNextChildId(o);
   }
 };
+
+// === Hydration phase API ===
+
+let _hydrationEndCallbacks: (() => void)[] | null = null;
+let _pendingBoundaries = 0;
+let _hydrationDone = false;
+
+/**
+ * Non-reactive boolean indicating whether client hydration is in progress.
+ * Not a signal — reading it does not create a reactive dependency.
+ */
+export function isHydrating(): boolean {
+  return sharedConfig.hydrating;
+}
+
+/**
+ * Registers a callback to run once when all hydration completes
+ * (all boundaries hydrated or cancelled). If hydration is already
+ * complete (or not hydrating), fires via queueMicrotask.
+ */
+export function onHydrationEnd(callback: () => void): void {
+  if (_hydrationDone || (!sharedConfig.hydrating && _pendingBoundaries === 0)) {
+    queueMicrotask(callback);
+    return;
+  }
+  if (!_hydrationEndCallbacks) _hydrationEndCallbacks = [];
+  _hydrationEndCallbacks.push(callback);
+}
+
+function drainHydrationCallbacks() {
+  if (_hydrationDone) return;
+  _hydrationDone = true;
+  _doneValue = true;
+  const cbs = _hydrationEndCallbacks;
+  _hydrationEndCallbacks = null;
+  if (cbs) for (const cb of cbs) cb();
+}
+
+function checkHydrationComplete() {
+  if (_pendingBoundaries === 0) drainHydrationCallbacks();
+}
+
+// Backing values for property interceptors (installed by enableHydration)
+let _hydratingValue = false;
+let _doneValue = false;
 
 // === Override slots for hydration-aware primitives (tree-shakeable) ===
 // Only assigned inside enableHydration(). If enableHydration is never called
@@ -100,17 +149,165 @@ function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
   try {
     window.fetch = () => new MockPromise() as any;
     Promise = MockPromise as any;
-    return fn(prev);
+    const result = fn(prev);
+    if (result && typeof result[Symbol.asyncIterator] === "function") {
+      result[Symbol.asyncIterator]().next();
+    }
+    return result;
   } finally {
     window.fetch = ogFetch;
     Promise = ogPromise;
   }
 }
 
+function consumeFirstSync(ai: any): [any, AsyncIterator<any>] {
+  const iter = ai[Symbol.asyncIterator]();
+  const r = iter.next();
+  const value = !(r instanceof Promise) && !r.done ? r.value : undefined;
+  return [value, iter];
+}
+
+function applyPatches(target: any, patches: any[]) {
+  for (const patch of patches) {
+    const path = patch[0];
+    let current = target;
+    for (let i = 0; i < path.length - 1; i++) current = current[path[i]];
+    const key = path[path.length - 1];
+    if (patch.length === 1) {
+      Array.isArray(current) ? current.splice(key as number, 1) : delete current[key];
+    } else if (patch.length === 3) {
+      (current as any[]).splice(key as number, 0, patch[1]);
+    } else {
+      current[key] = patch[1];
+    }
+  }
+}
+
+function scheduleIteratorConsumption(
+  iter: AsyncIterator<any>,
+  apply: (value: any) => void,
+  deferHydration?: boolean
+) {
+  const consume = () => {
+    while (true) {
+      const n: any = iter.next();
+      if (n instanceof Promise) {
+        n.then((r: any) => {
+          if (r.done) return;
+          apply(r.value);
+          consume();
+        });
+        return;
+      }
+      if (n.done) break;
+      apply(n.value);
+    }
+  };
+  if (deferHydration === false) {
+    queueMicrotask(consume);
+  } else {
+    onHydrationEnd(consume);
+  }
+}
+
+function isAsyncIterable(v: any): boolean {
+  return v != null && typeof v[Symbol.asyncIterator] === "function";
+}
+
+function hydrateSignalFromAsyncIterable(
+  coreFn: Function,
+  compute: any,
+  value: any,
+  options: any
+): any {
+  const parent = getOwner()!;
+  const expectedId = peekNextChildId(parent);
+  if (!sharedConfig.has!(expectedId)) return null;
+  const initP = sharedConfig.load!(expectedId);
+  if (!isAsyncIterable(initP)) return null;
+
+  const [firstValue, iter] = consumeFirstSync(initP);
+  const [get, set] = coreSignal(firstValue);
+  const result = coreFn(() => get(), firstValue, options);
+  scheduleIteratorConsumption(
+    iter,
+    (v: any) => {
+      set(() => v);
+      flush();
+    },
+    options?.deferHydration
+  );
+  return result;
+}
+
+function hydrateStoreFromAsyncIterable(coreFn: Function, initialValue: any, options: any): any {
+  const parent = getOwner()!;
+  const expectedId = peekNextChildId(parent);
+  if (!sharedConfig.has!(expectedId)) return null;
+  const initP = sharedConfig.load!(expectedId);
+  if (!isAsyncIterable(initP)) return null;
+
+  const [firstState, iter] = consumeFirstSync(initP);
+  const [store, setStore] = coreFn(() => {}, firstState ?? initialValue, options);
+  scheduleIteratorConsumption(
+    iter,
+    (patches: any) => {
+      setStore((d: any) => {
+        applyPatches(d, patches);
+      });
+    },
+    options?.deferHydration
+  );
+  return [store, setStore];
+}
+
 // --- Hydration-aware implementations ---
 
 function hydratedCreateMemo(compute: any, value?: any, options?: any) {
   if (!sharedConfig.hydrating) return coreMemo(compute, value, options);
+
+  const ssrSource = options?.ssrSource;
+
+  if (ssrSource === "client") {
+    const [hydrated, setHydrated] = coreSignal(false);
+    const memo = coreMemo(
+      (prev: any) => {
+        if (!hydrated()) return prev ?? value;
+        return compute(prev);
+      },
+      value,
+      options
+    );
+    if (options?.deferHydration === false) {
+      queueMicrotask(() => {
+        setHydrated(true);
+        flush();
+      });
+    } else {
+      onHydrationEnd(() => {
+        setHydrated(true);
+        flush();
+      });
+    }
+    return memo;
+  }
+
+  if (ssrSource === "initial") {
+    return coreMemo(
+      (prev: any) => {
+        if (!sharedConfig.hydrating) return compute(prev);
+        subFetch(compute, prev);
+        return prev ?? value;
+      },
+      value,
+      options
+    );
+  }
+
+  // "server", "hybrid", or undefined — use serialized value from server
+  const aiResult = hydrateSignalFromAsyncIterable(coreMemo, compute, value, options);
+  if (aiResult !== null) return aiResult;
+
   return coreMemo(
     (prev: any) => {
       const o = getOwner()!;
@@ -127,6 +324,49 @@ function hydratedCreateMemo(compute: any, value?: any, options?: any) {
 
 function hydratedCreateSignal(fn?: any, second?: any, third?: any) {
   if (typeof fn !== "function" || !sharedConfig.hydrating) return coreSignal(fn, second, third);
+
+  const ssrSource = third?.ssrSource;
+
+  if (ssrSource === "client") {
+    const [hydrated, setHydrated] = coreSignal(false);
+    const sig = coreSignal(
+      (prev: any) => {
+        if (!hydrated()) return prev ?? second;
+        return fn(prev);
+      },
+      second,
+      third
+    );
+    if (third?.deferHydration === false) {
+      queueMicrotask(() => {
+        setHydrated(true);
+        flush();
+      });
+    } else {
+      onHydrationEnd(() => {
+        setHydrated(true);
+        flush();
+      });
+    }
+    return sig;
+  }
+
+  if (ssrSource === "initial") {
+    return coreSignal(
+      (prev: any) => {
+        if (!sharedConfig.hydrating) return fn(prev);
+        subFetch(fn, prev);
+        return prev ?? second;
+      },
+      second,
+      third
+    );
+  }
+
+  // "server", "hybrid", or undefined
+  const aiResult = hydrateSignalFromAsyncIterable(coreSignal, fn, second, third);
+  if (aiResult !== null) return aiResult;
+
   return coreSignal(
     (prev: any) => {
       if (!sharedConfig.hydrating) return fn(prev);
@@ -173,6 +413,49 @@ function hydratedCreateErrorBoundary<U>(
 
 function hydratedCreateOptimistic(fn?: any, second?: any, third?: any) {
   if (typeof fn !== "function" || !sharedConfig.hydrating) return coreOptimistic(fn, second, third);
+
+  const ssrSource = third?.ssrSource;
+
+  if (ssrSource === "client") {
+    const [hydrated, setHydrated] = coreSignal(false);
+    const sig = coreOptimistic(
+      (prev: any) => {
+        if (!hydrated()) return prev ?? second;
+        return fn(prev);
+      },
+      second,
+      third
+    );
+    if (third?.deferHydration === false) {
+      queueMicrotask(() => {
+        setHydrated(true);
+        flush();
+      });
+    } else {
+      onHydrationEnd(() => {
+        setHydrated(true);
+        flush();
+      });
+    }
+    return sig;
+  }
+
+  if (ssrSource === "initial") {
+    return coreOptimistic(
+      (prev: any) => {
+        if (!sharedConfig.hydrating) return fn(prev);
+        subFetch(fn, prev);
+        return prev ?? second;
+      },
+      second,
+      third
+    );
+  }
+
+  // "server", "hybrid", or undefined
+  const aiResult = hydrateSignalFromAsyncIterable(coreOptimistic, fn, second, third);
+  if (aiResult !== null) return aiResult;
+
   return coreOptimistic(
     (prev: any) => {
       const o = getOwner()!;
@@ -187,7 +470,15 @@ function hydratedCreateOptimistic(fn?: any, second?: any, third?: any) {
   );
 }
 
-function wrapStoreFn(fn: any) {
+function wrapStoreFn(fn: any, ssrSource?: string) {
+  if (ssrSource === "initial") {
+    return (draft: any) => {
+      if (!sharedConfig.hydrating) return fn(draft);
+      subFetch(fn, draft);
+      return undefined;
+    };
+  }
+  // "server", "hybrid", or undefined
   return (draft: any) => {
     const o = getOwner()!;
     if (!sharedConfig.hydrating) return fn(draft);
@@ -201,18 +492,42 @@ function wrapStoreFn(fn: any) {
 function hydratedCreateStore(first?: any, second?: any, third?: any) {
   if (typeof first !== "function" || !sharedConfig.hydrating)
     return coreStore(first, second, third);
-  return coreStore(wrapStoreFn(first), second, third);
+  const ssrSource = third?.ssrSource;
+  if (ssrSource === "client" || ssrSource === "initial") {
+    return coreStore(second ?? {}, undefined, third);
+  }
+
+  const aiResult = hydrateStoreFromAsyncIterable(coreStore, second ?? {}, third);
+  if (aiResult !== null) return aiResult;
+
+  return coreStore(wrapStoreFn(first, ssrSource), second, third);
 }
 
 function hydratedCreateOptimisticStore(first?: any, second?: any, third?: any) {
   if (typeof first !== "function" || !sharedConfig.hydrating)
     return coreOptimisticStore(first, second, third);
-  return coreOptimisticStore(wrapStoreFn(first), second, third);
+  const ssrSource = third?.ssrSource;
+  if (ssrSource === "client" || ssrSource === "initial") {
+    return coreOptimisticStore(second ?? {}, undefined, third);
+  }
+
+  const aiResult = hydrateStoreFromAsyncIterable(coreOptimisticStore, second ?? {}, third);
+  if (aiResult !== null) return aiResult;
+
+  return coreOptimisticStore(wrapStoreFn(first, ssrSource), second, third);
 }
 
 function hydratedCreateProjection(fn: any, initialValue?: any, options?: any) {
   if (!sharedConfig.hydrating) return coreProjection(fn, initialValue, options);
-  return coreProjection(wrapStoreFn(fn), initialValue, options);
+  const ssrSource = options?.ssrSource;
+  if (ssrSource === "client" || ssrSource === "initial") {
+    return coreProjection((draft: any) => draft, initialValue, options);
+  }
+
+  const aiResult = hydrateStoreFromAsyncIterable(coreStore, initialValue, options);
+  if (aiResult !== null) return aiResult[0];
+
+  return coreProjection(wrapStoreFn(fn, ssrSource), initialValue, options);
 }
 
 // --- Public API ---
@@ -225,6 +540,43 @@ export function enableHydration() {
   _createProjection = hydratedCreateProjection;
   _createStore = hydratedCreateStore;
   _createOptimisticStore = hydratedCreateOptimisticStore;
+
+  // Install property interceptors for hydration lifecycle tracking.
+  // When dom-expressions' hydrate() sets hydrating = false after the sync walk,
+  // or when event-handler cancellation sets done = true, we detect it and
+  // drain onHydrationEnd callbacks at the right time.
+  _hydratingValue = sharedConfig.hydrating;
+  _doneValue = sharedConfig.done;
+  Object.defineProperty(sharedConfig, "hydrating", {
+    get() {
+      return _hydratingValue;
+    },
+    set(v: boolean) {
+      const was = _hydratingValue;
+      _hydratingValue = v;
+      if (!was && v) {
+        // New hydration session — reset tracking state
+        _hydrationDone = false;
+        _doneValue = false;
+        _pendingBoundaries = 0;
+      } else if (was && !v) {
+        checkHydrationComplete();
+      }
+    },
+    configurable: true,
+    enumerable: true
+  });
+  Object.defineProperty(sharedConfig, "done", {
+    get() {
+      return _doneValue;
+    },
+    set(v: boolean) {
+      _doneValue = v;
+      if (v) drainHydrationCallbacks();
+    },
+    configurable: true,
+    enumerable: true
+  });
 }
 
 // Wrapped primitives — delegate to override or core
@@ -280,23 +632,33 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
         else sharedConfig.gather!(id);
       }
       if (p) {
+        _pendingBoundaries++;
         const [s, set] = coreSignal(undefined, { equals: false });
         s();
         if (p !== "$$f") {
           p.then(
             () => {
+              _pendingBoundaries--;
               sharedConfig.gather!(id);
               sharedConfig.hydrating = true;
               set();
               flush();
               sharedConfig.hydrating = false;
             },
-            (err: any) =>
+            (err: any) => {
+              _pendingBoundaries--;
+              checkHydrationComplete();
               runWithOwner(o as Owner, () => {
                 throw err;
-              })
+              });
+            }
           );
-        } else queueMicrotask(set);
+        } else
+          queueMicrotask(() => {
+            _pendingBoundaries--;
+            set();
+            checkHydrationComplete();
+          });
         return props.fallback;
       }
     }

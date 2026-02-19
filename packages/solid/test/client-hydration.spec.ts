@@ -11,7 +11,9 @@ import {
   createOptimistic,
   createProjection,
   createStore,
-  createOptimisticStore
+  createOptimisticStore,
+  isHydrating,
+  onHydrationEnd
 } from "../src/client/hydration.js";
 import { Errored } from "../src/client/flow.js";
 
@@ -629,5 +631,748 @@ describe("createOptimisticStore(fn) Hydration", () => {
     flush();
 
     expect(store.name).toBe("initial");
+  });
+});
+
+// ============================================================================
+// isHydrating / onHydrationEnd
+// ============================================================================
+
+describe("isHydrating", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("returns true during hydration", () => {
+    startHydration({});
+    expect(isHydrating()).toBe(true);
+  });
+
+  test("returns false when not hydrating", () => {
+    expect(isHydrating()).toBe(false);
+  });
+
+  test("returns false after hydration stops", () => {
+    startHydration({});
+    expect(isHydrating()).toBe(true);
+    stopHydration();
+    expect(isHydrating()).toBe(false);
+  });
+});
+
+describe("onHydrationEnd", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("fires immediately (via microtask) when not hydrating", async () => {
+    let fired = false;
+    onHydrationEnd(() => {
+      fired = true;
+    });
+    expect(fired).toBe(false);
+    await new Promise<void>(r => queueMicrotask(r));
+    expect(fired).toBe(true);
+  });
+
+  test("fires after hydration completes (no pending boundaries)", async () => {
+    startHydration({});
+    let fired = false;
+    onHydrationEnd(() => {
+      fired = true;
+    });
+    expect(fired).toBe(false);
+    stopHydration();
+    expect(fired).toBe(true);
+  });
+});
+
+// ============================================================================
+// ssrSource — client-side modes
+// ============================================================================
+
+describe("ssrSource client modes", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("ssrSource 'server' (default) uses serialized value", () => {
+    startHydration({ t0: 42 });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999)();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(42);
+  });
+
+  test("ssrSource 'hybrid' uses serialized value for Promises (same as server)", () => {
+    startHydration({ t0: { v: 42, s: 1 } });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999, undefined, { ssrSource: "hybrid" })();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(42);
+  });
+
+  test("ssrSource 'initial' uses initialValue, ignores serialized data", () => {
+    startHydration({ t0: { v: 42, s: 1 } });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999, 0, { ssrSource: "initial" })();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(0);
+  });
+
+  test("ssrSource 'initial' captures deps via subFetch", () => {
+    startHydration({ t0: { v: 42, s: 1 } });
+
+    let fetchCalled = false;
+    const originalFetch = globalThis.fetch;
+    createRoot(
+      () => {
+        createMemo(
+          () => {
+            fetchCalled =
+              typeof globalThis.fetch !== "function" || globalThis.fetch !== originalFetch;
+            return 999;
+          },
+          0,
+          { ssrSource: "initial" }
+        )();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // subFetch replaces fetch with a mock — if it ran, fetchCalled should be true
+    expect(fetchCalled).toBe(true);
+  });
+
+  test("ssrSource 'client' uses initialValue during hydration", () => {
+    startHydration({});
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999, 0, { ssrSource: "client" })();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(0);
+  });
+
+  test("ssrSource 'client' with deferHydration: true runs computation after onHydrationEnd", () => {
+    startHydration({});
+
+    let result: any;
+    let computeCount = 0;
+    createRoot(
+      () => {
+        result = createMemo(
+          () => {
+            computeCount++;
+            return 999;
+          },
+          0,
+          { ssrSource: "client", deferHydration: true }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // During hydration, should return initialValue
+    expect(result()).toBe(0);
+
+    stopHydration();
+    flush();
+
+    // After hydration ends, the computation should have run
+    expect(result()).toBe(999);
+  });
+
+  test("ssrSource 'client' with deferHydration: false runs computation on microtask", async () => {
+    startHydration({});
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999, 0, { ssrSource: "client", deferHydration: false });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe(0);
+
+    // Wait for microtask
+    await new Promise<void>(r => queueMicrotask(r));
+    flush();
+
+    expect(result()).toBe(999);
+  });
+});
+
+describe("ssrSource client modes — createProjection", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("ssrSource 'server' (default) uses serialized store value", () => {
+    startHydration({ t0: { v: { name: "server", count: 42 }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+            draft.count = 999;
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("server");
+    expect(store.count).toBe(42);
+  });
+
+  test("ssrSource 'hybrid' uses serialized store value", () => {
+    startHydration({ t0: { v: { name: "hybrid-val", count: 7 }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "", count: 0 },
+          { ssrSource: "hybrid" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("hybrid-val");
+    expect(store.count).toBe(7);
+  });
+
+  test("ssrSource 'initial' uses initialValue, ignores serialized data", () => {
+    startHydration({ t0: { v: { name: "server" }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "computed";
+          },
+          { name: "init" },
+          { ssrSource: "initial" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // "initial" skips server data — fn runs against initialValue with no hydration override
+    expect(store.name).toBe("init");
+  });
+
+  test("ssrSource 'client' uses initialValue during hydration", () => {
+    startHydration({});
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "computed";
+          },
+          { name: "init" },
+          { ssrSource: "client" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // "client" mode uses identity fn during hydration — returns initialValue unchanged
+    expect(store.name).toBe("init");
+  });
+});
+
+describe("ssrSource client modes — createStore(fn)", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("ssrSource 'server' (default) uses serialized store value", () => {
+    startHydration({ t0: { v: { name: "server", count: 42 }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "client";
+            draft.count = 999;
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("server");
+    expect(store.count).toBe(42);
+  });
+
+  test("ssrSource 'hybrid' uses serialized store value", () => {
+    startHydration({ t0: { v: { name: "hybrid-val" }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "" },
+          { ssrSource: "hybrid" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("hybrid-val");
+  });
+
+  test("ssrSource 'initial' uses initialValue, ignores serialized data", () => {
+    startHydration({ t0: { v: { name: "server" }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "computed";
+          },
+          { name: "init" },
+          { ssrSource: "initial" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // "initial" skips server data — store gets plain initialValue
+    expect(store.name).toBe("init");
+  });
+
+  test("ssrSource 'client' uses initialValue during hydration", () => {
+    startHydration({});
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "computed";
+          },
+          { name: "init" },
+          { ssrSource: "client" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("init");
+  });
+});
+
+// === Phase 4: Async Iterable Hydration ===
+
+function createBufferedAsyncIterable(values: any[]) {
+  let idx = 0;
+  let pending: { resolve: (v: any) => void } | null = null;
+  const iter = {
+    next(): any {
+      if (idx < values.length) {
+        return { done: false, value: values[idx++] };
+      }
+      return new Promise(r => (pending = { resolve: r }));
+    }
+  };
+  return {
+    [Symbol.asyncIterator]: () => iter,
+    push(value: any) {
+      if (pending) {
+        const p = pending;
+        pending = null;
+        p.resolve({ done: false, value });
+      } else {
+        values.push(value);
+      }
+    },
+    complete() {
+      if (pending) {
+        const p = pending;
+        pending = null;
+        p.resolve({ done: true, value: undefined });
+      }
+    }
+  };
+}
+
+describe("Async Iterable Hydration — createMemo", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("server+AI: first value used for hydration", () => {
+    const ai = createBufferedAsyncIterable([42, 99]);
+    startHydration({ t0: ai });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 0)();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(42);
+  });
+
+  test("server+AI: deferHydration true — values applied after onHydrationEnd", async () => {
+    const ai = createBufferedAsyncIterable([42, 99]);
+    startHydration({ t0: ai });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 0);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe(42);
+
+    stopHydration();
+    flush();
+
+    expect(result()).toBe(99);
+  });
+
+  test("server+AI: deferHydration false — values applied after microtask", async () => {
+    const ai = createBufferedAsyncIterable([42, 99]);
+    startHydration({ t0: ai });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 0, undefined, { deferHydration: false });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe(42);
+
+    await new Promise<void>(r => queueMicrotask(r));
+    flush();
+
+    expect(result()).toBe(99);
+  });
+
+  test("server+AI: empty iterator — first value undefined", () => {
+    const ai = createBufferedAsyncIterable([]);
+    startHydration({ t0: ai });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => "fallback", "default");
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBeUndefined();
+  });
+
+  test("server+AI: pending async value applied after resolution", async () => {
+    const ai = createBufferedAsyncIterable([42]);
+    startHydration({ t0: ai });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 0);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe(42);
+
+    stopHydration();
+    flush();
+
+    ai.push(100);
+    await new Promise<void>(r => setTimeout(r, 10));
+    flush();
+
+    expect(result()).toBe(100);
+  });
+
+  test("Promise data still works (no regression)", () => {
+    startHydration({ t0: { v: 42, s: 1 } });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999)();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(42);
+  });
+
+  test("hybrid mode: Promise data unchanged", () => {
+    startHydration({ t0: { v: 42, s: 1 } });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => 999, undefined, { ssrSource: "hybrid" })();
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result).toBe(42);
+  });
+});
+
+describe("Async Iterable Hydration — createProjection", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("server+AI: first value (full state) used for hydration", () => {
+    const ai = createBufferedAsyncIterable([{ name: "Alice", count: 42 }]);
+    startHydration({ t0: ai });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("Alice");
+    expect(store.count).toBe(42);
+  });
+
+  test("server+AI: subsequent patches applied after onHydrationEnd", async () => {
+    const patches = [[["name"], "Bob"]];
+    const ai = createBufferedAsyncIterable([{ name: "Alice", count: 0 }, patches]);
+    startHydration({ t0: ai });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("Alice");
+
+    stopHydration();
+    flush();
+
+    expect(store.name).toBe("Bob");
+  });
+
+  test("server+AI: deferHydration false — patches applied after microtask", async () => {
+    const patches = [[["name"], "Bob"]];
+    const ai = createBufferedAsyncIterable([{ name: "Alice" }, patches]);
+    startHydration({ t0: ai });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "" },
+          { deferHydration: false }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("Alice");
+
+    await new Promise<void>(r => queueMicrotask(r));
+    flush();
+
+    expect(store.name).toBe("Bob");
+  });
+
+  test("server+AI: deep nested patch application", async () => {
+    const patches = [[["user", "profile", "bio"], "Updated"]];
+    const ai = createBufferedAsyncIterable([
+      { user: { name: "Alice", profile: { bio: "Hello" } } },
+      patches
+    ]);
+    startHydration({ t0: ai });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.user.name = "client";
+          },
+          { user: { name: "", profile: { bio: "" } } }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.user.name).toBe("Alice");
+    expect(store.user.profile.bio).toBe("Hello");
+
+    stopHydration();
+    flush();
+
+    expect(store.user.profile.bio).toBe("Updated");
+  });
+
+  test("Promise data still works for projection (no regression)", () => {
+    startHydration({ t0: { v: { name: "server", count: 42 }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        store = createProjection(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("server");
+    expect(store.count).toBe(42);
+  });
+});
+
+describe("Async Iterable Hydration — createStore(fn)", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("server+AI: first value used, patches applied after hydration", async () => {
+    const patches = [[["count"], 99]];
+    const ai = createBufferedAsyncIterable([{ name: "Alice", count: 0 }, patches]);
+    startHydration({ t0: ai });
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "", count: 0 }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("Alice");
+    expect(store.count).toBe(0);
+
+    stopHydration();
+    flush();
+
+    expect(store.count).toBe(99);
+  });
+
+  test("Promise data still works for store (no regression)", () => {
+    startHydration({ t0: { v: { name: "server" }, s: 1 } });
+
+    let store: any;
+    createRoot(
+      () => {
+        [store] = createStore(
+          (draft: any) => {
+            draft.name = "client";
+          },
+          { name: "" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(store.name).toBe("server");
   });
 });

@@ -36,6 +36,7 @@ export {
   NotReadyError,
   runWithOwner,
   snapshot,
+  createDeepProxy,
   untrack
 } from "./signals.js";
 
@@ -56,7 +57,8 @@ export type {
   Store,
   SolidStore,
   StoreNode,
-  StoreSetter
+  StoreSetter,
+  PatchOp
 } from "./signals.js";
 
 // Wrappers — context, children, dev symbols
@@ -76,7 +78,7 @@ export * from "./component.js";
 export * from "./flow.js";
 
 // SSR coordination
-export { sharedConfig, Loading, ssrHandleError } from "./hydration.js";
+export { sharedConfig, Loading, ssrHandleError, isHydrating, onHydrationEnd } from "./hydration.js";
 export type { HydrationContext } from "./hydration.js";
 
 // Types
