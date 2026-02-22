@@ -53,7 +53,7 @@ function withSolid<T extends object>(ComponentType: ComponentType<T>): Component
           (key: string, val: any) => (props[key as keyof T] = val)
         );
         element.addReleaseCallback(() => {
-          element.renderRoot.textContent = "";
+          (element.renderRoot as Node).textContent = "";
           dispose();
         });
 

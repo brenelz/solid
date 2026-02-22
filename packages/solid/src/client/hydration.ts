@@ -12,7 +12,10 @@ import {
   createProjection as coreProjection,
   createStore as coreStore,
   createOptimisticStore as coreOptimisticStore,
-  type Owner
+  type Owner,
+  type ProjectionOptions,
+  type Store,
+  type StoreSetter
 } from "@solidjs/signals";
 import { JSX } from "../jsx.js";
 
@@ -28,6 +31,11 @@ declare module "@solidjs/signals" {
     deferHydration?: boolean;
   }
 }
+
+export type HydrationProjectionOptions = ProjectionOptions & {
+  ssrSource?: "server" | "hybrid" | "initial" | "client";
+  deferHydration?: boolean;
+};
 
 export type HydrationContext = {};
 
@@ -592,14 +600,52 @@ export const createErrorBoundary: typeof coreErrorBoundary = ((...args: any[]) =
 export const createOptimistic: typeof coreOptimistic = ((...args: any[]) =>
   (_createOptimistic || coreOptimistic)(...args)) as typeof coreOptimistic;
 
-export const createProjection: typeof coreProjection = ((...args: any[]) =>
-  (_createProjection || coreProjection)(...args)) as typeof coreProjection;
+export const createProjection: <T extends object = {}>(
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  initialValue?: T,
+  options?: HydrationProjectionOptions
+) => Store<T> = ((...args: any[]) => (_createProjection || coreProjection)(...args)) as any;
 
-export const createStore: typeof coreStore = ((...args: any[]) =>
-  (_createStore || coreStore)(...args)) as typeof coreStore;
+type NoFn<T> = T extends Function ? never : T;
 
-export const createOptimisticStore: typeof coreOptimisticStore = ((...args: any[]) =>
-  (_createOptimisticStore || coreOptimisticStore)(...args)) as typeof coreOptimisticStore;
+export const createStore: {
+  <T extends object = {}>(store: NoFn<T> | Store<NoFn<T>>): [get: Store<T>, set: StoreSetter<T>];
+  <T extends object = {}>(
+    fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    store?: NoFn<T> | Store<NoFn<T>>,
+    options?: HydrationProjectionOptions
+  ): [get: Store<T>, set: StoreSetter<T>];
+} = ((...args: any[]) => (_createStore || coreStore)(...args)) as any;
+
+export const createOptimisticStore: {
+  <T extends object = {}>(store: NoFn<T> | Store<NoFn<T>>): [get: Store<T>, set: StoreSetter<T>];
+  <T extends object = {}>(
+    fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    store?: NoFn<T> | Store<NoFn<T>>,
+    options?: HydrationProjectionOptions
+  ): [get: Store<T>, set: StoreSetter<T>];
+} = ((...args: any[]) => (_createOptimisticStore || coreOptimisticStore)(...args)) as any;
+
+// === Module asset loading ===
+
+function loadModuleAssets(mapping: Record<string, string>): Promise<void> | undefined {
+  const hy = (globalThis as any)._$HY;
+  if (!hy) return;
+  if (!hy.modules) hy.modules = {};
+  if (!hy.loading) hy.loading = {};
+  const pending: Promise<void>[] = [];
+  for (const moduleUrl in mapping) {
+    if (hy.modules[moduleUrl]) continue;
+    const entryUrl = mapping[moduleUrl];
+    if (!hy.loading[moduleUrl]) {
+      hy.loading[moduleUrl] = import(/* @vite-ignore */ entryUrl).then(mod => {
+        hy.modules[moduleUrl] = mod;
+      });
+    }
+    pending.push(hy.loading[moduleUrl]);
+  }
+  return pending.length ? Promise.all(pending).then(() => {}) : undefined;
+}
 
 // === Loading component ===
 
@@ -624,6 +670,13 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
   return coreMemo(() => {
     const o = getOwner()!;
     const id = o.id!;
+
+    let assetPromise: Promise<void> | undefined;
+    if (sharedConfig.hydrating && sharedConfig.has!(id + "_assets")) {
+      const mapping = sharedConfig.load!(id + "_assets");
+      if (mapping && typeof mapping === "object") assetPromise = loadModuleAssets(mapping);
+    }
+
     if (sharedConfig.hydrating && sharedConfig.has!(id)) {
       let ref = sharedConfig.load!(id);
       let p: Promise<any> | any;
@@ -636,7 +689,8 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
         const [s, set] = coreSignal(undefined, { equals: false });
         s();
         if (p !== "$$f") {
-          p.then(
+          const waitFor = assetPromise ? Promise.all([p, assetPromise]) : p;
+          waitFor.then(
             () => {
               _pendingBoundaries--;
               sharedConfig.gather!(id);
@@ -653,14 +707,44 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
               });
             }
           );
-        } else
-          queueMicrotask(() => {
+        } else {
+          const afterAssets = () => {
             _pendingBoundaries--;
             set();
             checkHydrationComplete();
-          });
+          };
+          if (assetPromise) assetPromise.then(() => queueMicrotask(afterAssets));
+          else queueMicrotask(afterAssets);
+        }
         return props.fallback;
       }
+      if (assetPromise) {
+        _pendingBoundaries++;
+        const [s, set] = coreSignal(undefined, { equals: false });
+        s();
+        assetPromise.then(() => {
+          _pendingBoundaries--;
+          sharedConfig.gather!(id);
+          sharedConfig.hydrating = true;
+          set();
+          flush();
+          sharedConfig.hydrating = false;
+        });
+        return undefined;
+      }
+    } else if (assetPromise) {
+      _pendingBoundaries++;
+      const [s, set] = coreSignal(undefined, { equals: false });
+      s();
+      assetPromise.then(() => {
+        _pendingBoundaries--;
+        sharedConfig.gather!(id);
+        sharedConfig.hydrating = true;
+        set();
+        flush();
+        sharedConfig.hydrating = false;
+      });
+      return undefined;
     }
     return createLoadBoundary(
       () => props.children,

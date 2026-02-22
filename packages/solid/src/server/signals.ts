@@ -61,7 +61,8 @@ import {
   getContext,
   isWrappable,
   NotReadyError,
-  runWithOwner
+  runWithOwner,
+  onCleanup
 } from "@solidjs/signals";
 
 import type {
@@ -90,6 +91,7 @@ interface ServerComputation<T = any> {
   compute: ComputeFunction<any, T>;
   error: unknown;
   computed: boolean;
+  disposed: boolean;
 }
 
 let Observer: ServerComputation | null = null;
@@ -184,10 +186,19 @@ export function createMemo<Next extends Prev, Init, Prev>(
     value: value as any,
     compute: compute as ComputeFunction<any, Next>,
     error: undefined,
-    computed: false
+    computed: false,
+    disposed: false
   };
+  // When the owner is disposed (e.g., Loading boundary retries), mark the computation
+  // so in-flight Promise chains don't produce stale serialization.
+  runWithOwner(owner, () =>
+    onCleanup(() => {
+      comp.disposed = true;
+    })
+  );
 
   function update() {
+    if (comp.disposed) return;
     try {
       comp.error = undefined;
       const result = runWithOwner(owner, () =>
@@ -197,7 +208,6 @@ export function createMemo<Next extends Prev, Init, Prev>(
       processResult(comp, result, owner, ctx, options?.deferStream, options?.ssrSource);
     } catch (err) {
       if (err instanceof NotReadyError) {
-        // Chain re-computation when dependency resolves (mirrors archived createAsync's processSource pattern)
         (err as any).source?.then(() => update());
       }
       comp.error = err;
@@ -313,6 +323,7 @@ function processResult<T>(
   deferStream?: boolean,
   ssrSource?: string
 ) {
+  if (comp.disposed) return;
   const id = owner.id;
   const uninitialized = comp.value === undefined;
 
@@ -320,12 +331,14 @@ function processResult<T>(
     result.then(
       (v: T) => {
         (result as any).s = 1;
-        (result as any).v = comp.value = v;
+        (result as any).v = v;
+        if (comp.disposed) return;
+        comp.value = v;
         comp.error = undefined;
       },
       () => {}
     );
-    if (ctx?.serialize && id) ctx.serialize(id, result, deferStream);
+    if (ctx?.async && ctx.serialize && id) ctx.serialize(id, result, deferStream);
     if (uninitialized) {
       comp.error = new NotReadyError(result);
     }
@@ -337,16 +350,17 @@ function processResult<T>(
     const iter = iterator.call(result);
 
     if (ssrSource === "hybrid") {
-      // First-value-only: consume first yield, serialize as Promise
       const promise = iter.next().then(
         (v: IteratorResult<T>) => {
           (promise as any).s = 1;
-          (promise as any).v = comp.value = v.value;
+          (promise as any).v = v.value;
+          if (comp.disposed) return;
+          comp.value = v.value;
           comp.error = undefined;
         },
         () => {}
       );
-      if (ctx?.serialize && id) ctx.serialize(id, promise, deferStream);
+      if (ctx?.async && ctx.serialize && id) ctx.serialize(id, promise, deferStream);
       if (uninitialized) {
         comp.error = new NotReadyError(promise);
       }
@@ -358,6 +372,7 @@ function processResult<T>(
 
       const firstReady = firstNext.then(
         (r: IteratorResult<T>) => {
+          if (comp.disposed) return;
           if (!r.done) {
             comp.value = r.value;
             comp.error = undefined;
@@ -373,19 +388,19 @@ function processResult<T>(
             if (!servedFirst) {
               servedFirst = true;
               return firstNext.then((r: IteratorResult<T>) => {
-                if (!r.done) comp.value = r.value;
+                if (!r.done && !comp.disposed) comp.value = r.value;
                 return r;
               });
             }
             return iter.next().then((r: IteratorResult<T>) => {
-              if (!r.done) comp.value = r.value;
+              if (!r.done && !comp.disposed) comp.value = r.value;
               return r;
             });
           }
         })
       };
 
-      if (ctx?.serialize && id) ctx.serialize(id, tapped, deferStream);
+      if (ctx?.async && ctx.serialize && id) ctx.serialize(id, tapped, deferStream);
       if (uninitialized) {
         comp.error = new NotReadyError(firstReady);
       }
@@ -441,7 +456,14 @@ export function createRenderEffect<Next, Init>(
   try {
     const result = runWithOwner(owner, () =>
       runWithObserver(
-        { owner, value: value as any, compute: compute as any, error: undefined, computed: true },
+        {
+          owner,
+          value: value as any,
+          compute: compute as any,
+          error: undefined,
+          computed: true,
+          disposed: false
+        },
         () => (compute as ComputeFunction<any, Next>)(value as any)
       )
     );
@@ -547,6 +569,13 @@ export function createProjection<T extends object>(
     return state;
   }
 
+  let disposed = false;
+  runWithOwner(owner, () =>
+    onCleanup(() => {
+      disposed = true;
+    })
+  );
+
   const ssrSource = options?.ssrSource;
   const useProxy = ssrSource !== "hybrid";
   const patches: PatchOp[] = [];
@@ -560,19 +589,23 @@ export function createProjection<T extends object>(
     const iter = iteratorFn.call(result);
 
     if (ssrSource === "hybrid") {
-      // First-value-only: consume first yield, serialize state as Promise
       const promise = iter.next().then(
         (r: IteratorResult<void | T>) => {
+          (promise as any).s = 1;
+          if (disposed) {
+            (promise as any).v = state;
+            return;
+          }
           if (r.value !== undefined && r.value !== state) {
             Object.assign(state, r.value);
           }
-          (promise as any).s = 1;
           (promise as any).v = state;
           markReady();
         },
         () => {}
       );
-      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise, options?.deferStream);
+      if (ctx?.async && !ctx.noHydrate && owner.id)
+        ctx.serialize(owner.id, promise, options?.deferStream);
       const [pending, markReady] = createPendingProxy(state, promise);
       return pending;
     } else {
@@ -583,6 +616,7 @@ export function createProjection<T extends object>(
 
       const firstReady = firstNext.then(
         (r: IteratorResult<void | T>) => {
+          if (disposed) return;
           patches.length = 0;
           if (!r.done) {
             if (r.value !== undefined && r.value !== draft) {
@@ -603,11 +637,12 @@ export function createProjection<T extends object>(
             if (!servedFirst) {
               servedFirst = true;
               return firstNext.then((r: IteratorResult<void | T>) => {
-                if (!r.done) return { done: false, value: state };
-                return { done: true, value: undefined };
+                if (!r.done && !disposed) return { done: false, value: state };
+                return { done: r.done, value: undefined };
               });
             }
             return iter.next().then((r: IteratorResult<void | T>) => {
+              if (disposed) return { done: true, value: undefined };
               const flushed = patches.splice(0);
               if (!r.done) {
                 if (r.value !== undefined && r.value !== draft) {
@@ -621,7 +656,8 @@ export function createProjection<T extends object>(
         })
       };
 
-      if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, tapped, options?.deferStream);
+      if (ctx?.async && !ctx.noHydrate && owner.id)
+        ctx.serialize(owner.id, tapped, options?.deferStream);
       const [pending, markReady] = createPendingProxy(state, firstReady);
       return pending;
     }
@@ -630,16 +666,21 @@ export function createProjection<T extends object>(
   if (result instanceof Promise) {
     const promise = result.then(
       (v: void | T) => {
+        (promise as any).s = 1;
+        if (disposed) {
+          (promise as any).v = state;
+          return;
+        }
         if (v !== undefined && v !== state) {
           Object.assign(state, v);
         }
-        (promise as any).s = 1;
         (promise as any).v = state;
         markReady();
       },
       () => {}
     );
-    if (ctx && !ctx.noHydrate && owner.id) ctx.serialize(owner.id, promise, options?.deferStream);
+    if (ctx?.async && !ctx.noHydrate && owner.id)
+      ctx.serialize(owner.id, promise, options?.deferStream);
     const [pending, markReady] = createPendingProxy(state, promise);
     return pending;
   }

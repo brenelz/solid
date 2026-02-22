@@ -13,8 +13,10 @@ import {
   createStore,
   createOptimisticStore,
   isHydrating,
-  onHydrationEnd
+  onHydrationEnd,
+  Loading
 } from "../src/client/hydration.js";
+import { lazy } from "../src/client/component.js";
 import { Errored } from "../src/client/flow.js";
 
 // Enable the hydration-aware wrappers
@@ -1374,5 +1376,245 @@ describe("Async Iterable Hydration — createStore(fn)", () => {
     flush();
 
     expect(store.name).toBe("server");
+  });
+});
+
+// ============================================================================
+// lazy() hydration-aware + Loading asset integration
+// ============================================================================
+
+describe("lazy() hydration-aware rendering", () => {
+  afterEach(() => {
+    stopHydration();
+    delete (globalThis as any)._$HY;
+  });
+
+  test("lazy renders synchronously when module is cached in _$HY.modules", () => {
+    (globalThis as any)._$HY = {
+      modules: {
+        "/assets/Comp.js": { default: (props: any) => `Hello ${props.name}` }
+      },
+      loading: {},
+      r: {},
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({});
+
+    let result: any;
+    const LazyComp = lazy(
+      () => Promise.resolve({ default: (props: any) => `async ${props.name}` }),
+      "/assets/Comp.js"
+    );
+
+    createRoot(
+      () => {
+        result = LazyComp({ name: "World" });
+      },
+      { id: "t" }
+    );
+
+    expect(typeof result).toBe("function");
+    expect(result()).toBe("Hello World");
+  });
+
+  test("lazy throws when module not cached during hydration", () => {
+    (globalThis as any)._$HY = {
+      modules: {},
+      loading: {},
+      r: {},
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({});
+
+    const LazyComp = lazy(
+      () => Promise.resolve({ default: (props: any) => `resolved ${props.name}` }),
+      "/assets/Missing.js"
+    );
+
+    expect(() => {
+      createRoot(
+        () => {
+          LazyComp({ name: "World" });
+        },
+        { id: "t" }
+      );
+    }).toThrow(/not preloaded/);
+  });
+
+  test("lazy without moduleUrl always uses async path during hydration", () => {
+    (globalThis as any)._$HY = {
+      modules: {
+        "/assets/Comp.js": { default: (props: any) => `cached` }
+      },
+      loading: {},
+      r: {},
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({});
+
+    let result: any;
+    const LazyComp = lazy(() => Promise.resolve({ default: (props: any) => `async` }));
+
+    createRoot(
+      () => {
+        result = LazyComp({});
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(typeof result).toBe("function");
+  });
+});
+
+describe("Loading + asset waiting during hydration", () => {
+  afterEach(() => {
+    stopHydration();
+    delete (globalThis as any)._$HY;
+  });
+
+  test("Loading waits for assets alongside server data promise", async () => {
+    let resolveData!: () => void;
+    const dataPromise = new Promise<boolean>(r => (resolveData = () => r(true)));
+    const assetLoadPromise = new Promise<void>(() => {});
+
+    (globalThis as any)._$HY = {
+      modules: {},
+      loading: { "./Comp": assetLoadPromise },
+      r: {
+        t0: dataPromise,
+        t0_assets: { "./Comp": "/assets/comp.js" }
+      },
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({
+      t0: dataPromise,
+      t0_assets: { "./Comp": "/assets/comp.js" }
+    });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "loading...",
+          get children() {
+            return "content";
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(typeof result).toBe("function");
+    const initial = result();
+    expect(initial).toBe("loading...");
+  });
+
+  test("Loading returns undefined when server data resolved but assets pending", () => {
+    const assetLoadPromise = new Promise<void>(() => {});
+
+    (globalThis as any)._$HY = {
+      modules: {},
+      loading: { "./Comp": assetLoadPromise },
+      r: {
+        t0: { s: 1, v: true },
+        t0_assets: { "./Comp": "/assets/comp.js" }
+      },
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({
+      t0: { s: 1, v: true },
+      t0_assets: { "./Comp": "/assets/comp.js" }
+    });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "loading...",
+          get children() {
+            return "content";
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(typeof result).toBe("function");
+    const initial = result();
+    expect(initial).toBeUndefined();
+  });
+
+  test("Loading returns undefined when only assets pending (no server data)", () => {
+    const assetLoadPromise = new Promise<void>(() => {});
+
+    (globalThis as any)._$HY = {
+      modules: {},
+      loading: { "./Comp": assetLoadPromise },
+      r: {
+        t0_assets: { "./Comp": "/assets/comp.js" }
+      },
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({
+      t0_assets: { "./Comp": "/assets/comp.js" }
+    });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "loading...",
+          get children() {
+            return "content";
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(typeof result).toBe("function");
+    const initial = result();
+    expect(initial).toBeUndefined();
+  });
+
+  test("Loading hydrates immediately when no assets and no server data", () => {
+    (globalThis as any)._$HY = {
+      modules: {},
+      loading: {},
+      r: {},
+      events: [],
+      completed: new WeakSet()
+    };
+    startHydration({});
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "loading...",
+          get children() {
+            return "content";
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // Returns a function (createLoadBoundary memo) — hydrated immediately, not waiting
+    expect(typeof result).toBe("function");
+    // The inner value is a createLoadBoundary — not undefined (waiting) or fallback string
+    expect(result()).not.toBeUndefined();
+    expect(result()).not.toBe("loading...");
   });
 });

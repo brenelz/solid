@@ -1,4 +1,4 @@
-import { createMemo, NotReadyError } from "./signals.js";
+import { NotReadyError, createMemo } from "./signals.js";
 import { sharedConfig } from "./shared.js";
 import type { JSX } from "../jsx.js";
 
@@ -68,13 +68,18 @@ export function createComponent<T extends Record<string, any>>(
 
 /**
  * Lazy load a function component asynchronously.
- * On server, caches the promise and throws NotReadyError if not yet loaded.
+ * On server, returns a createMemo that throws NotReadyError until the module resolves,
+ * allowing resolveSSRNode to capture it as a fine-grained hole. The memo naturally
+ * scopes the owner so hydration IDs align with the client's createMemo in lazy().
+ * Requires `moduleUrl` for SSR — the bundler plugin injects the module specifier
+ * so the server can look up client chunk URLs from the asset manifest.
  */
 export function lazy<T extends Component<any>>(
-  fn: () => Promise<{ default: T }>
+  fn: () => Promise<{ default: T }>,
+  moduleUrl?: string
 ): T & { preload: () => Promise<{ default: T }> } {
-  let p: Promise<{ default: T; __url: string }> & { v?: T };
-  let load = (id?: string) => {
+  let p: Promise<{ default: T }> & { v?: T };
+  let load = () => {
     if (!p) {
       p = fn() as any;
       p.then(mod => {
@@ -86,17 +91,39 @@ export function lazy<T extends Component<any>>(
   const wrap: Component<ComponentProps<T>> & {
     preload?: () => Promise<{ default: T }>;
   } = props => {
-    const id = sharedConfig.getNextContextId();
-    load(id);
-    if (p.v) return p.v(props);
-    if (sharedConfig.context?.async) {
-      sharedConfig.context.block(
+    if (!moduleUrl) {
+      throw new Error(
+        "lazy() used in SSR without a moduleUrl. " +
+          "All lazy() components require a moduleUrl for correct hydration. " +
+          "This is typically injected by the bundler plugin."
+      );
+    }
+    if (!sharedConfig.context?.resolveAssets) {
+      throw new Error(
+        `lazy() called with moduleUrl "${moduleUrl}" but no asset manifest is set. ` +
+          "Pass a manifest option to renderToStream/renderToString."
+      );
+    }
+    load();
+    const ctx = sharedConfig.context;
+    if (!ctx?.registerAsset || !ctx.resolveAssets) return;
+    const assets = ctx.resolveAssets(moduleUrl!);
+    if (assets) {
+      for (let i = 0; i < assets.css.length; i++) ctx.registerAsset("style", assets.css[i]);
+      for (let i = 0; i < assets.js.length; i++) ctx.registerAsset("module", assets.js[i]);
+      ctx.registerModule?.(moduleUrl!, assets.js[0]);
+    }
+    if (ctx?.async) {
+      ctx.block(
         p.then(() => {
           (p as any).s = "success";
         })
       );
     }
-    throw new NotReadyError(p);
+    return createMemo(() => {
+      if (!p.v) throw new NotReadyError(p);
+      return p.v(props);
+    }) as unknown as JSX.Element;
   };
   wrap.preload = load;
   return wrap as T & { preload: () => Promise<{ default: T }> };

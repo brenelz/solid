@@ -1,7 +1,7 @@
 /**
  * @jsxImportSource solid-js
  */
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   renderToString,
   renderToStream,
@@ -12,7 +12,7 @@ import {
   Match,
   Errored
 } from "@solidjs/web";
-import { createMemo } from "solid-js";
+import { createMemo, lazy } from "solid-js";
 
 function delay(ms: number) {
   return new Promise(r => setTimeout(r, ms));
@@ -626,5 +626,725 @@ describe("SSR Streaming — Callbacks", () => {
 
     expect(allFired).toBe(true);
     expect(html).toContain("Done");
+  });
+});
+
+// ============================================================================
+// Asset Discovery — modulepreload emission + per-boundary seroval data
+// ============================================================================
+
+describe("SSR Streaming — Asset Discovery", () => {
+  test("first-level lazy emits modulepreload link in head", async () => {
+    const manifest = {
+      "./Home.tsx": { file: "/assets/Home-abc.js", imports: ["_shared"] },
+      _shared: { file: "/assets/shared-def.js" }
+    };
+
+    const Home = (props: any) => <div>Home Content</div>;
+    const LazyHome = lazy(() => asyncValue({ default: Home }), "./Home.tsx");
+    await LazyHome.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <LazyHome />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell } = await collectChunks(() => <App />, { manifest });
+    expect(shell).toContain('<link rel="modulepreload" href="/assets/Home-abc.js">');
+    expect(shell).toContain('<link rel="modulepreload" href="/assets/shared-def.js">');
+    expect(shell).toContain("Home Content");
+  });
+
+  test("lazy with no manifest throws during render", async () => {
+    const Home = (props: any) => <div>Home</div>;
+    const LazyHome = lazy(() => asyncValue({ default: Home }), "./Home.tsx");
+    await LazyHome.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <LazyHome />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    await expect(collectChunks(() => <App />)).rejects.toThrow(/asset manifest/);
+  });
+
+  test("deduplicates modulepreload links across boundaries", async () => {
+    const manifest = {
+      "./A.tsx": { file: "/assets/A.js", imports: ["_shared"] },
+      "./B.tsx": { file: "/assets/B.js", imports: ["_shared"] },
+      _shared: { file: "/assets/shared.js" }
+    };
+
+    const CompA = () => <div>A</div>;
+    const CompB = () => <div>B</div>;
+    const LazyA = lazy(() => asyncValue({ default: CompA }), "./A.tsx");
+    const LazyB = lazy(() => asyncValue({ default: CompB }), "./B.tsx");
+    await LazyA.preload!();
+    await LazyB.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading A...</span>}>
+              <LazyA />
+            </Loading>
+            <Loading fallback={<span>Loading B...</span>}>
+              <LazyB />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell } = await collectChunks(() => <App />, { manifest });
+    const sharedCount = (shell.match(/modulepreload" href="\/assets\/shared\.js"/g) || []).length;
+    expect(sharedCount).toBe(1);
+    expect(shell).toContain('<link rel="modulepreload" href="/assets/A.js">');
+    expect(shell).toContain('<link rel="modulepreload" href="/assets/B.js">');
+  });
+
+  test("$df remains pure DOM swap — no asset arguments", async () => {
+    const manifest = {
+      "./Lazy.tsx": { file: "/assets/lazy.js" }
+    };
+
+    const Comp = () => <div>Streamed</div>;
+    const LazyComp = lazy(
+      () => new Promise<{ default: typeof Comp }>(r => setTimeout(() => r({ default: Comp }), 20)),
+      "./Lazy.tsx"
+    );
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const html = await renderComplete(() => <App />, { manifest });
+    const dfCalls = html.match(/\$df\("[^"]+"\)/g) || [];
+    for (const call of dfCalls) {
+      expect(call).toMatch(/^\$df\("[^"]+"\)$/);
+    }
+  });
+
+  test("per-boundary module map serialized via seroval", async () => {
+    const manifest = {
+      "./Comp.tsx": { file: "/assets/comp.js", imports: ["_dep"] },
+      _dep: { file: "/assets/dep.js" }
+    };
+
+    const Comp = () => <div>Content</div>;
+    const LazyComp = lazy(() => asyncValue({ default: Comp }), "./Comp.tsx");
+    await LazyComp.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const html = await renderComplete(() => <App />, { manifest });
+    expect(html).toContain("_assets");
+    expect(html).toContain("./Comp.tsx");
+    expect(html).toContain("/assets/comp.js");
+    const scripts = html.match(/<script[^>]*>[\s\S]*?<\/script>/g) || [];
+    const assetScript = scripts.find(s => s.includes("_assets"));
+    expect(assetScript).toBeDefined();
+    expect(assetScript).toContain("./Comp.tsx");
+    expect(assetScript).toContain("/assets/comp.js");
+    expect(assetScript).not.toContain("/assets/dep.js");
+  });
+
+  test("nested lazy emits modulepreload before fragment template", async () => {
+    const manifest = {
+      "./Outer.tsx": { file: "/assets/outer.js" },
+      "./Inner.tsx": { file: "/assets/inner.js" }
+    };
+
+    const InnerComp = () => <span>Inner</span>;
+    const LazyInner = lazy(() => asyncValue({ default: InnerComp }, 10), "./Inner.tsx");
+
+    const OuterComp = () => (
+      <div>
+        Outer
+        <Loading fallback={<span>Loading Inner...</span>}>
+          <LazyInner />
+        </Loading>
+      </div>
+    );
+    const LazyOuter = lazy(
+      () =>
+        new Promise<{ default: typeof OuterComp }>(r =>
+          setTimeout(() => r({ default: OuterComp }), 20)
+        ),
+      "./Outer.tsx"
+    );
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading Outer...</span>}>
+              <LazyOuter />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const html = await renderComplete(() => <App />, { manifest });
+    expect(html).toContain('<link rel="modulepreload" href="/assets/outer.js">');
+    expect(html).toContain("Outer");
+    expect(html).toContain("Inner");
+  });
+
+  test("nested fragment folding serializes inner boundary module map", async () => {
+    const manifest = {
+      "./Inner.tsx": { file: "/assets/inner.js" }
+    };
+
+    const InnerComp = () => <span>InnerContent</span>;
+    const LazyInner = lazy(() => asyncValue({ default: InnerComp }, 5), "./Inner.tsx");
+
+    function App() {
+      const slowData = createMemo(async () => asyncValue("SlowData", 40));
+      const fastData = createMemo(async () => asyncValue("FastData", 5));
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Outer loading</span>}>
+              <p>{slowData()}</p>
+              <Loading fallback={<span>Inner loading</span>}>
+                <p>{fastData()}</p>
+                <LazyInner />
+              </Loading>
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const html = await renderComplete(() => <App />, { manifest });
+    expect(html).toContain("SlowData");
+    expect(html).toContain("FastData");
+    expect(html).toContain("InnerContent");
+    expect(html).toContain("_assets");
+    expect(html).toContain("./Inner.tsx");
+    expect(html).toContain("/assets/inner.js");
+  });
+});
+
+// ============================================================================
+// CSS Asset Handling in Streaming
+// ============================================================================
+
+describe("SSR Streaming — CSS Asset Handling", () => {
+  test("REPLACE_SCRIPT includes $dfs and $dfc helper definitions", async () => {
+    const manifest = {
+      "./Comp.tsx": { file: "/assets/comp.js" }
+    };
+
+    const Comp = () => <div>Content</div>;
+    const LazyComp = lazy(
+      () => new Promise<{ default: typeof Comp }>(r => setTimeout(() => r({ default: Comp }), 10)),
+      "./Comp.tsx"
+    );
+
+    function AsyncGate() {
+      const data = createMemo(async () => asyncValue("gate", 30));
+      return <span>{data()}</span>;
+    }
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <AsyncGate />
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { chunks } = await collectChunks(() => <App />, { manifest });
+    const streamOutput = chunks.slice(1).join("");
+    expect(streamOutput).toContain("function $dfs(");
+    expect(streamOutput).toContain("function $dfc(");
+    expect(streamOutput).toContain("function $df(");
+  });
+
+  test("pre-flush lazy CSS goes to head and uses $df (not $dfs) at fragment resolution", async () => {
+    const manifest = {
+      "./Styled.tsx": { file: "/assets/styled.js", css: ["/assets/styled.css"] }
+    };
+
+    const StyledComp = () => <div>Styled</div>;
+    const LazyStyled = lazy(
+      () =>
+        new Promise<{ default: typeof StyledComp }>(r =>
+          setTimeout(() => r({ default: StyledComp }), 10)
+        ),
+      "./Styled.tsx"
+    );
+
+    function AsyncGate() {
+      const data = createMemo(async () => asyncValue("gate", 30));
+      return <span>{data()}</span>;
+    }
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <AsyncGate />
+              <LazyStyled />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell, chunks } = await collectChunks(() => <App />, { manifest });
+    expect(shell).toContain('<link rel="stylesheet" href="/assets/styled.css">');
+
+    const streamOutput = chunks.slice(1).join("");
+    expect(streamOutput).toContain("<template id=");
+    expect(streamOutput).toContain("Styled");
+    const inlineCssLinks = (
+      streamOutput.match(/stylesheet" href="\/assets\/styled\.css" onload/g) || []
+    ).length;
+    expect(inlineCssLinks).toBe(0);
+
+    expect(streamOutput).toMatch(/\$df\("[^"]+"\)/);
+    expect(streamOutput).not.toMatch(/\$dfs\("/);
+  });
+
+  test("shared CSS between boundaries — only emitted once in head", async () => {
+    const manifest = {
+      "./A.tsx": { file: "/assets/a.js", css: ["/assets/shared.css"] },
+      "./B.tsx": { file: "/assets/b.js", css: ["/assets/shared.css"] }
+    };
+
+    const CompA = () => <div>A</div>;
+    const LazyA = lazy(() => asyncValue({ default: CompA }), "./A.tsx");
+    await LazyA.preload!();
+
+    const CompB = () => <div>B</div>;
+    const LazyB = lazy(
+      () =>
+        new Promise<{ default: typeof CompB }>(r => setTimeout(() => r({ default: CompB }), 10)),
+      "./B.tsx"
+    );
+
+    function AsyncGate() {
+      const data = createMemo(async () => asyncValue("gate", 30));
+      return <span>{data()}</span>;
+    }
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>A loading</span>}>
+              <LazyA />
+            </Loading>
+            <Loading fallback={<span>B loading</span>}>
+              <AsyncGate />
+              <LazyB />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell, chunks } = await collectChunks(() => <App />, { manifest });
+    const headCssCount = (shell.match(/stylesheet" href="\/assets\/shared\.css"/g) || []).length;
+    expect(headCssCount).toBe(1);
+
+    const streamOutput = chunks.slice(1).join("");
+    const streamCssOnload = (
+      streamOutput.match(/stylesheet" href="\/assets\/shared\.css" onload/g) || []
+    ).length;
+    expect(streamCssOnload).toBe(0);
+  });
+});
+
+// ============================================================================
+// renderToString — Asset Discovery
+// ============================================================================
+
+describe("renderToString — Asset Discovery", () => {
+  test("lazy emits modulepreload link in head", () => {
+    const manifest = {
+      "./Home.tsx": { file: "/assets/Home-abc.js", imports: ["_shared"] },
+      _shared: { file: "/assets/shared-def.js" }
+    };
+
+    const Home = (props: any) => <div>Home Content</div>;
+    const LazyHome = lazy(() => asyncValue({ default: Home }), "./Home.tsx");
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <LazyHome />
+            </Loading>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="modulepreload" href="/assets/Home-abc.js">');
+    expect(html).toContain('<link rel="modulepreload" href="/assets/shared-def.js">');
+  });
+
+  test("serializes module map for boundary", () => {
+    const manifest = {
+      "./Comp.tsx": { file: "/assets/comp.js", imports: ["_dep"] },
+      _dep: { file: "/assets/dep.js" }
+    };
+
+    const Comp = () => <div>Content</div>;
+    const LazyComp = lazy(() => asyncValue({ default: Comp }), "./Comp.tsx");
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="modulepreload" href="/assets/dep.js">');
+    const scripts = html.match(/<script[^>]*>[\s\S]*?<\/script>/g) || [];
+    const assetScript = scripts.find(s => s.includes("_assets"));
+    expect(assetScript).toBeDefined();
+    expect(assetScript).toContain("./Comp.tsx");
+    expect(assetScript).toContain("/assets/comp.js");
+    expect(assetScript).not.toContain("/assets/dep.js");
+  });
+
+  test("deduplicates modulepreload links across boundaries", () => {
+    const manifest = {
+      "./A.tsx": { file: "/assets/A.js", imports: ["_shared"] },
+      "./B.tsx": { file: "/assets/B.js", imports: ["_shared"] },
+      _shared: { file: "/assets/shared.js" }
+    };
+
+    const CompA = () => <div>A</div>;
+    const CompB = () => <div>B</div>;
+    const LazyA = lazy(() => asyncValue({ default: CompA }), "./A.tsx");
+    const LazyB = lazy(() => asyncValue({ default: CompB }), "./B.tsx");
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading A...</span>}>
+              <LazyA />
+            </Loading>
+            <Loading fallback={<span>Loading B...</span>}>
+              <LazyB />
+            </Loading>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    const sharedCount = (html.match(/modulepreload" href="\/assets\/shared\.js"/g) || []).length;
+    expect(sharedCount).toBe(1);
+    expect(html).toContain('<link rel="modulepreload" href="/assets/A.js">');
+    expect(html).toContain('<link rel="modulepreload" href="/assets/B.js">');
+  });
+
+  test("serializes $$f marker for deferred boundary", () => {
+    const manifest = {
+      "./Home.tsx": { file: "/assets/Home.js" }
+    };
+
+    const Home = () => <div>Home</div>;
+    const LazyHome = lazy(() => asyncValue({ default: Home }), "./Home.tsx");
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <LazyHome />
+            </Loading>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('"$$f"');
+    expect(html).toContain("Loading...");
+  });
+
+  test("does not serialize async data (promises)", () => {
+    const manifest = {
+      "./Profile.tsx": { file: "/assets/profile.js" }
+    };
+
+    const Profile = (props: any) => <div>{props.name}</div>;
+    const LazyProfile = lazy(() => asyncValue({ default: Profile }), "./Profile.tsx");
+
+    function App() {
+      const data = createMemo(() => asyncValue("Jon", 100));
+      return (
+        <Loading fallback={<span>Loading...</span>}>
+          <LazyProfile name={data()} />
+        </Loading>
+      );
+    }
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <App />
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain("_assets");
+    expect(html).toContain('"$$f"');
+    expect(html).not.toContain("new Promise");
+  });
+
+  test("lazy with no manifest throws", () => {
+    const Home = () => <div>Home</div>;
+    const LazyHome = lazy(() => asyncValue({ default: Home }), "./Home.tsx");
+
+    expect(() =>
+      renderToString(() => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <LazyHome />
+            </Loading>
+          </body>
+        </html>
+      ))
+    ).toThrow(/asset manifest/);
+  });
+});
+
+// ============================================================================
+// Entry CSS Auto-Discovery
+// ============================================================================
+
+describe("Entry CSS Auto-Discovery", () => {
+  test("entry CSS is injected into head via registerEntryAssets (streaming)", async () => {
+    const manifest = {
+      "src/index.tsx": { file: "/assets/index-abc.js", isEntry: true, css: ["/assets/main.css"] },
+      "./Lazy.tsx": { file: "/assets/lazy.js", isDynamicEntry: true }
+    };
+
+    const Comp = () => <div>Content</div>;
+    const LazyComp = lazy(() => asyncValue({ default: Comp }), "./Lazy.tsx");
+    await LazyComp.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell } = await collectChunks(() => <App />, { manifest });
+    expect(shell).toContain('<link rel="stylesheet" href="/assets/main.css">');
+    expect(shell).toContain('<link rel="modulepreload" href="/assets/lazy.js">');
+  });
+
+  test("entry CSS is injected into head via registerEntryAssets (renderToString)", () => {
+    const manifest = {
+      "src/index.tsx": { file: "/assets/index-abc.js", isEntry: true, css: ["/assets/main.css"] }
+    };
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <div>Hello</div>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="stylesheet" href="/assets/main.css">');
+  });
+
+  test("entry CSS from transitive imports is collected", async () => {
+    const manifest = {
+      "src/index.tsx": { file: "/assets/index.js", isEntry: true, imports: ["src/shared.tsx"] },
+      "src/shared.tsx": { file: "/assets/shared.js", css: ["/assets/shared.css"] }
+    };
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <div>Hello</div>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="stylesheet" href="/assets/shared.css">');
+  });
+
+  test("no entry in manifest — no CSS injected, no crash", () => {
+    const manifest = {
+      "./Lazy.tsx": { file: "/assets/lazy.js", isDynamicEntry: true }
+    };
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <div>Hello</div>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).not.toContain("stylesheet");
+  });
+
+  test("entry CSS deduplicates with lazy component CSS", async () => {
+    const manifest = {
+      "src/index.tsx": { file: "/assets/index.js", isEntry: true, css: ["/assets/shared.css"] },
+      "./Styled.tsx": {
+        file: "/assets/styled.js",
+        isDynamicEntry: true,
+        css: ["/assets/shared.css", "/assets/styled.css"]
+      }
+    };
+
+    const Comp = () => <div>Styled</div>;
+    const LazyComp = lazy(() => asyncValue({ default: Comp }), "./Styled.tsx");
+    await LazyComp.preload!();
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <LazyComp />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell } = await collectChunks(() => <App />, { manifest });
+    const sharedCssCount = (shell.match(/stylesheet" href="\/assets\/shared\.css"/g) || []).length;
+    expect(sharedCssCount).toBe(1);
+    expect(shell).toContain('<link rel="stylesheet" href="/assets/styled.css">');
   });
 });

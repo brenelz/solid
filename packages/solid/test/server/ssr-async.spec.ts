@@ -2784,3 +2784,602 @@ describe("isHydrating / onHydrationEnd server stubs", () => {
     expect(fired).toBe(false);
   });
 });
+
+// ============================================================================
+// Asset Manifest + lazy() Asset Registration
+// ============================================================================
+
+describe("Asset Manifest + lazy()", () => {
+  let savedContext: any;
+
+  beforeEach(() => {
+    savedContext = sharedConfig.context;
+  });
+
+  afterEach(() => {
+    sharedConfig.context = savedContext;
+  });
+
+  test("lazy() throws when rendered without moduleUrl", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    context.resolveAssets = () => null;
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "Hello";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }));
+    await LazyComp.preload!();
+
+    expect(() => {
+      createRoot(
+        () => {
+          LazyComp({});
+        },
+        { id: "t" }
+      );
+    }).toThrow(/moduleUrl/);
+  });
+
+  test("lazy() throws when no manifest is set (no resolveAssets on context)", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "Hello";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }), "./Comp.tsx");
+    await LazyComp.preload!();
+
+    expect(() => {
+      createRoot(
+        () => {
+          LazyComp({});
+        },
+        { id: "t" }
+      );
+    }).toThrow(/asset manifest/);
+  });
+
+  test("lazy() with moduleUrl registers assets and module mapping", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const registered: Array<{ type: string; url: string }> = [];
+    const modules: Record<string, string> = {};
+    const { context } = createMockSSRContext();
+    context.registerAsset = (type: string, url: string) => registered.push({ type, url });
+    context.registerModule = (moduleUrl: string, entryUrl: string) => {
+      modules[moduleUrl] = entryUrl;
+    };
+    context.resolveAssets = (id: string) => {
+      if (id === "./MyComp.tsx")
+        return { js: ["/assets/MyComp-abc123.js", "/assets/shared-def456.js"], css: [] };
+      return null;
+    };
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "Hello";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }), "./MyComp.tsx");
+    await LazyComp.preload!();
+
+    createRoot(
+      () => {
+        LazyComp({});
+      },
+      { id: "t" }
+    );
+
+    expect(registered).toEqual([
+      { type: "module", url: "/assets/MyComp-abc123.js" },
+      { type: "module", url: "/assets/shared-def456.js" }
+    ]);
+    expect(modules).toEqual({ "./MyComp.tsx": "/assets/MyComp-abc123.js" });
+  });
+
+  test("lazy() with moduleUrl classifies .css URLs as style", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const registered: Array<{ type: string; url: string }> = [];
+    const { context } = createMockSSRContext();
+    context.registerAsset = (type: string, url: string) => registered.push({ type, url });
+    context.resolveAssets = (id: string) => {
+      if (id === "./Styled.tsx")
+        return { js: ["/assets/Styled-abc.js"], css: ["/assets/Styled-abc.css"] };
+      return null;
+    };
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "styled";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }), "./Styled.tsx");
+    await LazyComp.preload!();
+
+    createRoot(
+      () => {
+        LazyComp({});
+      },
+      { id: "t" }
+    );
+
+    expect(registered).toEqual([
+      { type: "style", url: "/assets/Styled-abc.css" },
+      { type: "module", url: "/assets/Styled-abc.js" }
+    ]);
+  });
+
+  test("lazy() with missing manifest entry does not crash", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const registered: Array<{ type: string; url: string }> = [];
+    const { context } = createMockSSRContext();
+    context.registerAsset = (type: string, url: string) => registered.push({ type, url });
+    context.resolveAssets = () => null;
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "missing";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }), "./NotInManifest.tsx");
+    await LazyComp.preload!();
+
+    createRoot(
+      () => {
+        LazyComp({});
+      },
+      { id: "t" }
+    );
+
+    expect(registered).toEqual([]);
+  });
+
+  test("lazy() without registerAsset on context does not crash", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    context.resolveAssets = () => ({ js: ["/assets/comp.js"], css: [] });
+    sharedConfig.context = context;
+
+    const Comp = (props: any) => "ok";
+    const LazyComp = lazy(() => Promise.resolve({ default: Comp }), "./Comp.tsx");
+    await LazyComp.preload!();
+
+    expect(() => {
+      createRoot(
+        () => {
+          LazyComp({});
+        },
+        { id: "t" }
+      );
+    }).not.toThrow();
+  });
+
+  test("lazy() registers assets even when component is not yet loaded (async path)", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const registered: Array<{ type: string; url: string }> = [];
+    const { context } = createMockSSRContext();
+    context.registerAsset = (type: string, url: string) => registered.push({ type, url });
+    context.resolveAssets = (id: string) => {
+      if (id === "./Async.tsx") return { js: ["/assets/async.js"], css: [] };
+      return null;
+    };
+    sharedConfig.context = context;
+
+    const d = deferred<{ default: (props: any) => string }>();
+    const LazyComp = lazy(() => d.promise, "./Async.tsx");
+
+    let thunk: any;
+    let thunkThrew = false;
+    createRoot(
+      () => {
+        thunk = LazyComp({});
+      },
+      { id: "t" }
+    );
+
+    expect(typeof thunk).toBe("function");
+    try {
+      thunk();
+    } catch (e) {
+      if (e instanceof NotReadyError) thunkThrew = true;
+      else throw e;
+    }
+    expect(thunkThrew).toBe(true);
+    expect(registered).toEqual([{ type: "module", url: "/assets/async.js" }]);
+
+    d.resolve({ default: () => "done" });
+  });
+});
+
+// ============================================================================
+// lazy() single-render behavior (no Loading boundary)
+// ============================================================================
+
+describe("lazy() single-render without Loading", () => {
+  let savedContext: any;
+
+  beforeEach(() => {
+    savedContext = sharedConfig.context;
+  });
+
+  afterEach(() => {
+    sharedConfig.context = savedContext;
+  });
+
+  test("top-level lazy thunk creates hole, component runs once after resolve", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./Direct.tsx" ? { js: ["/assets/direct.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let componentRunCount = 0;
+    const Comp = (_props: {}) => {
+      componentRunCount++;
+      return ssr(["<div>direct</div>"], ...[]) as any;
+    };
+
+    const dModule = deferred<{ default: typeof Comp }>();
+    const LazyComp = lazy(() => dModule.promise, "./Direct.tsx");
+
+    let ret: any;
+    createRoot(
+      () => {
+        ret = ssr(["<main>", "</main>"], () => LazyComp({})) as any;
+      },
+      { id: "t" }
+    );
+
+    // Thunk created a hole — template has pending promises
+    expect(ret.p.length).toBe(1);
+    expect(ret.h.length).toBe(1);
+    expect(componentRunCount).toBe(0);
+
+    // Resolve the lazy module
+    dModule.resolve({ default: Comp });
+    await tick();
+
+    // Re-execute holes (like the streaming runtime does)
+    ret = ssr(ret.t, ...ret.h);
+    expect(ret.p.length).toBe(0);
+    expect(componentRunCount).toBe(1);
+    expect(ret.t.join("")).toContain("direct");
+  });
+
+  test("wrapper component runs once, lazy child resolved via hole retry", async () => {
+    const { lazy, createComponent } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./Child.tsx" ? { js: ["/assets/child.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let wrapperRunCount = 0;
+    let childRunCount = 0;
+
+    const Child = () => {
+      childRunCount++;
+      return ssr(["<span>child</span>"], ...[]) as any;
+    };
+
+    const dModule = deferred<{ default: typeof Child }>();
+    const LazyChild = lazy(() => dModule.promise, "./Child.tsx");
+
+    let ret: any;
+    createRoot(
+      () => {
+        const Wrapper = () => {
+          wrapperRunCount++;
+          return ssr(["<div>", "</div>"], () => createComponent(LazyChild, {})) as any;
+        };
+        ret = ssr(["<main>", "</main>"], () => Wrapper()) as any;
+      },
+      { id: "t" }
+    );
+
+    expect(ret.p.length).toBe(1);
+    expect(wrapperRunCount).toBe(1);
+    expect(childRunCount).toBe(0);
+
+    dModule.resolve({ default: Child });
+    await tick();
+
+    // Re-execute holes — only the lazy hole re-runs, not the entire wrapper
+    ret = ssr(ret.t, ...ret.h);
+    expect(ret.p.length).toBe(0);
+    expect(wrapperRunCount).toBe(1);
+    expect(childRunCount).toBe(1);
+    expect(ret.t.join("")).toContain("child");
+  });
+
+  test("data memo + lazy child — data compute runs once, no Loading needed", async () => {
+    const { lazy, createComponent } = await import("../../src/server/component.js");
+
+    const { context } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./DataView.tsx" ? { js: ["/assets/dataview.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let dataComputeCount = 0;
+    const dData = deferred<string>();
+    const dModule = deferred<{ default: (props: any) => any }>();
+
+    const View = (props: { value: any }) => ssr(["<p>", "</p>"], () => props.value) as any;
+
+    const LazyView = lazy(() => dModule.promise, "./DataView.tsx");
+
+    let ret: any;
+    createRoot(
+      () => {
+        const data = createMemo(() => {
+          dataComputeCount++;
+          return dData.promise;
+        });
+        ret = ssr(["<section>", "</section>"], () =>
+          createComponent(LazyView, {
+            get value() {
+              return data();
+            }
+          })
+        ) as any;
+      },
+      { id: "t" }
+    );
+
+    // Two holes: one from lazy thunk, data memo's NotReadyError is inside the thunk's props
+    expect(ret.p.length).toBeGreaterThanOrEqual(1);
+    expect(dataComputeCount).toBe(1);
+
+    // Resolve lazy module
+    dModule.resolve({ default: View });
+    await tick();
+
+    // Re-execute holes — lazy resolves, but data still pending
+    ret = ssr(ret.t, ...ret.h);
+    expect(dataComputeCount).toBe(1);
+
+    // If data hole still pending, resolve it
+    if (ret.p.length > 0) {
+      dData.resolve("resolved-data");
+      await tick();
+      ret = ssr(ret.t, ...ret.h);
+    }
+
+    expect(dataComputeCount).toBe(1);
+    expect(ret.t.join("")).toContain("resolved-data");
+  });
+});
+
+// ============================================================================
+// lazy() single-render behavior inside Loading
+// ============================================================================
+
+describe("lazy() single-render in Loading", () => {
+  let savedContext: any;
+
+  beforeEach(() => {
+    savedContext = sharedConfig.context;
+  });
+
+  afterEach(() => {
+    sharedConfig.context = savedContext;
+  });
+
+  test("top-level lazy in Loading — component renders once after module loads (streaming)", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context, fragmentResults } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./TopLevel.tsx" ? { js: ["/assets/top.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let componentRunCount = 0;
+    const Comp = (_props: {}) => {
+      componentRunCount++;
+      return ssr(["<div>top-level</div>"], ...[]) as any;
+    };
+
+    const dModule = deferred<{ default: typeof Comp }>();
+    const LazyComp = lazy(() => dModule.promise, "./TopLevel.tsx");
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "Loading...",
+          get children() {
+            return LazyComp({}) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(result.t[0]).toContain("Loading...");
+    expect(componentRunCount).toBe(0);
+
+    dModule.resolve({ default: Comp });
+    await tick();
+    await tick();
+
+    expect(componentRunCount).toBe(1);
+    expect(fragmentResults.size).toBe(1);
+    expect([...fragmentResults.values()][0]).toContain("top-level");
+  });
+
+  test("top-level lazy in Loading — component doesn't run in sync mode, $$f serialized", async () => {
+    const { lazy } = await import("../../src/server/component.js");
+
+    const { context, serialized } = createMockSSRContext({ async: false });
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./Sync.tsx" ? { js: ["/assets/sync.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let componentRunCount = 0;
+    const Comp = (_props: {}) => {
+      componentRunCount++;
+      return "sync-content";
+    };
+
+    const dModule = deferred<{ default: typeof Comp }>();
+    const LazyComp = lazy(() => dModule.promise, "./Sync.tsx");
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "Fallback",
+          get children() {
+            return LazyComp({}) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(componentRunCount).toBe(0);
+    expect([...serialized.values()]).toContain("$$f");
+
+    dModule.resolve({ default: Comp });
+  });
+
+  test("nested lazy in Loading — data compute runs once (streaming, Profile pattern)", async () => {
+    const { lazy, createComponent } = await import("../../src/server/component.js");
+
+    const { context, fragmentResults } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./View.tsx" ? { js: ["/assets/view.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let dataComputeCount = 0;
+    const dData = deferred<string>();
+
+    const View = (props: { data: any }) => ssr(["<span>", "</span>"], () => props.data) as any;
+
+    const dModule = deferred<{ default: typeof View }>();
+    const LazyView = lazy(() => dModule.promise, "./View.tsx");
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "Loading...",
+          get children() {
+            const data = createMemo(() => {
+              dataComputeCount++;
+              return dData.promise;
+            });
+            return createComponent(LazyView, {
+              get data() {
+                return data();
+              }
+            }) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(result.t[0]).toContain("Loading...");
+    expect(dataComputeCount).toBe(1);
+
+    dModule.resolve({ default: View });
+    await tick();
+
+    // data compute still 1 — lazy resolution doesn't re-run children
+    expect(dataComputeCount).toBe(1);
+
+    dData.resolve("hello");
+    await tick();
+    await tick();
+
+    expect(dataComputeCount).toBe(1);
+    expect(fragmentResults.size).toBe(1);
+    expect([...fragmentResults.values()][0]).toContain("hello");
+  });
+
+  test("nested lazy with cascading async — each compute runs once (streaming)", async () => {
+    const { lazy, createComponent } = await import("../../src/server/component.js");
+
+    const { context, fragmentResults } = createMockSSRContext();
+    context.registerAsset = () => {};
+    context.resolveAssets = (id: string) =>
+      id === "./CascadeView.tsx" ? { js: ["/assets/cascade.js"], css: [] } : null;
+    sharedConfig.context = context;
+
+    let userComputeCount = 0;
+    let infoComputeCount = 0;
+    const dUser = deferred<string>();
+    const dInfo = deferred<string>();
+
+    const View = (props: { user: any; info: any }) =>
+      ssr(
+        ["<div>", " - ", "</div>"],
+        () => props.user,
+        () => props.info
+      ) as any;
+
+    const dModule = deferred<{ default: typeof View }>();
+    const LazyView = lazy(() => dModule.promise, "./CascadeView.tsx");
+
+    let result: any;
+    createRoot(
+      () => {
+        result = Loading({
+          fallback: "Loading...",
+          get children() {
+            const user = createMemo(() => {
+              userComputeCount++;
+              return dUser.promise;
+            });
+            const info = createMemo(() => {
+              user();
+              infoComputeCount++;
+              return dInfo.promise;
+            });
+            return createComponent(LazyView, {
+              get user() {
+                return user();
+              },
+              get info() {
+                return info();
+              }
+            }) as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+
+    expect(result.t[0]).toContain("Loading...");
+    expect(userComputeCount).toBe(1);
+    // info's compute calls user() which throws NotReadyError before incrementing
+    expect(infoComputeCount).toBe(0);
+
+    dModule.resolve({ default: View });
+    await tick();
+
+    expect(userComputeCount).toBe(1);
+
+    // Resolve user — info's pending re-eval fires
+    dUser.resolve("Jon");
+    await tick();
+
+    expect(userComputeCount).toBe(1);
+    expect(infoComputeCount).toBe(1);
+
+    dInfo.resolve("details");
+    await tick();
+    await tick();
+
+    expect(userComputeCount).toBe(1);
+    expect(infoComputeCount).toBe(1);
+    expect(fragmentResults.size).toBe(1);
+    expect([...fragmentResults.values()][0]).toContain("Jon");
+    expect([...fragmentResults.values()][0]).toContain("details");
+  });
+});

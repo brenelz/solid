@@ -3,7 +3,6 @@ import {
   getNextChildId,
   runWithOwner,
   createLoadBoundary,
-  flatten,
   NotReadyError,
   ErrorContext,
   getContext
@@ -63,22 +62,42 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
   (o as any).id = id + "00"; // fake depth to match client's createLoadBoundary nesting
 
   let runPromise: Promise<any> | undefined;
+  let serializeBuffer: [string, any, boolean?][] = [];
+  const origSerialize = ctx.serialize;
+
   function runInitially(): SSRTemplateObject {
     // Dispose children from previous attempt — signals now resets _childCount on dispose
     // so IDs are stable across re-render attempts.
     o.dispose(false);
-    return runWithOwner(o, () => {
+    // Buffer serialization so only the final attempt's writes are committed.
+    // Previous buffers are discarded implicitly when runInitially re-runs.
+    serializeBuffer = [];
+    ctx!.serialize = (id: string, p: any, deferStream?: boolean) => {
+      serializeBuffer.push([id, p, deferStream]);
+    };
+    const prevBoundary = ctx!._currentBoundaryId;
+    ctx!._currentBoundaryId = id;
+    const result = runWithOwner(o, () => {
       try {
-        return ctx!.resolve(flatten(props.children));
+        return ctx!.resolve(props.children);
       } catch (err) {
         runPromise = ssrHandleError(err);
       }
     }) as any;
+    ctx!._currentBoundaryId = prevBoundary;
+    ctx!.serialize = origSerialize;
+    return result;
   }
 
   let ret = runInitially();
-  // never suspended
-  if (!(runPromise || ret?.p?.length)) return ret as unknown as JSX.Element;
+  // never suspended — flush buffer and return directly
+  if (!(runPromise || ret?.p?.length)) {
+    for (const args of serializeBuffer) origSerialize(args[0], args[1], args[2]);
+    serializeBuffer = [];
+    const modules = ctx.getBoundaryModules?.(id);
+    if (modules) ctx.serialize(id + "_assets", modules);
+    return ret as unknown as JSX.Element;
+  }
 
   const fallbackOwner = createOwner({ id });
   getNextChildId(fallbackOwner); // move counter forward
@@ -88,13 +107,16 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
     (async () => {
       try {
         while (runPromise) {
+          o.dispose(false);
           await runPromise;
           runPromise = undefined;
           ret = runInitially();
         }
+        for (const args of serializeBuffer) origSerialize(args[0], args[1], args[2]);
+        serializeBuffer = [];
         while (ret.p.length) {
           await Promise.all(ret.p);
-          ret = ctx.ssr(ret.t, ...ret.h);
+          ret = runWithOwner(o, () => ctx.ssr(ret.t, ...ret.h)) as any;
         }
         done!(ret.t[0]);
       } catch (err) {
@@ -110,6 +132,11 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
     ) as unknown as JSX.Element;
   }
 
+  // Non-async fallback: flush buffered serializations
+  for (const args of serializeBuffer) origSerialize(args[0], args[1], args[2]);
+  serializeBuffer = [];
+  const modules = ctx.getBoundaryModules?.(id);
+  if (modules) ctx.serialize(id + "_assets", modules);
   ctx.serialize(id, "$$f");
   return runWithOwner(fallbackOwner, () => props.fallback) as unknown as JSX.Element;
 }

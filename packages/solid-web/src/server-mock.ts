@@ -12,6 +12,16 @@ export function renderToString<T>(
     renderId?: string;
     noScripts?: boolean;
     plugins?: any[];
+    manifest?: Record<
+      string,
+      {
+        file: string;
+        css?: string[];
+        isEntry?: boolean;
+        isDynamicEntry?: boolean;
+        imports?: string[];
+      }
+    >;
     onError?: (err: any) => void;
   }
 ): string {
@@ -25,6 +35,16 @@ export function renderToStringAsync<T>(
     renderId?: string;
     noScripts?: boolean;
     plugins?: any[];
+    manifest?: Record<
+      string,
+      {
+        file: string;
+        css?: string[];
+        isEntry?: boolean;
+        isDynamicEntry?: boolean;
+        imports?: string[];
+      }
+    >;
     onError?: (err: any) => void;
   }
 ): Promise<string> {
@@ -37,6 +57,16 @@ export function renderToStream<T>(
     renderId?: string;
     noScripts?: boolean;
     plugins?: any[];
+    manifest?: Record<
+      string,
+      {
+        file: string;
+        css?: string[];
+        isEntry?: boolean;
+        isDynamicEntry?: boolean;
+        imports?: string[];
+      }
+    >;
     onCompleteShell?: (info: { write: (v: string) => void }) => void;
     onCompleteAll?: (info: { write: (v: string) => void }) => void;
     onError?: (err: any) => void;

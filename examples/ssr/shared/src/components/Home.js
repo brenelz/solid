@@ -2,8 +2,13 @@ import { createSignal, onSettled } from "solid-js";
 const Home = () => {
   const [s, set] = createSignal(0);
   onSettled(() => {
-    const t = setInterval(() => set(s() + 1), 100);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      const newVal = s() + 1;
+      set(newVal);
+    }, 100);
+    return () => {
+      clearInterval(t);
+    };
   });
   return (
     <>

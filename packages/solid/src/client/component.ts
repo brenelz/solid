@@ -1,4 +1,4 @@
-import { untrack, createSignal, createMemo } from "@solidjs/signals";
+import { untrack, createMemo } from "@solidjs/signals";
 import { $DEVCOMP, IS_DEV, devComponent } from "../client/core.js";
 import { sharedConfig } from "./hydration.js";
 import type { JSX } from "../jsx.js";
@@ -85,28 +85,33 @@ export function createComponent<T extends Record<string, any>>(
 
 // lazy load a function component asynchronously
 export function lazy<T extends Component<any>>(
-  fn: () => Promise<{ default: T }>
+  fn: () => Promise<{ default: T }>,
+  moduleUrl?: string
 ): T & { preload: () => Promise<{ default: T }> } {
   let comp: () => T | undefined;
   let p: Promise<{ default: T }> | undefined;
   const wrap: T & { preload?: () => void } = ((props: any) => {
-    // const ctx = sharedConfig.context;
-    // if (ctx) {
-    //   const [s, set] = createSignal<T>();
-    //   sharedConfig.count || (sharedConfig.count = 0);
-    //   sharedConfig.count++;
-    //   (p || (p = fn())).then(mod => {
-    //     !sharedConfig.done && setHydrateContext(ctx);
-    //     sharedConfig.count!--;
-    //     set(() => mod.default);
-    //     setHydrateContext();
-    //   });
-    //   comp = s;
-    // } else
-    comp = createMemo<T>(() => (p || (p = fn())).then(mod => mod.default));
+    if (sharedConfig.hydrating && moduleUrl) {
+      const cached = (globalThis as any)._$HY?.modules?.[moduleUrl];
+      if (!cached) {
+        throw new Error(
+          `lazy() module "${moduleUrl}" was not preloaded before hydration. ` +
+            "Ensure it is inside a Loading boundary."
+        );
+      }
+      comp = () => cached.default as T;
+    }
+    if (!comp) {
+      p || (p = fn());
+      p.then(mod => {
+        comp = () => mod.default as T;
+      });
+      comp = createMemo<T>(() => p!.then(mod => mod.default));
+    }
+
     let Comp: T | undefined;
     return createMemo(() =>
-      (Comp = comp())
+      (Comp = comp!())
         ? untrack(() => {
             if (IS_DEV) Object.assign(Comp!, { [$DEVCOMP]: true });
             return Comp!(props);
