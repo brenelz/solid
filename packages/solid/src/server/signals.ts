@@ -392,10 +392,7 @@ function processResult<T>(
                 return r;
               });
             }
-            return iter.next().then((r: IteratorResult<T>) => {
-              if (!r.done && !comp.disposed) comp.value = r.value;
-              return r;
-            });
+            return iter.next().then((r: IteratorResult<T>) => r);
           }
         })
       };
@@ -543,17 +540,24 @@ export const createOptimisticStore = createStore;
 function createPendingProxy<T extends object>(
   state: T,
   source: Promise<any>
-): [proxy: Store<T>, markReady: () => void] {
+): [proxy: Store<T>, markReady: (frozenState?: T) => void] {
   let pending = true;
+  let readTarget: T = state;
   const proxy = new Proxy(state, {
     get(obj, key, receiver) {
       if (pending && typeof key !== "symbol") {
         throw new NotReadyError(source);
       }
-      return Reflect.get(obj, key, receiver);
+      return Reflect.get(readTarget, key);
     }
   });
-  return [proxy as Store<T>, () => (pending = false)];
+  return [
+    proxy as Store<T>,
+    (frozen?: T) => {
+      if (frozen) readTarget = frozen;
+      pending = false;
+    }
+  ];
 }
 
 export function createProjection<T extends object>(
@@ -623,7 +627,9 @@ export function createProjection<T extends object>(
               Object.assign(state, r.value as T);
             }
           }
-          markReady();
+          // Lock SSR-visible state at V1: subsequent generator mutations update
+          // `state` (for draft/patch correctness) but reads go through the frozen copy.
+          markReady(JSON.parse(JSON.stringify(state)) as T);
         },
         () => {
           markReady();

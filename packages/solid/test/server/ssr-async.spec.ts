@@ -1740,7 +1740,7 @@ describe("Async Iterable — createMemo", () => {
     expect(read()).toBe("first");
   });
 
-  test("default mode: subsequent yields update comp.value", async () => {
+  test("default mode: subsequent yields stream to seroval but comp.value stays at first", async () => {
     const { context, serializeLog } = createStreamTrackingContext();
     sharedConfig.context = context;
 
@@ -1776,11 +1776,11 @@ describe("Async Iterable — createMemo", () => {
     const r1 = await iter.next();
     expect(r1).toEqual({ done: false, value: "first" });
 
-    // Trigger second yield
+    // Trigger second yield — seroval sees "second" but comp.value is locked at "first"
     yieldSecond();
     const r2 = await iter.next();
     expect(r2).toEqual({ done: false, value: "second" });
-    expect(read()).toBe("second");
+    expect(read()).toBe("first");
 
     // Generator done
     const r3 = await iter.next();
@@ -1884,6 +1884,46 @@ describe("Async Iterable — createMemo", () => {
 
     expect(fragmentResults.size).toBe(1);
     expect([...fragmentResults.values()][0]).toBe("<div>streamed</div>");
+  });
+
+  test("memo first-value lock: Loading retry reads V1 even after iterable advances", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let yieldSecond!: () => void;
+    const secondReady = new Promise<void>(r => {
+      yieldSecond = r;
+    });
+    let read: any;
+
+    createRoot(
+      () => {
+        read = createMemo(
+          async function* () {
+            yield "first";
+            await secondReady;
+            yield "second";
+          },
+          undefined,
+          { ssrSource: "server" }
+        );
+      },
+      { id: "t" }
+    );
+
+    await tick();
+    expect(read()).toBe("first");
+
+    // Advance the iterator past V1 via the tapped wrapper (simulates seroval consumption)
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+    await iter.next(); // consume first
+    yieldSecond();
+    await iter.next(); // consume second — generator now at V2
+
+    // SSR reads should still return V1, not V2
+    // This is the scenario where a Loading boundary retries after the iterable advances
+    expect(read()).toBe("first");
   });
 
   test("generator error on first yield: NotReadyError firstPromise rejects", async () => {
@@ -2055,11 +2095,11 @@ describe("Async Iterable — createProjection", () => {
     expect(r1.value).toEqual({ name: "Alice", age: 0 });
     expect(store.name).toBe("Alice");
 
-    // Second yield: patches from setting age
+    // Second yield: patches stream to seroval, but SSR reads stay at V1
     const r2 = await iter.next();
     expect(r2.done).toBe(false);
     expect(r2.value).toEqual([[["age"], 30]]);
-    expect(store.age).toBe(30);
+    expect(store.age).toBe(0);
 
     // Done
     const r3 = await iter.next();
@@ -2094,12 +2134,11 @@ describe("Async Iterable — createProjection", () => {
     expect(r1.value).toEqual({ name: "Alice", role: "user" });
     expect(store.name).toBe("Alice");
 
-    // Second yield: value yield — Object.assign applied
+    // Second yield: value yield streams to seroval, but SSR reads stay at V1
     const r2 = await iter.next();
     expect(r2.done).toBe(false);
-    // Patches array may be empty since Object.assign goes through raw state
-    expect(store.name).toBe("Bob");
-    expect(store.role).toBe("admin");
+    expect(store.name).toBe("Alice");
+    expect(store.role).toBe("user");
   });
 
   test("server mode: deep nested mutations tracked", async () => {
@@ -2403,11 +2442,91 @@ describe("Async Iterable — createProjection", () => {
     expect(r1.value).toEqual({ name: "Alice", count: 0 });
     expect(store.name).toBe("Alice");
 
-    // Second yield: patches
+    // Second yield: patches stream to seroval, but SSR reads stay at V1
     const r2 = await iter.next();
     expect(r2.done).toBe(false);
     expect(r2.value).toEqual([[["count"], 1]]);
-    expect(store.count).toBe(1);
+    expect(store.count).toBe(0);
+  });
+
+  test("projection first-value lock: SSR reads frozen at V1 after multiple yields", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let yieldSecond!: () => void;
+    const secondReady = new Promise<void>(r => {
+      yieldSecond = r;
+    });
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.name = "Alice";
+            draft.items = ["a"];
+            yield;
+            await secondReady;
+            draft.name = "Bob";
+            draft.items.push("b");
+            yield;
+          },
+          { name: "", items: [] as string[] }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield: full state snapshot at V1
+    const r1 = await iter.next();
+    expect(r1.done).toBe(false);
+    expect(r1.value).toEqual({ name: "Alice", items: ["a"] });
+    expect(store.name).toBe("Alice");
+    expect(store.items).toEqual(["a"]);
+
+    // Advance to second yield — seroval gets patches, SSR reads stay at V1
+    yieldSecond();
+    const r2 = await iter.next();
+    expect(r2.done).toBe(false);
+    expect(store.name).toBe("Alice");
+    expect(store.items).toEqual(["a"]);
+  });
+
+  test("projection first-value lock: nested object mutations don't leak to SSR reads", async () => {
+    const { context, serializeLog } = createStreamTrackingContext();
+    sharedConfig.context = context;
+
+    let store: any;
+
+    createRoot(
+      () => {
+        store = createProjection(
+          async function* (draft: any) {
+            draft.user = { name: "Alice", age: 30 };
+            yield;
+            draft.user.name = "Bob";
+            draft.user.age = 31;
+            yield;
+          },
+          { user: { name: "", age: 0 } }
+        );
+      },
+      { id: "t" }
+    );
+
+    const tapped = serializeLog[0].value;
+    const iter = tapped[Symbol.asyncIterator]();
+
+    // First yield
+    await iter.next();
+    expect(store.user).toEqual({ name: "Alice", age: 30 });
+
+    // Second yield — nested mutations should NOT leak to SSR reads
+    await iter.next();
+    expect(store.user).toEqual({ name: "Alice", age: 30 });
   });
 
   test("server mode: array pop generates raw set patches", async () => {
