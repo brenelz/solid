@@ -2,7 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, test, beforeEach, afterEach } from "vitest";
-import { createRoot, flush, getOwner } from "@solidjs/signals";
+import {
+  createRoot,
+  flush,
+  createSignal as coreSignal,
+  createMemo as coreMemo
+} from "@solidjs/signals";
 import {
   enableHydration,
   sharedConfig,
@@ -12,7 +17,6 @@ import {
   createProjection,
   createStore,
   createOptimisticStore,
-  isHydrating,
   onHydrationEnd,
   Loading
 } from "../src/client/hydration.js";
@@ -637,59 +641,6 @@ describe("createOptimisticStore(fn) Hydration", () => {
 });
 
 // ============================================================================
-// isHydrating / onHydrationEnd
-// ============================================================================
-
-describe("isHydrating", () => {
-  afterEach(() => {
-    stopHydration();
-  });
-
-  test("returns true during hydration", () => {
-    startHydration({});
-    expect(isHydrating()).toBe(true);
-  });
-
-  test("returns false when not hydrating", () => {
-    expect(isHydrating()).toBe(false);
-  });
-
-  test("returns false after hydration stops", () => {
-    startHydration({});
-    expect(isHydrating()).toBe(true);
-    stopHydration();
-    expect(isHydrating()).toBe(false);
-  });
-});
-
-describe("onHydrationEnd", () => {
-  afterEach(() => {
-    stopHydration();
-  });
-
-  test("fires immediately (via microtask) when not hydrating", async () => {
-    let fired = false;
-    onHydrationEnd(() => {
-      fired = true;
-    });
-    expect(fired).toBe(false);
-    await new Promise<void>(r => queueMicrotask(r));
-    expect(fired).toBe(true);
-  });
-
-  test("fires after hydration completes (no pending boundaries)", async () => {
-    startHydration({});
-    let fired = false;
-    onHydrationEnd(() => {
-      fired = true;
-    });
-    expect(fired).toBe(false);
-    stopHydration();
-    expect(fired).toBe(true);
-  });
-});
-
-// ============================================================================
 // ssrSource — client-side modes
 // ============================================================================
 
@@ -783,54 +734,25 @@ describe("ssrSource client modes", () => {
     expect(result).toBe(0);
   });
 
-  test("ssrSource 'client' with deferHydration: true runs computation after onHydrationEnd", () => {
+  test("ssrSource 'client' toggle flips immediately, protected by snapshot scope", () => {
     startHydration({});
 
     let result: any;
-    let computeCount = 0;
     createRoot(
       () => {
-        result = createMemo(
-          () => {
-            computeCount++;
-            return 999;
-          },
-          0,
-          { ssrSource: "client", deferHydration: true }
-        );
+        result = createMemo(() => 999, 0, { ssrSource: "client" });
       },
       { id: "t" }
     );
     flush();
 
-    // During hydration, should return initialValue
+    // During hydration, snapshot scope protects — returns initialValue
     expect(result()).toBe(0);
 
     stopHydration();
     flush();
 
-    // After hydration ends, the computation should have run
-    expect(result()).toBe(999);
-  });
-
-  test("ssrSource 'client' with deferHydration: false runs computation on microtask", async () => {
-    startHydration({});
-
-    let result: any;
-    createRoot(
-      () => {
-        result = createMemo(() => 999, 0, { ssrSource: "client", deferHydration: false });
-      },
-      { id: "t" }
-    );
-    flush();
-
-    expect(result()).toBe(0);
-
-    // Wait for microtask
-    await new Promise<void>(r => queueMicrotask(r));
-    flush();
-
+    // After scope release, computation reruns with real value
     expect(result()).toBe(999);
   });
 });
@@ -1076,7 +998,7 @@ describe("Async Iterable Hydration — createMemo", () => {
     expect(result).toBe(42);
   });
 
-  test("server+AI: deferHydration true — values applied after onHydrationEnd", async () => {
+  test("server+AI: subsequent sync values consumed immediately, visible after scope release", () => {
     const ai = createBufferedAsyncIterable([42, 99]);
     startHydration({ t0: ai });
 
@@ -1089,32 +1011,13 @@ describe("Async Iterable Hydration — createMemo", () => {
     );
     flush();
 
+    // Snapshot scope protects the memo — reads snapshot (first value)
     expect(result()).toBe(42);
 
     stopHydration();
     flush();
 
-    expect(result()).toBe(99);
-  });
-
-  test("server+AI: deferHydration false — values applied after microtask", async () => {
-    const ai = createBufferedAsyncIterable([42, 99]);
-    startHydration({ t0: ai });
-
-    let result: any;
-    createRoot(
-      () => {
-        result = createMemo(() => 0, undefined, { deferHydration: false });
-      },
-      { id: "t" }
-    );
-    flush();
-
-    expect(result()).toBe(42);
-
-    await new Promise<void>(r => queueMicrotask(r));
-    flush();
-
+    // After scope release, memo recomputes with current value (99)
     expect(result()).toBe(99);
   });
 
@@ -1217,7 +1120,7 @@ describe("Async Iterable Hydration — createProjection", () => {
     expect(store.count).toBe(42);
   });
 
-  test("server+AI: subsequent patches applied after onHydrationEnd", async () => {
+  test("server+AI: sync patches consumed immediately and applied to store", () => {
     const patches = [[["name"], "Bob"]];
     const ai = createBufferedAsyncIterable([{ name: "Alice", count: 0 }, patches]);
     startHydration({ t0: ai });
@@ -1236,43 +1139,14 @@ describe("Async Iterable Hydration — createProjection", () => {
     );
     flush();
 
-    expect(store.name).toBe("Alice");
+    // Patches consumed immediately — store reflects patched values
+    expect(store.name).toBe("Bob");
+    expect(store.count).toBe(0);
 
     stopHydration();
-    flush();
-
-    expect(store.name).toBe("Bob");
   });
 
-  test("server+AI: deferHydration false — patches applied after microtask", async () => {
-    const patches = [[["name"], "Bob"]];
-    const ai = createBufferedAsyncIterable([{ name: "Alice" }, patches]);
-    startHydration({ t0: ai });
-
-    let store: any;
-    createRoot(
-      () => {
-        store = createProjection(
-          (draft: any) => {
-            draft.name = "client";
-          },
-          { name: "" },
-          { deferHydration: false }
-        );
-      },
-      { id: "t" }
-    );
-    flush();
-
-    expect(store.name).toBe("Alice");
-
-    await new Promise<void>(r => queueMicrotask(r));
-    flush();
-
-    expect(store.name).toBe("Bob");
-  });
-
-  test("server+AI: deep nested patch application", async () => {
+  test("server+AI: deep nested patch application", () => {
     const patches = [[["user", "profile", "bio"], "Updated"]];
     const ai = createBufferedAsyncIterable([
       { user: { name: "Alice", profile: { bio: "Hello" } } },
@@ -1294,13 +1168,11 @@ describe("Async Iterable Hydration — createProjection", () => {
     );
     flush();
 
+    // First value used for initial state, patches applied immediately
     expect(store.user.name).toBe("Alice");
-    expect(store.user.profile.bio).toBe("Hello");
+    expect(store.user.profile.bio).toBe("Updated");
 
     stopHydration();
-    flush();
-
-    expect(store.user.profile.bio).toBe("Updated");
   });
 
   test("Promise data still works for projection (no regression)", () => {
@@ -1330,7 +1202,7 @@ describe("Async Iterable Hydration — createStore(fn)", () => {
     stopHydration();
   });
 
-  test("server+AI: first value used, patches applied after hydration", async () => {
+  test("server+AI: first value used, patches consumed immediately", () => {
     const patches = [[["count"], 99]];
     const ai = createBufferedAsyncIterable([{ name: "Alice", count: 0 }, patches]);
     startHydration({ t0: ai });
@@ -1349,13 +1221,11 @@ describe("Async Iterable Hydration — createStore(fn)", () => {
     );
     flush();
 
+    // First value used for hydration, sync patches consumed immediately
     expect(store.name).toBe("Alice");
-    expect(store.count).toBe(0);
+    expect(store.count).toBe(99);
 
     stopHydration();
-    flush();
-
-    expect(store.count).toBe(99);
   });
 
   test("Promise data still works for store (no regression)", () => {
@@ -1616,5 +1486,169 @@ describe("Loading + asset waiting during hydration", () => {
     // The inner value is a createLoadBoundary — not undefined (waiting) or fallback string
     expect(result()).not.toBeUndefined();
     expect(result()).not.toBe("loading...");
+  });
+});
+
+describe("Snapshot Hydration", () => {
+  afterEach(() => {
+    stopHydration();
+  });
+
+  test("ssrSource 'client' memo: snapshot protects during hydration, runs after release", () => {
+    startHydration({});
+
+    let result: any;
+    let computeCount = 0;
+    createRoot(
+      () => {
+        result = createMemo(
+          () => {
+            computeCount++;
+            return 999;
+          },
+          0,
+          { ssrSource: "client" }
+        );
+      },
+      { id: "t" }
+    );
+    flush();
+
+    // Snapshot protects: returns initial value during hydration
+    expect(result()).toBe(0);
+
+    stopHydration();
+    flush();
+
+    // After release, memo recomputes
+    expect(result()).toBe(999);
+    expect(computeCount).toBeGreaterThan(0);
+  });
+
+  test("signal write during hydration: snapshot-scoped derived memo returns creation-time value", () => {
+    startHydration({});
+
+    let derived: any;
+    let setX: (v: number) => void;
+    const [x, _setX] = coreSignal(10);
+    setX = _setX;
+
+    createRoot(
+      () => {
+        // Trigger snapshot scope via a hydrated wrapper
+        createMemo(() => 0, 0, { ssrSource: "client" });
+        // Raw memo in the same scope — reads x, gets snapshot
+        derived = coreMemo(() => x() * 2);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(derived()).toBe(20);
+
+    // Write to x during hydration — snapshot protects derived
+    setX(100);
+    flush();
+    expect(derived()).toBe(20);
+
+    stopHydration();
+    flush();
+
+    // After scope release, derived recomputes with current value
+    expect(derived()).toBe(200);
+  });
+
+  test("multiple signal writes during hydration don't affect snapshot-scoped reads", () => {
+    startHydration({});
+
+    let derivedA: any;
+    let derivedB: any;
+    const [a, setA] = coreSignal(1);
+    const [b, setB] = coreSignal(2);
+
+    createRoot(
+      () => {
+        createMemo(() => 0, 0, { ssrSource: "client" });
+        derivedA = coreMemo(() => a() * 10);
+        derivedB = coreMemo(() => b() * 10);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(derivedA()).toBe(10);
+    expect(derivedB()).toBe(20);
+
+    setA(5);
+    setB(9);
+    flush();
+
+    // Both still return snapshot values
+    expect(derivedA()).toBe(10);
+    expect(derivedB()).toBe(20);
+
+    stopHydration();
+    flush();
+
+    // After release, both recompute
+    expect(derivedA()).toBe(50);
+    expect(derivedB()).toBe(90);
+  });
+
+  test("error boundary remains functional under snapshot scope", () => {
+    startHydration({});
+
+    let result: any;
+    createRoot(
+      () => {
+        const read = createErrorBoundary(
+          () => "success",
+          (err: any) => `error: ${err.message}`
+        );
+        result = read;
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe("success");
+
+    stopHydration();
+    flush();
+
+    expect(result()).toBe("success");
+  });
+
+  test("onHydrationEnd callbacks fire after snapshot cleanup", () => {
+    startHydration({});
+
+    let callbackFired = false;
+    let valueAtCallback: any;
+    const [x, setX] = coreSignal(1);
+
+    createRoot(
+      () => {
+        createMemo(() => 0, 0, { ssrSource: "client" });
+        coreMemo(() => x());
+        onHydrationEnd(() => {
+          callbackFired = true;
+          // After cleanup, reads return current values
+          valueAtCallback = x();
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    setX(42);
+    flush();
+
+    expect(callbackFired).toBe(false);
+
+    stopHydration();
+    flush();
+
+    expect(callbackFired).toBe(true);
+    expect(valueAtCallback).toBe(42);
   });
 });

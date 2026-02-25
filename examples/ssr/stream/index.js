@@ -14,7 +14,7 @@ const port = 3000;
 
 app.use(express.static(url.fileURLToPath(new URL("../public", import.meta.url))));
 
-app.get("/{*path}", (req, res) => {
+app.get("*", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   renderToStream(() => <App url={req.url} />, { manifest }).pipe(res);
 });

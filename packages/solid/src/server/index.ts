@@ -78,7 +78,7 @@ export * from "./component.js";
 export * from "./flow.js";
 
 // SSR coordination
-export { sharedConfig, Loading, ssrHandleError, isHydrating, onHydrationEnd } from "./hydration.js";
+export { sharedConfig, Loading, ssrHandleError } from "./hydration.js";
 export type { HydrationContext } from "./hydration.js";
 
 // Types

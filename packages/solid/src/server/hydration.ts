@@ -13,14 +13,6 @@ import type { JSX } from "../jsx.js";
 export { sharedConfig } from "./shared.js";
 export type { HydrationContext } from "./shared.js";
 
-/** Always false on server — no client hydration occurs. */
-export function isHydrating(): boolean {
-  return false;
-}
-
-/** No-op on server — hydration is a client-only concept. */
-export function onHydrationEnd(_callback: () => void): void {}
-
 type SSRTemplateObject = { t: string[]; h: Function[]; p: Promise<any>[] };
 
 /**

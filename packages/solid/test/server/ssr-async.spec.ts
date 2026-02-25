@@ -1657,10 +1657,6 @@ describe("ssrSource server modes", () => {
 });
 
 // ============================================================================
-// isHydrating / onHydrationEnd — server stubs
-// ============================================================================
-
-// ============================================================================
 // Phase 3: Async Iterable Streaming (createMemo, createProjection, createStore)
 // ============================================================================
 
@@ -2878,29 +2874,6 @@ describe("createDeepProxy unit tests", () => {
     proxy.nested.b = 4;
     expect(patches).toEqual([[["nested", "b"], 4]]);
     expect(target.nested).toEqual({ b: 4 });
-  });
-});
-
-// ============================================================================
-// isHydrating / onHydrationEnd — server stubs
-// ============================================================================
-
-describe("isHydrating / onHydrationEnd server stubs", () => {
-  test("isHydrating returns false on server", async () => {
-    const { isHydrating } = await import("../../src/server/hydration.js");
-    expect(isHydrating()).toBe(false);
-  });
-
-  test("onHydrationEnd is a no-op on server (callback never fires)", async () => {
-    const { onHydrationEnd } = await import("../../src/server/hydration.js");
-    let fired = false;
-    onHydrationEnd(() => {
-      fired = true;
-    });
-    expect(fired).toBe(false);
-    await new Promise<void>(r => queueMicrotask(r));
-    // Callback should NOT fire on the server — hydration is client-only
-    expect(fired).toBe(false);
   });
 });
 
