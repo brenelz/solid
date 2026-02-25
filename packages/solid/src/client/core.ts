@@ -5,7 +5,8 @@ import {
   untrack,
   setContext,
   getContext,
-  flatten
+  flatten,
+  setStrictRead
 } from "@solidjs/signals";
 import type { Accessor, Owner, EffectOptions } from "@solidjs/signals";
 import type { JSX } from "../jsx.js";
@@ -114,7 +115,12 @@ export function devComponent<P, V>(Comp: (props: P) => V, props: P): V {
       owner._component = Comp;
       return untrack(() => {
         Object.assign(Comp, { [$DEVCOMP]: true });
-        return Comp(props);
+        setStrictRead(`<${Comp.name || "Anonymous"}>`);
+        try {
+          return Comp(props);
+        } finally {
+          setStrictRead(false);
+        }
       });
     },
     { transparent: true }

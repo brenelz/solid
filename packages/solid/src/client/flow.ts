@@ -1,5 +1,5 @@
 import { children, IS_DEV } from "../client/core.js";
-import { createMemo, untrack, mapArray, repeat } from "@solidjs/signals";
+import { createMemo, untrack, mapArray, repeat, setStrictRead } from "@solidjs/signals";
 import { createErrorBoundary } from "./hydration.js";
 import type { Accessor } from "@solidjs/signals";
 import type { JSX } from "../jsx.js";
@@ -27,10 +27,11 @@ export function For<T extends readonly any[], U extends JSX.Element>(props: {
   keyed?: boolean | ((item: T[number]) => any);
   children: (item: Accessor<T[number]>, index: Accessor<number>) => U;
 }) {
-  const options =
+  const options: Parameters<typeof mapArray>[2] =
     "fallback" in props
       ? { keyed: props.keyed, fallback: () => props.fallback }
       : { keyed: props.keyed };
+  if (IS_DEV) options!.name = "<For>";
   return mapArray(() => props.each, props.children, options) as unknown as JSX.Element;
 }
 
@@ -52,9 +53,13 @@ export function Repeat<T extends JSX.Element>(props: {
   fallback?: JSX.Element;
   children: ((index: number) => T) | T;
 }) {
-  const options: { fallback?: Accessor<JSX.Element>; from?: Accessor<number | undefined> } =
-    "fallback" in props ? { fallback: () => props.fallback } : {};
+  const options: {
+    fallback?: Accessor<JSX.Element>;
+    from?: Accessor<number | undefined>;
+    name?: string;
+  } = "fallback" in props ? { fallback: () => props.fallback } : {};
   options.from = () => props.from;
+  if (IS_DEV) options.name = "<Repeat>";
   return repeat(
     () => props.count,
     index => (typeof props.children === "function" ? props.children(index) : props.children),
@@ -97,12 +102,17 @@ export function Show<T>(props: {
         const child = props.children;
         const fn = typeof child === "function" && child.length > 0;
         return fn
-          ? untrack(() =>
-              (child as any)(() => {
-                if (!untrack(condition)) throw narrowedError("Show");
-                return conditionValue();
-              })
-            )
+          ? untrack(() => {
+              if (IS_DEV) setStrictRead("<Show>");
+              try {
+                return (child as any)(() => {
+                  if (!untrack(condition)) throw narrowedError("Show");
+                  return conditionValue();
+                });
+              } finally {
+                if (IS_DEV) setStrictRead(false);
+              }
+            })
           : child;
       }
       return props.fallback;
@@ -166,12 +176,17 @@ export function Switch(props: { fallback?: JSX.Element; children: JSX.Element })
       const child = mp.children;
       const fn = typeof child === "function" && child.length > 0;
       return fn
-        ? untrack(() =>
-            (child as any)(() => {
-              if (untrack(switchFunc)()?.[0] !== index) throw narrowedError("Match");
-              return conditionValue();
-            })
-          )
+        ? untrack(() => {
+            if (IS_DEV) setStrictRead("<Match>");
+            try {
+              return (child as any)(() => {
+                if (untrack(switchFunc)()?.[0] !== index) throw narrowedError("Match");
+                return conditionValue();
+              });
+            } finally {
+              if (IS_DEV) setStrictRead(false);
+            }
+          })
         : child;
     },
     undefined,

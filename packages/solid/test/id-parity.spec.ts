@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createRoot, getOwner, getNextChildId, createMemo } from "@solidjs/signals";
+import { createRoot, getOwner, getNextChildId, createMemo, untrack } from "@solidjs/signals";
 import { devComponent } from "../src/client/core.js";
 
 /**
@@ -28,8 +28,10 @@ describe("ID Parity: devComponent transparent wrapper", () => {
             idsWithWrapper.push(getOwner()!.id!);
             return "b";
           });
-          a();
-          b();
+          untrack(() => {
+            a();
+            b();
+          });
           return undefined as any;
         }, {} as any);
       },
@@ -48,8 +50,10 @@ describe("ID Parity: devComponent transparent wrapper", () => {
             idsWithoutWrapper.push(getOwner()!.id!);
             return "b";
           });
-          a();
-          b();
+          untrack(() => {
+            a();
+            b();
+          });
           return undefined as any;
         };
         Comp();
@@ -68,10 +72,11 @@ describe("ID Parity: devComponent transparent wrapper", () => {
       () => {
         // Component wrapped in devComponent
         devComponent(() => {
-          createMemo(() => {
+          const cm = createMemo(() => {
             ids.push("comp-memo:" + getOwner()!.id!);
             return "x";
-          })();
+          });
+          untrack(cm);
           return undefined as any;
         }, {} as any);
 
@@ -104,7 +109,7 @@ describe("ID Parity: devComponent transparent wrapper", () => {
               ids.push("inner-memo:" + getOwner()!.id!);
               return "nested";
             });
-            m();
+            untrack(m);
             return undefined as any;
           }, {} as any);
           return undefined as any;
@@ -127,7 +132,7 @@ describe("ID Parity: devComponent transparent wrapper", () => {
       const m = createMemo(() => {
         return getOwner()!.id!;
       });
-      return m();
+      return untrack(m);
     }
 
     // Server-style: direct calls
