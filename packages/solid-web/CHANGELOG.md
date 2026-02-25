@@ -1,5 +1,20 @@
 # @solidjs/web
 
+## 2.0.0-experimental.15
+
+### Patch Changes
+
+- Updated dependencies [9788bad]
+- Updated dependencies [60f2922]
+- Updated dependencies [85aa54f]
+- Updated dependencies [f4b0956]
+- Updated dependencies [75eebc2]
+- Updated dependencies [75eebc2]
+- Updated dependencies [d1e6e29]
+- Updated dependencies [84c80f9]
+- Updated dependencies [fbbd7e3]
+  - solid-js@2.0.0-experimental.15
+
 ## 2.0.0-experimental.14
 
 ### Patch Changes

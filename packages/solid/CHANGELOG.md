@@ -1,5 +1,41 @@
 # solid-js
 
+## 2.0.0-experimental.15
+
+### Minor Changes
+
+- 75eebc2: feat: snapshot-based boundary-local hydration safety (Goal 4)
+
+  Signal writes during hydration are now safe by construction. Each Loading boundary gets its own snapshot scope — computations created during hydration read snapshot values (matching server DOM) while writes update only the current value. After a boundary's sync hydration walk completes, its snapshot scope is released and stale computations rerun with current values.
+
+  Key changes:
+  - Add markTopLevelSnapshotScope/releaseSnapshotScope plumbing to all hydrated primitives
+  - Extract createBoundaryTrigger() helper for internal trigger signals excluded from snapshot capture
+  - Add resumeBoundaryHydration() with isDisposed guard, per-boundary scope management, and flush
+  - Add onCleanup for cleanupFragment to handle orphaned streaming content on navigation
+  - Remove deferHydration option (no longer needed with snapshots)
+  - Remove isHydrating/onHydrationEnd from public API (snapshots make hydration timing transparent)
+  - Update @solidjs/signals to ^0.10.7, dom-expressions to 0.41.0-next.6
+
+- 75eebc2: feat(ssr): implement ssrSource, async iterable streaming, and client hydration (Goal 2d)
+
+  Adds the ssrSource option (4 modes: "server", "hybrid", "initial", "client") controlling how computations serialize and hydrate. Server-side async iterable streaming via processResult tap wrapper with patch-based projection serialization. Client-side async iterable hydration with synchronous first-value consumption from seroval and scheduleIteratorConsumption for remaining values. Includes isHydrating/onHydrationEnd lifecycle APIs, deferHydration option, and subFetch updates for generator dependency capture.
+
+### Patch Changes
+
+- 9788bad: Harden SSR async error handling: add try/catch to Loading's async IIFE, serialize errors in createErrorBoundary for client hydration, and fix unhandled promise rejections in processResult
+- 60f2922: Add hydration-aware wrappers for createErrorBoundary, createOptimistic, createProjection, createStore(fn), and createOptimisticStore(fn). Server-side createProjection now creates owner for ID alignment and handles async Promise returns. Bump @solidjs/signals to 0.10.4 for peekNextChildId support.
+- 85aa54f: Refactor SSR stream blocking: delegate deferStream blocking to dom-expressions via serialize instead of imperative ctx.block() calls in processResult. Pass deferStream option through createSignal(fn), createMemo, and createProjection to serialize. Update dom-expressions to 0.41.0-next.3 for structural blocking support.
+- f4b0956: fix(ssr): lock server-side comp.value to first async iterable value
+
+  During SSR, async-iterable-backed computations (createMemo, createProjection) now lock their readable value to the first yield. Subsequent iterations still stream to the client via seroval, but SSR reads always return V1. This prevents hydration mismatches when Loading boundaries retry after the iterator has advanced.
+
+  For projections, the SSR-visible store state is deep-cloned at first value resolution, isolating it from subsequent generator mutations (including nested object changes).
+
+- d1e6e29: Add dev-mode warning for untracked reactive reads in component bodies and control flow callbacks. Signals, memos, and store properties read outside a reactive scope now emit a console warning with the component or flow control name. Integrated into devComponent, Show, Match, For, and Repeat. Zero production overhead.
+- 84c80f9: Make devComponent use transparent owner so dev-mode IDs match production for hydration parity. Bump @solidjs/signals to 0.10.3 for transparent owner support.
+- fbbd7e3: Update dependencies (signals 0.10.5, dom-expressions 0.41.0-next.5) and fix build compatibility with Turbo 2.x and TypeScript 5.9
+
 ## 2.0.0-experimental.14
 
 ### Patch Changes
