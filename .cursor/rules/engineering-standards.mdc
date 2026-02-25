@@ -22,7 +22,14 @@ This is a foundational library laying groundwork for the future. "Good enough" i
 
 ## Changesets
 
-Every commit that changes packages under `packages/` must include a changeset. **Create the changeset file before committing** — it must be staged and included in the same commit as the code changes.
+**CRITICAL — NEVER SKIP THIS STEP.** Every commit that changes source files under `packages/` MUST include a changeset. This is a hard requirement, not a suggestion.
+
+**Before running `git commit`**, always:
+
+1. Check if the staged changes touch any files under `packages/*/src/` — if yes, a changeset is required.
+2. Create the changeset file (`.changeset/<descriptive-name>.md`).
+3. Stage it alongside the code changes.
+4. Only then run `git commit`.
 
 Since `pnpm changeset` is interactive and cannot be used from the agent, create the file directly:
 
