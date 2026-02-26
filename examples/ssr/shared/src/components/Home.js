@@ -11,12 +11,16 @@ const Home = () => {
     };
   });
   return (
-    <>
+    <Wrapper>
       <h1>Welcome to this Simple Routing Example</h1>
       <p>Click the links in the Navigation above to load different routes.</p>
       <span>{s()}</span>
-    </>
+    </Wrapper>
   );
 };
+
+function Wrapper(props) {
+  return <>{props.children}</>;
+}
 
 export default Home;
