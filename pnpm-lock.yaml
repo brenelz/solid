@@ -48,8 +48,8 @@ importers:
         specifier: ^2.1.2
         version: 2.1.9(vitest@2.1.9(@types/node@22.19.11)(jsdom@25.0.1))
       babel-plugin-jsx-dom-expressions:
-        specifier: ^0.41.0-next.6
-        version: 0.41.0-next.6(@babel/core@7.29.0)
+        specifier: ^0.41.0-next.7
+        version: 0.41.0-next.7(@babel/core@7.29.0)
       coveralls:
         specifier: ^3.1.1
         version: 3.1.1
@@ -57,17 +57,17 @@ importers:
         specifier: ^3.1.0
         version: 3.2.3
       dom-expressions:
-        specifier: 0.41.0-next.6
-        version: 0.41.0-next.6(csstype@3.2.3)(seroval-plugins@1.5.0(seroval@1.3.2))(seroval@1.3.2)
+        specifier: 0.41.0-next.7
+        version: 0.41.0-next.7(csstype@3.2.3)(seroval-plugins@1.5.0(seroval@1.3.2))(seroval@1.3.2)
       hyper-dom-expressions:
-        specifier: 0.41.0-next.6
-        version: 0.41.0-next.6
+        specifier: 0.41.0-next.7
+        version: 0.41.0-next.7
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1
       lit-dom-expressions:
-        specifier: 0.41.0-next.6
-        version: 0.41.0-next.6
+        specifier: 0.41.0-next.7
+        version: 0.41.0-next.7
       ncp:
         specifier: ^2.0.0
         version: 2.0.0
@@ -109,7 +109,7 @@ importers:
         version: 5.7.3
       vite-plugin-solid:
         specifier: ^2.6.1
-        version: 2.11.10(solid-js@2.0.0-experimental.14)(vite@5.4.21(@types/node@22.19.11))
+        version: 2.11.10(solid-js@2.0.0-experimental.15)(vite@5.4.21(@types/node@22.19.11))
       vitest:
         specifier: ^2.1.2
         version: 2.1.9(@types/node@22.19.11)(jsdom@25.0.1)
@@ -156,17 +156,17 @@ importers:
         specifier: ^7.0.0
         version: 7.29.0
       babel-plugin-jsx-dom-expressions:
-        specifier: ^0.41.0-next.6
-        version: 0.41.0-next.6(@babel/core@7.29.0)
+        specifier: ^0.41.0-next.7
+        version: 0.41.0-next.7(@babel/core@7.29.0)
       solid-js:
-        specifier: 2.0.0-experimental.14
-        version: 2.0.0-experimental.14
+        specifier: 2.0.0-experimental.15
+        version: 2.0.0-experimental.15
 
   packages/solid:
     dependencies:
       '@solidjs/signals':
-        specifier: ^0.10.8
-        version: 0.10.8
+        specifier: ^0.11.1
+        version: 0.11.1
       csstype:
         specifier: ^3.1.0
         version: 3.2.3
@@ -1241,11 +1241,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@solidjs/signals@0.10.7':
-    resolution: {integrity: sha512-/zFo40KPfQSjDm/0RUNwDsdpLZk2gul4EazQlmWT/GROK03op9m51zGxl9BW/wPNkfswI0He3/lv6lUeL/HTDg==}
-
   '@solidjs/signals@0.10.8':
     resolution: {integrity: sha512-BtED8tOcMFXg80d/gZw/EQme6dj/PHaTpiqFyOi/3zvTn/RyJFhyFe8BBziKlw3iGG4MawAzya7z3zZNUaHPuQ==}
+
+  '@solidjs/signals@0.11.1':
+    resolution: {integrity: sha512-//nvM/Vjmp34utkMtf3l99+zuiT9gEF9709cGA5xHIsJgkKd4xhfU0getn8gujnypijddcS0VMTZrUhWsqoDfA==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1417,8 +1417,8 @@ packages:
   axios@1.13.5:
     resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
 
-  babel-plugin-jsx-dom-expressions@0.41.0-next.6:
-    resolution: {integrity: sha512-BrbY3z2l96tlIRUTet9sx+H1k4g06xWWX3A1oJZaAAcSMfHNKNOAb7dV9AFh34s4Hz9dlr8jeAZxHgCGgAhozw==}
+  babel-plugin-jsx-dom-expressions@0.41.0-next.7:
+    resolution: {integrity: sha512-UhYy4qUYoHHHWNV/GTUFJj9xOn9O/FivsD8lVypMaaYVr/KRvme0+lDtCOL36gXCACey6BQd+FdUWBdPZdQ5Vw==}
     peerDependencies:
       '@babel/core': ^7.20.12
 
@@ -1699,8 +1699,8 @@ packages:
     resolution: {integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==}
     engines: {node: '>=8'}
 
-  dom-expressions@0.41.0-next.6:
-    resolution: {integrity: sha512-/B016GAo6tCChz3TQvZ1xvEvvnk1m8LLFksmbZqS+Uu90doEUgGnEpNnbTL0ZcjggWlYTtpnyISRlwmTmbZB7w==}
+  dom-expressions@0.41.0-next.7:
+    resolution: {integrity: sha512-QoA/s3IGzQc0au3qHc02vWQiF0dsw6MjBQfYKkGKyChEZKhgYtQHEWrvPYl0gsXqNXIRVRbJUFCN/qXHiR8Rxg==}
     peerDependencies:
       csstype: ^3.0
       seroval: ~1.5.0
@@ -2065,8 +2065,8 @@ packages:
     resolution: {integrity: sha512-tsYlhAYpjCKa//8rXZ9DqKEawhPoSytweBC2eNvcaDK+57RZLHGqNs3PZTQO6yekLFSuvA6AlnAfrw1uBvtb+Q==}
     hasBin: true
 
-  hyper-dom-expressions@0.41.0-next.6:
-    resolution: {integrity: sha512-RsbAMBwygI+zQsPuPY0yyDKcItTrf78mrMII19ObAbMHGuCOM9OSfKwMDQZESjZBoQzPSHUKoHIyW83lPPGkLA==}
+  hyper-dom-expressions@0.41.0-next.7:
+    resolution: {integrity: sha512-SKO8fLrtwCvc2J3gcNeXuKa/OPN0LHGZJlh15YCFS5kNrj/QxzEJNlQxgNeXIy+WRwTqq7yNgtvJ3GjDMilshg==}
 
   iconv-lite@0.4.24:
     resolution: {integrity: sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==}
@@ -2337,8 +2337,8 @@ packages:
     resolution: {integrity: sha512-aprLII/vPzuQvYZnDRU78Fns9I2Ag3gi4Ipga/hxnVMCZC8DnR2nI7XBqrPoywGfxqIx/DgarGvDJZAD3YBTgQ==}
     hasBin: true
 
-  lit-dom-expressions@0.41.0-next.6:
-    resolution: {integrity: sha512-WJ1s4HBGu/Fg6awvvtPdm0y4MgUxkL/JBD5SvmjAUd0G1XzwsFBu6XIK99SC1yd7rW2JjW+u32WP5+0ALq/y1A==}
+  lit-dom-expressions@0.41.0-next.7:
+    resolution: {integrity: sha512-iUrurjWQ3VUS6D3WMd1wRLnVLFCRTmiKhLKHQ8vSYDAi8m4ECJgHZ/BP9ARg7vEh8slBG1HqVxNSyoky2FhAbQ==}
 
   load-json-file@4.0.0:
     resolution: {integrity: sha512-Kx8hMakjX03tiGTLAIdJ+lL0htKnXjEZN6hk/tozf/WOuYGdZBJrZ+rCJRbVCugsjB3jMLn9746NsQIf5VjBMw==}
@@ -2947,8 +2947,8 @@ packages:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
     engines: {node: '>=8'}
 
-  solid-js@2.0.0-experimental.14:
-    resolution: {integrity: sha512-MrB8xqc6UDWGtWrAsIpdXkxINleVF/WG4W5nIv3wEhbQbcYnPdqaDWBAhNP36jfIIS0xQVlIdGmLYD+FaPS5qg==}
+  solid-js@2.0.0-experimental.15:
+    resolution: {integrity: sha512-2vVAD0FQbA9ILPCSHNGdN+NjXFWV1l0gTgbF0uZbE2AQrtCEtob4kg+el3Qjq18tEM+M8PmXudeAE71WNikAcg==}
 
   solid-refresh@0.6.3:
     resolution: {integrity: sha512-F3aPsX6hVw9ttm5LYlth8Q15x6MlI/J3Dn+o3EQyRTtTxidepSTwAYdozt01/YA+7ObcciagGEyXIopGZzQtbA==}
@@ -4614,9 +4614,9 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
 
-  '@solidjs/signals@0.10.7': {}
-
   '@solidjs/signals@0.10.8': {}
+
+  '@solidjs/signals@0.11.1': {}
 
   '@types/babel__core@7.20.5':
     dependencies:
@@ -4815,7 +4815,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  babel-plugin-jsx-dom-expressions@0.41.0-next.6(@babel/core@7.29.0):
+  babel-plugin-jsx-dom-expressions@0.41.0-next.7(@babel/core@7.29.0):
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-module-imports': 7.18.6
@@ -5112,7 +5112,7 @@ snapshots:
     dependencies:
       path-type: 4.0.0
 
-  dom-expressions@0.41.0-next.6(csstype@3.2.3)(seroval-plugins@1.5.0(seroval@1.3.2))(seroval@1.3.2):
+  dom-expressions@0.41.0-next.7(csstype@3.2.3)(seroval-plugins@1.5.0(seroval@1.3.2))(seroval@1.3.2):
     dependencies:
       babel-plugin-transform-rename-import: 2.3.0
       csstype: 3.2.3
@@ -5615,7 +5615,7 @@ snapshots:
 
   human-id@4.1.3: {}
 
-  hyper-dom-expressions@0.41.0-next.6: {}
+  hyper-dom-expressions@0.41.0-next.7: {}
 
   iconv-lite@0.4.24:
     dependencies:
@@ -5900,7 +5900,7 @@ snapshots:
 
   lcov-parse@1.0.0: {}
 
-  lit-dom-expressions@0.41.0-next.6: {}
+  lit-dom-expressions@0.41.0-next.7: {}
 
   load-json-file@4.0.0:
     dependencies:
@@ -6534,19 +6534,19 @@ snapshots:
 
   slash@3.0.0: {}
 
-  solid-js@2.0.0-experimental.14:
+  solid-js@2.0.0-experimental.15:
     dependencies:
-      '@solidjs/signals': 0.10.7
+      '@solidjs/signals': 0.10.8
       csstype: 3.2.3
       seroval: 1.5.0
       seroval-plugins: 1.5.0(seroval@1.5.0)
 
-  solid-refresh@0.6.3(solid-js@2.0.0-experimental.14):
+  solid-refresh@0.6.3(solid-js@2.0.0-experimental.15):
     dependencies:
       '@babel/generator': 7.29.1
       '@babel/helper-module-imports': 7.28.6
       '@babel/types': 7.29.0
-      solid-js: 2.0.0-experimental.14
+      solid-js: 2.0.0-experimental.15
     transitivePeerDependencies:
       - supports-color
 
@@ -6873,14 +6873,14 @@ snapshots:
       - supports-color
       - terser
 
-  vite-plugin-solid@2.11.10(solid-js@2.0.0-experimental.14)(vite@5.4.21(@types/node@22.19.11)):
+  vite-plugin-solid@2.11.10(solid-js@2.0.0-experimental.15)(vite@5.4.21(@types/node@22.19.11)):
     dependencies:
       '@babel/core': 7.29.0
       '@types/babel__core': 7.20.5
       babel-preset-solid: link:packages/babel-preset-solid
       merge-anything: 5.1.7
-      solid-js: 2.0.0-experimental.14
-      solid-refresh: 0.6.3(solid-js@2.0.0-experimental.14)
+      solid-js: 2.0.0-experimental.15
+      solid-refresh: 0.6.3(solid-js@2.0.0-experimental.15)
       vite: 5.4.21(@types/node@22.19.11)
       vitefu: 1.1.2(vite@5.4.21(@types/node@22.19.11))
     transitivePeerDependencies:

@@ -2,6 +2,7 @@ import {
   createMemo,
   createRoot,
   getOwner,
+  runWithOwner,
   untrack,
   setContext,
   getContext,
@@ -94,15 +95,17 @@ export type ChildrenReturn = Accessor<ResolvedChildren> & { toArray: () => Resol
  * @description https://docs.solidjs.com/reference/component-apis/children
  */
 export function children(fn: Accessor<JSX.Element>): ChildrenReturn {
-  const children = createMemo(fn);
-  const memo = IS_DEV
-    ? createMemo(() => flatten(children()), undefined, { name: "children" })
-    : createMemo(() => flatten(children()));
-  (memo as ChildrenReturn).toArray = () => {
-    const c = memo();
-    return Array.isArray(c) ? c : c != null ? [c] : [];
+  const c = createMemo(fn, undefined, { lazy: true });
+  const memo = createMemo(
+    () => flatten(c()),
+    undefined,
+    IS_DEV ? { name: "children", lazy: true } : { lazy: true }
+  ) as unknown as ChildrenReturn;
+  memo.toArray = () => {
+    const v = memo();
+    return Array.isArray(v) ? v : v != null ? [v] : [];
   };
-  return memo as ChildrenReturn;
+  return memo;
 }
 
 // Dev

@@ -22,7 +22,7 @@ export {
 } from "@solidjs/signals";
 
 export { flatten } from "@solidjs/signals";
-export { snapshot, merge, omit, $PROXY, $TRACK } from "@solidjs/signals";
+export { snapshot, merge, omit, storePath, $PROXY, $TRACK } from "@solidjs/signals";
 
 // === Type re-exports ===
 
@@ -48,7 +48,12 @@ export type {
   Omit,
   Context,
   ContextRecord,
-  IQueue
+  IQueue,
+  StorePathRange,
+  ArrayFilterFn,
+  CustomPartial,
+  Part,
+  PathSetter
 } from "@solidjs/signals";
 
 // === Local imports ===
@@ -832,7 +837,7 @@ export function isPending(fn: () => any, fallback?: boolean): boolean {
   }
 }
 
-export function pending<T>(fn: () => T): T {
+export function latest<T>(fn: () => T): T {
   return fn();
 }
 

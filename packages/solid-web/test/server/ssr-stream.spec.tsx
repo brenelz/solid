@@ -12,7 +12,7 @@ import {
   Match,
   Errored
 } from "@solidjs/web";
-import { createMemo, lazy } from "solid-js";
+import { createMemo, createSignal, lazy } from "solid-js";
 
 function delay(ms: number) {
   return new Promise(r => setTimeout(r, ms));
@@ -1313,7 +1313,7 @@ describe("Entry CSS Auto-Discovery", () => {
     expect(html).not.toContain("stylesheet");
   });
 
-  test("entry CSS deduplicates with lazy component CSS", async () => {
+  test("entry CSS deduplicates with lazy component CSS (streaming)", async () => {
     const manifest = {
       "src/index.tsx": { file: "/assets/index.js", isEntry: true, css: ["/assets/shared.css"] },
       "./Styled.tsx": {
@@ -1346,5 +1346,151 @@ describe("Entry CSS Auto-Discovery", () => {
     const sharedCssCount = (shell.match(/stylesheet" href="\/assets\/shared\.css"/g) || []).length;
     expect(sharedCssCount).toBe(1);
     expect(shell).toContain('<link rel="stylesheet" href="/assets/styled.css">');
+  });
+});
+
+// ============================================================================
+// Fragment + props.children — SSR rendering correctness (PR #2592)
+// ============================================================================
+
+describe("SSR — Fragment wrapping props.children", () => {
+  test("fragment wrapper renders children correctly in renderToString", () => {
+    function Wrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+
+    const html = renderToString(() => (
+      <div>
+        <Wrapper>
+          <h1>Title</h1>
+          <p>Text</p>
+          <span>42</span>
+        </Wrapper>
+      </div>
+    ));
+
+    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toContain("<p>Text</p>");
+    expect(html).toContain("<span>42</span>");
+  });
+
+  test("fragment wrapper with dynamic expression renders correctly", () => {
+    function Wrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+
+    const [count] = createSignal(42);
+
+    const html = renderToString(() => (
+      <div>
+        <Wrapper>
+          <h1>Title</h1>
+          <span>{count()}</span>
+        </Wrapper>
+      </div>
+    ));
+
+    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toContain("42");
+  });
+
+  test("nested fragment wrappers render correctly", () => {
+    function Wrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+    function OuterWrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+
+    const [count] = createSignal(7);
+
+    const html = renderToString(() => (
+      <div>
+        <OuterWrapper>
+          <Wrapper>
+            <h1>Nested</h1>
+            <span>{count()}</span>
+          </Wrapper>
+        </OuterWrapper>
+      </div>
+    ));
+
+    expect(html).toContain("Nested");
+    expect(html).toContain("7");
+  });
+
+  test("fragment wrapper with async data in streaming", async () => {
+    function Wrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+
+    function App() {
+      const data = createMemo(async () => {
+        return new Promise<string>(r => setTimeout(() => r("Loaded"), 10));
+      });
+      return (
+        <Loading fallback={<span>Loading...</span>}>
+          <Wrapper>
+            <h1>Static</h1>
+            <p>{data()}</p>
+          </Wrapper>
+        </Loading>
+      );
+    }
+
+    const html = await renderComplete(() => <App />);
+    expect(html).toContain("Static");
+    expect(html).toContain("Loaded");
+  });
+
+  test("fragment wrapper with lazy component — PR #2592 pattern", async () => {
+    function Wrapper(props: { children: any }) {
+      return <>{props.children}</>;
+    }
+
+    const [s] = createSignal(0);
+    function HomeContent() {
+      return (
+        <Wrapper>
+          <h1>Welcome to this Simple Routing Example</h1>
+          <p>Click the links in the Navigation above to load different routes.</p>
+          <span>{s()}</span>
+        </Wrapper>
+      );
+    }
+
+    const LazyHome = lazy(
+      () =>
+        new Promise<{ default: typeof HomeContent }>(r =>
+          setTimeout(() => r({ default: HomeContent }), 10)
+        ),
+      "./Home"
+    );
+
+    const manifest = { "./Home": { file: "/assets/Home.js" } };
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Loading...</span>}>
+              <Switch fallback={<span>Not found</span>}>
+                <Match when={true}>
+                  <LazyHome />
+                </Match>
+              </Switch>
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const html = await renderComplete(() => <App />, { manifest });
+    expect(html).toContain("Welcome to this Simple Routing Example");
+    expect(html).toContain("Click the links");
+    expect(html).toContain("0");
   });
 });
