@@ -80,7 +80,7 @@
     "types:web": "tsc --project ./tsconfig.build.json",
     "types:copy-web": "ncp ../../node_modules/dom-expressions/src/client.d.ts ./types/client.d.ts && ncp ../../node_modules/dom-expressions/src/server.d.ts ./types/server.d.ts",
     "types:web-storage": "tsc --project ./storage/tsconfig.build.json",
-    "test": "vitest run && vitest run --config vite.config.server.mjs",
+    "test": "vitest run && vitest run --config vite.config.server.mjs && vitest run --config vite.config.hydrate.mjs",
     "test:server": "vitest run --config vite.config.server.mjs",
     "coverage": "vitest run --coverage",
     "test-types": "tsc --project tsconfig.test.json"
