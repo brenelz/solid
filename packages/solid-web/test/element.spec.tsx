@@ -5,14 +5,6 @@
 import { describe, expect, test } from "vitest";
 import { createRoot, createSignal, createUniqueId, JSX, children, flush } from "solid-js";
 
-declare module "solid-js/jsx-runtime" {
-  namespace JSX {
-    interface Directives {
-      getRef: boolean;
-    }
-  }
-}
-
 describe("Basic element attributes", () => {
   test("spread", () => {
     let div: HTMLDivElement;
@@ -62,12 +54,16 @@ describe("Basic element attributes", () => {
     expect(div1!).toBe(div2!);
   });
 
-  test("directives work properly", () => {
-    let ref: HTMLDivElement,
-      el!: HTMLDivElement,
-      getRef = (el: HTMLDivElement) => (ref = el),
-      d = (<div use:getRef ref={el} />) as HTMLDivElement;
-    expect(ref!).toBe(el);
+  test("ref assigns element", () => {
+    let el!: HTMLDivElement;
+    let ref: HTMLDivElement;
+    function getRef() {
+      return (el: HTMLDivElement) => (ref = el);
+    }
+    createRoot(() => {
+      <div ref={[getRef, (r: HTMLDivElement) => (el = r)]} />;
+    });
+    expect(el).toBeInstanceOf(HTMLDivElement);
   });
 
   test("uniqueId", () => {

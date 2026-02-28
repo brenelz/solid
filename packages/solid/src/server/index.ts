@@ -28,7 +28,7 @@ export {
   omit,
   onCleanup,
   onSettled,
-  pending,
+  latest,
   reconcile,
   refresh,
   repeat,
@@ -36,6 +36,7 @@ export {
   NotReadyError,
   runWithOwner,
   snapshot,
+  storePath,
   createDeepProxy,
   untrack
 } from "./signals.js";
@@ -58,6 +59,11 @@ export type {
   SolidStore,
   StoreNode,
   StoreSetter,
+  StorePathRange,
+  ArrayFilterFn,
+  CustomPartial,
+  Part,
+  PathSetter,
   PatchOp
 } from "./signals.js";
 

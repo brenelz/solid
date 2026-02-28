@@ -2,6 +2,7 @@
 import { createMemo } from "solid-js";
 export {
   getOwner,
+  runWithOwner,
   createComponent,
   createRoot as root,
   createRenderEffect as effect,

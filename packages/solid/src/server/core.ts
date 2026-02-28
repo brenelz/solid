@@ -71,13 +71,15 @@ export type ChildrenReturn = Accessor<ResolvedChildren> & { toArray: () => Resol
  * @returns a accessor of the same children, but resolved
  */
 export function children(fn: Accessor<JSX.Element>): ChildrenReturn {
-  const childrenMemo = createMemo(fn);
-  const memo = createMemo(() => flatten(childrenMemo()));
-  (memo as ChildrenReturn).toArray = () => {
-    const c = memo();
-    return Array.isArray(c) ? c : c != null ? [c] : [];
+  const c = createMemo(fn, undefined, { lazy: true });
+  const memo = createMemo(() => flatten(c()), undefined, {
+    lazy: true
+  }) as unknown as ChildrenReturn;
+  memo.toArray = () => {
+    const v = memo();
+    return Array.isArray(v) ? v : v != null ? [v] : [];
   };
-  return memo as ChildrenReturn;
+  return memo;
 }
 
 /**

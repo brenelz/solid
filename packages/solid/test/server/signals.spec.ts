@@ -23,7 +23,7 @@ import {
   untrack,
   flush,
   isPending,
-  pending,
+  latest,
   isRefreshing,
   refresh,
   action,
@@ -392,8 +392,8 @@ describe("Server utilities", () => {
     expect(isPending(() => 42)).toBe(false);
   });
 
-  test("pending passes through", () => {
-    expect(pending(() => 42)).toBe(42);
+  test("latest passes through", () => {
+    expect(latest(() => 42)).toBe(42);
   });
 
   test("isRefreshing returns false", () => {

@@ -24,6 +24,7 @@ import {
   type StoreSetter
 } from "@solidjs/signals";
 import { JSX } from "../jsx.js";
+import { IS_DEV } from "./core.js";
 
 declare module "@solidjs/signals" {
   interface MemoOptions<T> {
@@ -50,6 +51,9 @@ type SharedConfig = {
   gather?: (key: string) => void;
   cleanupFragment?: (id: string) => void;
   registry?: Map<string, Element>;
+  completed?: WeakSet<Element> | null;
+  events?: any[] | null;
+  verifyHydration?: () => void;
   done: boolean;
   getNextContextId(): string;
 };
@@ -106,6 +110,7 @@ function drainHydrationCallbacks() {
   _hydrationEndCallbacks = null;
   if (cbs) for (const cb of cbs) cb();
   setTimeout(() => {
+    if (IS_DEV && sharedConfig.verifyHydration) sharedConfig.verifyHydration();
     if ((globalThis as any)._$HY) (globalThis as any)._$HY.done = true;
   });
 }

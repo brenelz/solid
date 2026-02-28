@@ -21,7 +21,7 @@ export {
   omit,
   onCleanup,
   onSettled,
-  pending,
+  latest,
   reconcile,
   refresh,
   repeat,
@@ -29,6 +29,7 @@ export {
   NotReadyError,
   runWithOwner,
   snapshot,
+  storePath,
   untrack
 } from "@solidjs/signals";
 
@@ -48,7 +49,12 @@ export type {
   Store,
   SolidStore,
   StoreNode,
-  StoreSetter
+  StoreSetter,
+  StorePathRange,
+  ArrayFilterFn,
+  CustomPartial,
+  Part,
+  PathSetter
 } from "@solidjs/signals";
 
 // needs wrappers
