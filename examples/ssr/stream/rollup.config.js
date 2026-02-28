@@ -55,7 +55,7 @@ export default [
       nodeResolve({ preferBuiltins: true, exportConditions: ["solid", "node"] }),
       babel({
         babelHelpers: "bundled",
-        presets: [["solid", { generate: "ssr", hydratable: true }]]
+        presets: [["solid", { generate: "ssr", hydratable: true, dev: true }]]
       }),
       common()
     ]
@@ -70,10 +70,10 @@ export default [
     ],
     preserveEntrySignatures: false,
     plugins: [
-      nodeResolve({ exportConditions: ["solid"] }),
+      nodeResolve({ exportConditions: ["solid", "development"] }),
       babel({
         babelHelpers: "bundled",
-        presets: [["solid", { generate: "dom", hydratable: true }]]
+        presets: [["solid", { generate: "dom", hydratable: true, dev: true }]]
       }),
       common(),
       solidAssetManifest(),
