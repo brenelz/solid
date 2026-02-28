@@ -39,6 +39,9 @@ function Counter() {
       <Loading>
         <button onClick={() => setCount(count() + 1)}>Click me in loading</button>
       </Loading>
+      <Dynamic component={Wrapper}>
+        <button onClick={() => setCount(count() + 1)}>Click me in dynamic</button>
+      </Dynamic>
     </div>
   );
 }
