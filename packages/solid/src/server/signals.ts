@@ -757,12 +757,25 @@ export function repeat<T>(
   mapFn: (i: number) => T,
   options: { fallback?: Accessor<any>; from?: Accessor<number | undefined> } = {}
 ): () => T[] {
+  const owner = createOwner(); // match client's createOwner inside repeat
   const len = count();
   const offset = options.from?.() || 0;
   let s: T[] = [];
   if (len) {
-    for (let i = 0; i < len; i++) s.push(mapFn(i + offset));
-  } else if (options.fallback) s = [options.fallback()];
+    runWithOwner(owner, () => {
+      for (let i = 0; i < len; i++) {
+        const itemOwner = createOwner();
+        s.push(runWithOwner(itemOwner, () => mapFn(i + offset)) as T);
+      }
+    });
+  } else if (options.fallback) {
+    s = [
+      runWithOwner(owner, () => {
+        const fo = createOwner();
+        return runWithOwner(fo, () => options.fallback!()) as T;
+      }) as T
+    ];
+  }
   return () => s;
 }
 
@@ -781,6 +794,11 @@ export function createErrorBoundary<U>(
 ): () => unknown {
   const ctx = sharedConfig.context;
   const owner = createOwner();
+  // Match client's decision computed (sibling of owner in parent scope)
+  const parent = getOwner();
+  if (parent?.id != null) getNextChildId(parent);
+  // Match client's computed(fn) depth inside the boundary owner
+  (owner as any).id = owner.id + "0";
   return runWithOwner(owner, () => {
     let result: any;
 
