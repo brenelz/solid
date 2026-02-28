@@ -1,6 +1,15 @@
 /** @vitest-environment node */
 import { describe, expect, test } from "vitest";
-import { createRoot, For, Repeat, Show, Switch, Match, Errored } from "../../src/server/index.js";
+import {
+  createRoot,
+  For,
+  Repeat,
+  Show,
+  Switch,
+  Match,
+  Errored,
+  getOwner
+} from "../../src/server/index.js";
 
 describe("Server For", () => {
   test("maps array to elements", () => {
@@ -126,4 +135,137 @@ describe("Server Errored", () => {
   // In SSR, errors in children would be caught by the error boundary during rendering.
   // A direct throw in the children prop value happens before Errored runs.
   // This is tested via createErrorBoundary in signals.spec.ts instead.
+});
+
+// Hydration key alignment tests
+// These verify that server-side flow components create matching owner tree
+// structures so hydration keys align with the client.
+describe("Hydration key alignment", () => {
+  test("Show (non-keyed) children run under value memo scope", () => {
+    createRoot(
+      () => {
+        let childOwnerId: string | undefined;
+        Show({
+          when: true,
+          get children() {
+            childOwnerId = (getOwner() as any)?.id;
+            return "content";
+          }
+        });
+        // Client Show (non-keyed) creates: conditionValue(t0), condition(t1), value memo(t2)
+        // Children are evaluated under the value memo
+        expect(childOwnerId).toBe("t2");
+      },
+      { id: "t" }
+    );
+  });
+
+  test("Show (keyed) children run under value memo scope", () => {
+    createRoot(
+      () => {
+        let childOwnerId: string | undefined;
+        Show({
+          when: true,
+          keyed: true,
+          get children() {
+            childOwnerId = (getOwner() as any)?.id;
+            return "content";
+          }
+        });
+        // Client Show (keyed) creates: conditionValue(t0), value memo(t1) — no condition memo
+        expect(childOwnerId).toBe("t1");
+      },
+      { id: "t" }
+    );
+  });
+
+  test("Show fallback also runs under value memo scope", () => {
+    createRoot(
+      () => {
+        let fallbackOwnerId: string | undefined;
+        Show({
+          when: false,
+          get fallback() {
+            fallbackOwnerId = (getOwner() as any)?.id;
+            return "fallback";
+          },
+          children: "content"
+        });
+        expect(fallbackOwnerId).toBe("t2");
+      },
+      { id: "t" }
+    );
+  });
+
+  test("Errored children run under boundary with correct depth", () => {
+    createRoot(
+      () => {
+        let childOwnerId: string | undefined;
+        const result = Errored({
+          fallback: "error",
+          get children() {
+            childOwnerId = (getOwner() as any)?.id;
+            return "ok";
+          }
+        });
+        // Client createCollectionBoundary: createOwner(t0) → computed(fn)(t00)
+        // Plus decision computed at t1. Children run under t00.
+        expect(childOwnerId).toBe("t00");
+        expect(typeof result === "function" ? (result as any)() : result).toBe("ok");
+      },
+      { id: "t" }
+    );
+  });
+
+  test("Repeat items run under per-item owners", () => {
+    createRoot(
+      () => {
+        const itemOwnerIds: (string | undefined)[] = [];
+        const result = Repeat({
+          count: 3,
+          children: (i: number) => {
+            itemOwnerIds.push((getOwner() as any)?.id);
+            return `item-${i}`;
+          }
+        });
+        // Client repeat: createOwner(t0) → per-item owners under t0
+        // item 0 → t00, item 1 → t01, item 2 → t02
+        expect(itemOwnerIds).toEqual(["t00", "t01", "t02"]);
+        const val = typeof result === "function" ? (result as any)() : result;
+        expect(val).toEqual(["item-0", "item-1", "item-2"]);
+      },
+      { id: "t" }
+    );
+  });
+
+  test("Show consumes correct number of parent slots", () => {
+    createRoot(
+      () => {
+        let firstShowChildId: string | undefined;
+        let secondShowChildId: string | undefined;
+
+        Show({
+          when: true,
+          get children() {
+            firstShowChildId = (getOwner() as any)?.id;
+            return "first";
+          }
+        });
+
+        // Second Show starts after first consumed slots t0, t1, t2
+        // So it gets t3 (conditionValue), t4 (condition), t5 (value owner)
+        Show({
+          when: true,
+          get children() {
+            secondShowChildId = (getOwner() as any)?.id;
+            return "second";
+          }
+        });
+
+        expect(firstShowChildId).toBe("t2");
+        expect(secondShowChildId).toBe("t5");
+      },
+      { id: "t" }
+    );
+  });
 });

@@ -1,6 +1,8 @@
 import { children } from "./core.js";
 import {
   createMemo,
+  createOwner,
+  runWithOwner,
   mapArray,
   repeat,
   createErrorBoundary,
@@ -59,15 +61,23 @@ export function Show<T>(props: {
   fallback?: JSX.Element;
   children: JSX.Element | ((item: Accessor<NonNullable<T>>) => JSX.Element);
 }): JSX.Element {
-  const when = props.when;
-  if (when) {
-    const child = props.children;
-    if (typeof child === "function" && child.length > 0) {
-      return (child as any)(() => when as NonNullable<T>);
-    }
-    return child as JSX.Element;
+  const o = getOwner();
+  if (o?.id != null) {
+    getNextChildId(o); // match client's conditionValue memo
+    if (!props.keyed) getNextChildId(o); // match client's condition memo (non-keyed only)
   }
-  return props.fallback as JSX.Element;
+  const valueOwner = createOwner(); // match client's value memo
+  return runWithOwner(valueOwner, () => {
+    const when = props.when;
+    if (when) {
+      const child = props.children;
+      if (typeof child === "function" && child.length > 0) {
+        return (child as any)(() => when as NonNullable<T>);
+      }
+      return child as JSX.Element;
+    }
+    return props.fallback as JSX.Element;
+  }) as JSX.Element;
 }
 
 type EvalConditions = readonly [number, unknown, MatchProps<unknown>];
@@ -79,7 +89,7 @@ type EvalConditions = readonly [number, unknown, MatchProps<unknown>];
 export function Switch(props: { fallback?: JSX.Element; children: JSX.Element }): JSX.Element {
   const chs = children(() => props.children);
   const o = getOwner();
-  if (o) getNextChildId(o); // advance ID counter
+  if (o?.id != null) getNextChildId(o); // advance ID counter
 
   return createMemo(() => {
     let conds: MatchProps<unknown> | MatchProps<unknown>[] = chs() as any;
