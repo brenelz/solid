@@ -1,4 +1,4 @@
-import { createSignal, onSettled } from "solid-js";
+import { createSignal, Loading, onSettled } from "solid-js";
 const Home = () => {
   const [s, set] = createSignal(0);
   onSettled(() => {
@@ -12,10 +12,12 @@ const Home = () => {
   });
   return (
     <Wrapper>
-      <h1>Welcome to this Simple Routing Example</h1>
-      <p>Click the links in the Navigation above to load different routes.</p>
-      <span>{s()}</span>
-      <Counter />
+      <Loading>
+        <h1>Welcome to this Simple Routing Example</h1>
+        <p>Click the links in the Navigation above to load different routes.</p>
+        <span>{s()}</span>
+        <Counter />
+      </Loading>
     </Wrapper>
   );
 };
@@ -31,9 +33,12 @@ function Counter() {
       <Show when={count() < 10} fallback={<div>Too many clicks</div>}>
         <div>
           <span>{count()}</span>
-          <button onClick={() => setCount(count() + 1)}>Click me</button>
+          <button onClick={() => setCount(count() + 1)}>Click me in show</button>
         </div>
       </Show>
+      <Loading>
+        <button onClick={() => setCount(count() + 1)}>Click me in loading</button>
+      </Loading>
     </div>
   );
 }
