@@ -84,11 +84,8 @@ export {
   createOptimisticStore
 } from "./client/hydration.js";
 // stub
-export function ssrHandleError() {}
-export function ssrRunInScope() {}
-export function ssrConsumeId(expr: any) {
-  return expr;
-}
+export function ssrHandleError() { }
+export function ssrRunInScope() { }
 
 import type { JSX } from "./jsx.js";
 type JSXElement = JSX.Element;

@@ -75,8 +75,7 @@ export {
   children,
   createContext,
   useContext,
-  ssrRunInScope,
-  ssrConsumeId
+  ssrRunInScope
 } from "./core.js";
 export type {
   ChildrenReturn,
