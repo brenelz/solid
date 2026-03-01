@@ -23,11 +23,14 @@ export function For<T extends readonly any[], U extends JSX.Element>(props: {
   keyed?: boolean | ((item: T[number]) => any);
   children: (item: Accessor<T[number]>, index: Accessor<number>) => U;
 }) {
+  const o = getOwner();
   const options =
     "fallback" in props
       ? { keyed: props.keyed, fallback: () => props.fallback }
       : { keyed: props.keyed };
-  return createMemo(mapArray(() => props.each, props.children, options)) as unknown as JSX.Element;
+  const result = createMemo(mapArray(() => props.each, props.children, options));
+  if (o?.id != null) getNextChildId(o); // match client's insert() render effect when For is a sibling child
+  return result as unknown as JSX.Element;
 }
 
 /**
@@ -41,14 +44,17 @@ export function Repeat<T extends JSX.Element>(props: {
   fallback?: JSX.Element;
   children: ((index: number) => T) | T;
 }) {
+  const o = getOwner();
   const options: { fallback?: Accessor<JSX.Element>; from?: Accessor<number | undefined> } =
     "fallback" in props ? { fallback: () => props.fallback } : {};
   options.from = () => props.from;
-  return repeat(
+  const result = repeat(
     () => props.count,
     index => (typeof props.children === "function" ? props.children(index) : props.children),
     options
-  ) as unknown as JSX.Element;
+  );
+  if (o?.id != null) getNextChildId(o); // match client's insert() render effect when Repeat is a sibling child
+  return result as unknown as JSX.Element;
 }
 
 /**
@@ -67,6 +73,7 @@ export function Show<T>(props: {
     if (!props.keyed) getNextChildId(o); // match client's condition memo (non-keyed only)
   }
   const valueOwner = createOwner(); // match client's value memo
+  if (o?.id != null) getNextChildId(o); // match client's insert() render effect when Show is a sibling child
   return runWithOwner(valueOwner, () => {
     const when = props.when;
     if (when) {
@@ -91,7 +98,7 @@ export function Switch(props: { fallback?: JSX.Element; children: JSX.Element })
   const o = getOwner();
   if (o?.id != null) getNextChildId(o); // advance ID counter
 
-  return createMemo(() => {
+  const result = createMemo(() => {
     let conds: MatchProps<unknown> | MatchProps<unknown>[] = chs() as any;
     if (!Array.isArray(conds)) conds = [conds];
 
@@ -103,7 +110,9 @@ export function Switch(props: { fallback?: JSX.Element; children: JSX.Element })
       }
     }
     return props.fallback;
-  }) as unknown as JSX.Element;
+  });
+  if (o?.id != null) getNextChildId(o); // match client's insert() render effect when Switch is a sibling child
+  return result as unknown as JSX.Element;
 }
 
 export type MatchProps<T> = {
@@ -128,11 +137,14 @@ export function Errored(props: {
   fallback: JSX.Element | ((err: any, reset: () => void) => JSX.Element);
   children: JSX.Element;
 }): JSX.Element {
-  return createErrorBoundary(
+  const o = getOwner();
+  const result = createErrorBoundary(
     () => props.children,
     (err, reset) => {
       const f = props.fallback;
       return typeof f === "function" && f.length ? f(err, reset) : f;
     }
-  ) as unknown as JSX.Element;
+  );
+  if (o?.id != null) getNextChildId(o); // match client's insert() render effect when Errored is a sibling child
+  return result as unknown as JSX.Element;
 }

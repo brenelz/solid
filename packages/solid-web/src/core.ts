@@ -11,7 +11,8 @@ export {
   merge as mergeProps,
   flatten,
   ssrHandleError,
-  ssrRunInScope
+  ssrRunInScope,
+  ssrConsumeId
 } from "solid-js";
 
 export const memo = fn => createMemo(() => fn());

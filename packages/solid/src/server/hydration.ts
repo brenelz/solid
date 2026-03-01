@@ -1,5 +1,6 @@
 import {
   createOwner,
+  getOwner,
   getNextChildId,
   runWithOwner,
   createLoadBoundary,
@@ -49,9 +50,11 @@ export function Loading(props: { fallback?: JSX.Element; children: JSX.Element }
     ) as unknown as JSX.Element;
   }
 
+  const parent = getOwner();
   const o = createOwner();
   const id = o.id!;
   (o as any).id = id + "00"; // fake depth to match client's createLoadBoundary nesting
+  if (parent?.id != null) getNextChildId(parent); // match client's insert() render effect when Loading is a sibling child
 
   let runPromise: Promise<any> | undefined;
   let serializeBuffer: [string, any, boolean?][] = [];

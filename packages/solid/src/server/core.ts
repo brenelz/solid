@@ -95,3 +95,12 @@ export function ssrRunInScope(fn: (() => any) | (() => any)[]): (() => any) | ((
   }
   return runWithOwner.bind(null, createOwner(), fn);
 }
+
+/**
+ * No-op identity function kept for API compatibility with dom-expressions.
+ * The ID matching for control flow components is now handled inside each
+ * component's server implementation (flow.ts / hydration.ts).
+ */
+export function ssrConsumeId<T>(expr: T): T {
+  return expr;
+}

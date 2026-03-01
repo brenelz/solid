@@ -86,6 +86,9 @@ export {
 // stub
 export function ssrHandleError() {}
 export function ssrRunInScope() {}
+export function ssrConsumeId(expr: any) {
+  return expr;
+}
 
 import type { JSX } from "./jsx.js";
 type JSXElement = JSX.Element;
