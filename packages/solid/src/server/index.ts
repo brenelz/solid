@@ -82,6 +82,8 @@ export type {
   SignalOptions,
   Setter,
   Store,
+  StoreBrand,
+  StorePart,
   SolidStore,
   StoreNode,
   StoreSetter,

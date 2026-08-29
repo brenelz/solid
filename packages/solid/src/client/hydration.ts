@@ -1606,11 +1606,21 @@ export const createOptimistic: {
  * (`"server"` | `"hybrid"` | `"client"`) for the same client-vs-server
  * tradeoffs as the other primitives. See {@link HydrationSsrFields}.
  */
-export const createProjection: <T extends object = {}>(
-  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  initialValue: Partial<T> | Store<NoFn<T>>,
-  options?: HydrationProjectionOptions
-) => Refreshable<Store<T>> = ((...args: any[]) => {
+export const createProjection: {
+  <T extends object = {}>(
+    fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    initialValue: Partial<T>,
+    options?: HydrationProjectionOptions
+  ): Refreshable<Store<T>>;
+  // Store-seed fallback — an overload, never a union with Store<T> (union
+  // inference traverses the mapped type against this-typed getter literals
+  // and overflows tsc; see createStore in @solidjs/signals).
+  <T extends object = {}>(
+    fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    initialValue: Store<T>,
+    options?: HydrationProjectionOptions
+  ): Refreshable<Store<T>>;
+} = ((...args: any[]) => {
   // `hydrating` can only be true once enableHydration() installed the
   // adapter slot (see createOptimistic above for the retention story).
   return sharedConfig.hydrating
@@ -1682,12 +1692,18 @@ type NoFn<T> = T extends Function ? never : T;
  */
 export const createStore: {
   <T extends object = {}>(
-    store: NoFn<T> | Store<NoFn<T>>,
+    store: NoFn<T>,
     options?: { name?: string; shallow?: boolean }
   ): [get: Store<T>, set: StoreSetter<T>];
   <T extends object = {}>(
     fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-    store: NoFn<T> | Store<NoFn<T>>,
+    store: NoFn<T>,
+    options?: HydrationProjectionOptions
+  ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+  // Store-seed fallback — overload, never a union (tsc overflow; see above).
+  <T extends object = {}>(
+    fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    store: Store<T>,
     options?: HydrationProjectionOptions
   ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
 } = ((...args: any[]) => {
@@ -1745,10 +1761,16 @@ export const createStore: {
  * @returns `[store: Store<T>, setStore: StoreSetter<T>]`
  */
 export const createOptimisticStore: {
-  <T extends object = {}>(store: NoFn<T> | Store<NoFn<T>>): [get: Store<T>, set: StoreSetter<T>];
+  <T extends object = {}>(store: NoFn<T>): [get: Store<T>, set: StoreSetter<T>];
   <T extends object = {}>(
     fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-    store: NoFn<T> | Store<NoFn<T>>,
+    store: NoFn<T>,
+    options?: HydrationProjectionOptions
+  ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+  // Store-seed fallback — overload, never a union (tsc overflow; see above).
+  <T extends object = {}>(
+    fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+    store: Store<T>,
     options?: HydrationProjectionOptions
   ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
 } = ((...args: any[]) => {

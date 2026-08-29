@@ -28,6 +28,7 @@ import {
   createMemo,
   createOptimistic,
   createOptimisticStore,
+  type Store,
   createRenderEffect,
   createRoot,
   createSignal,
@@ -69,7 +70,7 @@ function createThing() {
     foo: i * 10,
     foos: [`alpha-${i}`, `beta-${i}`]
   }));
-  let thing!: Thing;
+  let thing!: Store<Thing>;
   let setThing!: (fn: (s: Thing) => void) => void;
   let dispose!: () => void;
   createRoot(d => {
@@ -560,7 +561,7 @@ describe("affects — captured proxies (#2882)", () => {
   ];
 
   it("affects(store) covers a captured row proxy (<For> row shape, derived store)", async () => {
-    let state!: { rows: Row[] };
+    let state!: Store<{ rows: Row[] }>;
     let dispose!: () => void;
     createRoot(d => {
       dispose = d;

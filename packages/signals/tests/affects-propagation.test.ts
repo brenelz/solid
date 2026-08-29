@@ -23,6 +23,7 @@ import {
   createLoadingBoundary,
   createMemo,
   createOptimisticStore,
+  type Store,
   createRenderEffect,
   createRoot,
   createSignal,
@@ -173,7 +174,7 @@ describe("affects — propagation through derivation", () => {
 
   it("store record mark pends a derived memo reading a captured row proxy", async () => {
     type Row = { name: string };
-    let state!: { rows: Row[] };
+    let state!: Store<{ rows: Row[] }>;
     let dispose!: () => void;
     createRoot(d => {
       dispose = d;

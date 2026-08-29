@@ -6,6 +6,7 @@ import {
   createRoot,
   createSignal,
   createStore,
+  type Store,
   flush,
   reconcile,
   snapshot
@@ -370,7 +371,7 @@ describe("Projection root entity swap", () => {
       2: { id: 2, posts: [{ id: 1, title: "two/a" }] }
     };
     let setId!: (v: number) => void;
-    let user!: { id: number; posts: Post[] };
+    let user!: Store<{ id: number; posts: Post[] }>;
     let firstPost!: Post;
 
     createRoot(() => {
@@ -403,7 +404,7 @@ describe("Projection root entity swap", () => {
   test("keeps merging when identity is unchanged", () => {
     type User = { id: number; name: string; posts: { id: number; title: string }[] };
     let setName!: (v: string) => void;
-    let user!: User;
+    let user!: Store<User>;
     let firstPost!: { id: number; title: string };
     let postRuns = 0;
 
@@ -469,13 +470,13 @@ describe("Projection root entity swap", () => {
 
   test("key: null merges positionally", () => {
     let setId!: (v: number) => void;
-    let user!: { id: number; posts: { id: number; title: string }[] };
+    let user!: Store<{ id: number; posts: { id: number; title: string }[] }>;
     let firstPost!: { id: number; title: string };
 
     createRoot(() => {
       const [id, set] = createSignal(1);
       setId = set;
-      user = createProjection<typeof user>(
+      user = createProjection<{ id: number; posts: { id: number; title: string }[] }>(
         () => ({ id: id(), posts: [{ id: id() * 10, title: `t${id()}` }] }),
         {} as any,
         { key: null }

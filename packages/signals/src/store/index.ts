@@ -1,5 +1,7 @@
 export type {
   Store,
+  StorePart,
+  StoreBrand,
   StoreReturn,
   ProjectionStoreReturn,
   StoreSetter,
@@ -42,12 +44,23 @@ export { createOptimisticStoreNext as createOptimisticStore } from "./next/optim
 /** Public createStore: plain form `(init, options?)` and derived writable
  * form `(fn, seed, options?)`. */
 export function createStore<T extends object = {}>(
-  store: NoFn<T> | Store<NoFn<T>>,
+  store: NoFn<T>,
   options?: StoreOptions & { shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>];
 export function createStore<T extends object = {}>(
   fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  store: Partial<T> | Store<NoFn<T>>,
+  store: Partial<T>,
+  options?: ProjectionOptions
+): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+// Store-seed fallback: array stores can't satisfy Partial<T> (readonly
+// elements vs mutable array), so they bind here. Deliberately a separate
+// OVERLOAD, not a `Partial<T> | Store<T>` union — union inference traverses
+// the mapped Store type against `this`-typed getter literals and overflows
+// tsc; overload fallback only relates a seed to Store<T> after Partial<T>
+// has already rejected it, which getter literals never are.
+export function createStore<T extends object = {}>(
+  fn: (store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  store: Store<T>,
   options?: ProjectionOptions
 ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
 export function createStore(first: any, second?: any, third?: any): any {

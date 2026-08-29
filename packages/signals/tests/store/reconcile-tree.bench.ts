@@ -23,7 +23,14 @@
 //   - `shuffle`: deterministic Fisher-Yates per children array. General
 //     permutation coverage for the same fallback.
 import { afterAll, bench } from "vitest";
-import { createEffect, createRoot, createStore, flush, reconcile } from "../../src/index.js";
+import {
+  createEffect,
+  createRoot,
+  createStore,
+  flush,
+  reconcile,
+  type Store
+} from "../../src/index.js";
 
 interface TreeNode {
   id: number;
@@ -79,7 +86,7 @@ function shuffledClone(node: TreeNode, rng: () => number): TreeNode {
 
 // Recursive read mirrors a recursive `<For>`: subscribes to each node id and
 // each children index so reconcile's reorder reuses nodes and notifies.
-function track(node: TreeNode) {
+function track(node: Store<TreeNode> | TreeNode) {
   void node.id;
   const kids = node.children;
   for (let i = 0, len = kids.length; i < len; i++) track(kids[i]!);

@@ -4,6 +4,7 @@ import {
   createRoot,
   createSignal,
   createStore,
+  type Store,
   flush,
   isPending
 } from "../../src/index.js";
@@ -35,7 +36,7 @@ afterEach(() => {
 
 function setup() {
   const [source, setSource] = createSignal(0);
-  let state!: { rows: { id: number; label: string; count: number }[] };
+  let state!: Store<{ rows: { id: number; label: string; count: number }[] }>;
   createRoot(d => {
     dispose = d;
     [state] = createStore(

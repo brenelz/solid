@@ -203,10 +203,22 @@ function createProjectionNextInternal<T extends object = {}>(
 
 export function createProjectionNext<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  seed: Partial<T> | Store<NoFn<T>>,
+  seed: Partial<T>,
+  options?: ProjectionOptions
+): Refreshable<Store<T>>;
+// Store-seed fallback overload — see createStore in ../index.ts for why this
+// is not a `Partial<T> | Store<T>` union (tsc overflow on this-typed getters).
+export function createProjectionNext<T extends object = {}>(
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  seed: Store<T>,
+  options?: ProjectionOptions
+): Refreshable<Store<T>>;
+export function createProjectionNext<T extends object = {}>(
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  seed: Partial<T> | Store<T>,
   options?: ProjectionOptions
 ): Refreshable<Store<T>> {
-  return createProjectionNextInternal(fn, seed, options).store;
+  return createProjectionNextInternal(fn, seed as Partial<T>, options).store;
 }
 
 /** Derived writable store (legacy parity): a projection whose public setter
@@ -214,16 +226,17 @@ export function createProjectionNext<T extends object = {}>(
  * same-flush dependency change). */
 export function createStoreDerivedNext<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  seed: Partial<T> | Store<NoFn<T>>,
+  seed: Partial<T> | Store<T>,
   options?: ProjectionOptions
 ): [Refreshable<Store<T>>, (f: (draft: T) => T | void) => void] {
-  const { store, node } = createProjectionNextInternal(fn, seed, options);
+  const { store, node } = createProjectionNextInternal(fn, seed as Partial<T>, options);
   return [
     store,
     (f: (draft: T) => T | void): void => {
       // Mark the projection as manually written before notifying nodes.
       suppressComputedRecompute(node as Computed<unknown>);
-      storeSetterNext(store, f);
+      // Truth-cast: the setter drafts against the store view itself.
+      storeSetterNext(store as T, f);
     }
   ];
 }

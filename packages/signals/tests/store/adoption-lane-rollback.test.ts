@@ -11,6 +11,7 @@ import {
   action,
   createEffect,
   createOptimisticStore,
+  type Store,
   createRoot,
   flush,
   reconcile
@@ -20,7 +21,7 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 
 test("reconcile inside an action window is tentative: full revert at settle", async () => {
   type Row = { id: string; v: number };
-  let s!: { rows: Row[]; tag?: string };
+  let s!: Store<{ rows: Row[]; tag?: string }>;
   let setS!: (fn: (d: { rows: Row[]; tag?: string }) => void) => void;
   const views: number[][] = [];
   const lengths: number[] = [];
@@ -94,7 +95,7 @@ test("reconcile inside an action window is tentative: full revert at settle", as
 // so additions revert with their transaction exactly like deletes (RUL-8's
 // key-set prediction, landed 2026-08-18).
 test("a key added by an in-window reconcile reverts at settle", async () => {
-  let s!: { rows: { id: string; v: number }[]; tag?: string };
+  let s!: Store<{ rows: { id: string; v: number }[]; tag?: string }>;
   let setS!: (fn: (d: { rows: { id: string; v: number }[]; tag?: string }) => void) => void;
   createRoot(() => {
     [s, setS] = createOptimisticStore<{ rows: { id: string; v: number }[]; tag?: string }>({

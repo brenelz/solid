@@ -138,7 +138,7 @@ function familyHasLiveOverrides(fam: { overlaid?: Set<any> }): boolean {
 
 export function createOptimisticStoreNext<T extends object = {}>(
   first: T | ((store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>),
-  second?: NoFn<T> | Store<NoFn<T>>,
+  second?: NoFn<T>,
   options?: ProjectionOptions
 ): [get: Store<T>, set: StoreSetter<T>] {
   // Engine first (armed nodes need optimisticWrite installed before any
@@ -192,7 +192,8 @@ export function createOptimisticStoreNext<T extends object = {}>(
     fam.node = node;
   }
 
-  return [store, ((fn: (draft: T) => void) => storeSetterNext(store, fn)) as StoreSetter<T>];
+  // Truth-cast: the setter drafts against the store view itself.
+  return [store, ((fn: (draft: T) => void) => storeSetterNext(store as T, fn)) as StoreSetter<T>];
 }
 
 // ---- optimistic-only store machinery (moved from next/store.ts /

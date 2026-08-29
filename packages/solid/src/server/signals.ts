@@ -52,6 +52,8 @@ export type {
   Refreshable,
   Maybe,
   Store,
+  StoreBrand,
+  StorePart,
   StoreSetter,
   StoreNode,
   NotWrappable,
@@ -1777,17 +1779,25 @@ function setProperty(state: any, property: PropertyKey, value: any) {
 }
 
 export function createStore<T extends object>(
-  store: T | Store<T>,
+  store: T,
   options?: { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>];
 export function createStore<T extends object>(
   fn: (store: T) => void | T | Promise<void | T>,
-  store: Partial<T> | Store<T>,
+  store: Partial<T>,
+  options?: ServerStoreOptions & { name?: string; shallow?: boolean }
+): [get: Store<T>, set: StoreSetter<T>];
+// Store-seed fallback — an overload, never a `Partial<T> | Store<T>` union
+// (union inference traverses the mapped Store type against this-typed getter
+// literals and overflows tsc; see the client entry).
+export function createStore<T extends object>(
+  fn: (store: T) => void | T | Promise<void | T>,
+  store: Store<T>,
   options?: ServerStoreOptions & { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>];
 export function createStore<T extends object>(
-  first: T | Store<T> | ((store: T) => void | T | Promise<void | T>),
-  second?: T | Store<T>,
+  first: T | ((store: T) => void | T | Promise<void | T>),
+  second?: T,
   options?: ServerSsrOptions & { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>] {
   if (typeof first === "function") {
@@ -1822,17 +1832,23 @@ function storeSetter<T extends object>(state: T): StoreSetter<T> {
 }
 
 export function createOptimisticStore<T extends object>(
-  store: T | Store<T>,
+  store: T,
   options?: { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>];
 export function createOptimisticStore<T extends object>(
   fn: (store: T) => void | T | Promise<void | T>,
-  store: Partial<T> | Store<T>,
+  store: Partial<T>,
+  options?: ServerStoreOptions & { name?: string; shallow?: boolean }
+): [get: Store<T>, set: StoreSetter<T>];
+// Store-seed fallback — overload, never a union (tsc overflow; see createStore).
+export function createOptimisticStore<T extends object>(
+  fn: (store: T) => void | T | Promise<void | T>,
+  store: Store<T>,
   options?: ServerStoreOptions & { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>];
 export function createOptimisticStore<T extends object>(
-  first: T | Store<T> | ((store: T) => void | T | Promise<void | T>),
-  second?: T | Store<T>,
+  first: T | ((store: T) => void | T | Promise<void | T>),
+  second?: T,
   options?: ServerSsrOptions & { name?: string; shallow?: boolean }
 ): [get: Store<T>, set: StoreSetter<T>] {
   // Same no-op rationale as createOptimistic above: optimistic writes are
@@ -1848,10 +1864,14 @@ export function createOptimisticStore<T extends object>(
  * while the async data is pending. Once markReady() is called, reads
  * pass through to the underlying state.
  */
+// Identity-typed: the proxy has the caller's own surface (pass a Store<T>,
+// get a Store<T> back) — parameterizing the return as Store<T'> re-wrapped
+// generic callers' already-branded state as Store<Store<T>> under the deep
+// brand.
 function createPendingProxy<T extends object>(
   state: T,
   source: Promise<any>
-): [proxy: Store<T>, markReady: (frozenState?: T) => void] {
+): [proxy: T, markReady: (frozenState?: T) => void] {
   let pending = true;
   let readTarget: T = state;
   const proxy = new Proxy(state, {
@@ -1866,7 +1886,7 @@ function createPendingProxy<T extends object>(
     }
   });
   return [
-    proxy as Store<T>,
+    proxy as T,
     (frozen?: T) => {
       if (frozen) readTarget = frozen;
       pending = false;
@@ -1948,6 +1968,17 @@ function replaceState<T extends object>(target: T, next: T): void {
 
 export function createProjection<T extends object>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  initialValue: Partial<T>,
+  options?: ServerStoreOptions
+): Store<T>;
+// Store-seed fallback — overload, never a union (tsc overflow; see createStore).
+export function createProjection<T extends object>(
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
+  initialValue: Store<T>,
+  options?: ServerStoreOptions
+): Store<T>;
+export function createProjection<T extends object>(
+  fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   initialValue: Partial<T> | Store<T>,
   options?: ServerStoreOptions
 ): Store<T> {
@@ -1974,18 +2005,22 @@ export function createProjection<T extends object>(
     ? ((ctx as any)[PROJECTION_SLOTS] ||= Object.create(null))
     : undefined;
   if (slots && slots[slotId!]) return slots[slotId!];
-  const recordSlot = (proxy: Store<T>) => {
-    if (slots) slots[slotId!] = proxy;
-    return proxy;
+  const recordSlot = (proxy: T) => {
+    if (slots) slots[slotId!] = proxy as Store<T>;
+    // Truth-cast: the raw server object IS the served store view.
+    return proxy as Store<T>;
   };
-  const [state] = createStore(initialValue as T);
+  // Server truth-cast: plain createStore returns the raw object — typing
+  // `state` as plain T keeps the generic projection plumbing (pending
+  // proxies, seed locks, replaceState) unified under the deep Store brand.
+  const [state] = createStore(initialValue as T) as unknown as [T];
 
   if (options?.ssrSource === "client") {
     // seedLoadingValue = declared commit #0: the seed renders. Bare = the
     // structural form: reads suspend as a FINAL hole (see CLIENT_HOLE) and
     // the nearest <Loading> boundary hands the position to the client.
-    if (options.seedLoadingValue === true) return state;
-    return createPendingProxy(state, CLIENT_HOLE)[0];
+    if (options.seedLoadingValue === true) return state as Store<T>;
+    return createPendingProxy(state, CLIENT_HOLE)[0] as Store<T>;
   }
 
   let disposed = false;
@@ -2249,7 +2284,7 @@ export function createProjection<T extends object>(
   if (result !== undefined && result !== state && result !== draft) {
     replaceState(state, result as T);
   }
-  return state;
+  return state as Store<T>;
 }
 
 export function reconcile<T extends U, U extends object>(value: T): (state: U) => T {

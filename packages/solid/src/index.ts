@@ -68,6 +68,8 @@ export type {
   SourceAccessor,
   Setter,
   Store,
+  StoreBrand,
+  StorePart,
   StoreReturn,
   ProjectionStoreReturn,
   StoreOptions,

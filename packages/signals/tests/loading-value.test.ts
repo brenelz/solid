@@ -19,6 +19,7 @@ import {
   createMemo,
   createOptimistic,
   createOptimisticStore,
+  type Store,
   createProjection,
   createRenderEffect,
   createRoot,
@@ -695,7 +696,7 @@ describe("projections with seedLoadingValue", () => {
 
   it("createOptimisticStore(fn, seed, { seedLoadingValue }): serves the seed until landing", async () => {
     const d = deferred<void>();
-    let store!: { items: string[] };
+    let store!: Store<{ items: string[] }>;
     createRoot(() => {
       [store] = createOptimisticStore<{ items: string[] }>(
         async draft => {

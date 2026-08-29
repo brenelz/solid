@@ -4,8 +4,64 @@ import type { Refreshable } from "../core/index.js";
 import { GlobalQueue } from "../core/scheduler.js";
 import { storeNextLookup } from "./next/target.js";
 
-/** A read-only view of a store's value as seen by consumers. Mutate it via the paired `StoreSetter`. */
-export type Store<T> = Readonly<T>;
+/**
+ * Type-level brand for store views. Never exists at runtime and never
+ * exported as a value — it makes `Store<T>` nominally recognizable: hovers
+ * and error messages keep saying `Store<…>` where the bare alias dissolves
+ * (arrays normalize `Readonly<T[]>` to `readonly T[]` and lose the name
+ * entirely), and type-aware tooling (editor highlighting of store reads,
+ * lint rules for store destructuring/untracked reads) can probe for the
+ * brand property where alias names don't survive (Omit/Pick, generic
+ * inference, mapped types).
+ *
+ * The brand property is OPTIONAL, which keeps `Store<T>` fully structural:
+ * `Store<T>` stays assignable wherever `Readonly<T>` is accepted and vice
+ * versa — it can label, but never reject, a value. The one visible cost:
+ * `keyof Store<T>` includes the phantom symbol, so it is not `extends
+ * string`; use `keyof T` or `keyof S & string` for string keys.
+ */
+declare const STORE_BRAND: unique symbol;
+/** The phantom marker `Store<T>` intersects in. Named (rather than inlined)
+ * so displays that expand a store type read `… & StoreBrand`, not the raw
+ * symbol-property literal. */
+export interface StoreBrand {
+  readonly [STORE_BRAND]?: true;
+}
+/** How a store serves one member value: primitives/functions as themselves,
+ * wrappables as nested store views (parts), already-branded types untouched. */
+type StoreValue<V> = [V] extends [NotWrappable]
+  ? V
+  : IsStoreType<V> extends true
+    ? V
+    : StorePart<V>;
+/**
+ * A nested view INTO a store: what you hold after reading a wrappable member
+ * off a store — `store.user`, `todos[0]`, a `.filter()` element, a `<For>`
+ * item. Structurally identical to `Store<T>` (mutually assignable, same
+ * brand); the distinct name exists so hovers tell you this is a part of some
+ * root store — live and reactive, with no setter of its own.
+ */
+export type StorePart<T> = { readonly [K in keyof T]: StoreValue<T[K]> } & StoreBrand;
+/**
+ * A read-only view of a store's value as seen by consumers. Mutate it via
+ * the paired `StoreSetter`. DEEP brand: members are typed as the store
+ * serves them — wrappable members read as `StorePart<…>` views, so store
+ * identity survives `.filter()`/`.map()`, element access, `<For>` items,
+ * and inference into props; and array-bearing shapes refuse to flow into
+ * plain mutable-array-typed slots (readonly variance), surfacing the
+ * store-into-plain-typed-prop mistake at compile time.
+ */
+export type Store<T> = { readonly [K in keyof T]: StoreValue<T[K]> } & StoreBrand;
+/**
+ * Type-level store test: `true` when `T` carries the store brand.
+ *
+ * Discriminates by KEY, not assignability — the brand property is optional,
+ * so `T extends StoreBrand` is true for any object (weak-type rules don't
+ * fire in conditionals), while the brand's phantom key appears in `keyof T`
+ * only for genuinely branded types. Survives `Omit`/`Pick` and wrapper
+ * intersections like `Refreshable<Store<T>>`.
+ */
+type IsStoreType<T> = [typeof STORE_BRAND] extends [keyof T] ? true : false;
 /**
  * A store setter. The callback receives a writable **draft** of the store.
  *
