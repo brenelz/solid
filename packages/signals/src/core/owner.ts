@@ -72,6 +72,12 @@ export function disposeChildren(node: Owner, self: boolean = false, zombie?: boo
   const flags = (node as any)._flags;
   if (flags & REACTIVE_DISPOSED) return;
   if (self) {
+    // Before the DISPOSED flag: it makes the commit-time zombie walk bail (#3561).
+    if (
+      node._x !== null &&
+      (node._x._pendingFirstChild !== null || node._x._pendingDisposal !== null)
+    )
+      disposeChildren(node, false, true);
     (node as any)._flags = flags | REACTIVE_DISPOSED;
     // Companions are created detached and outlive their owner, but a verdict
     // must not: a disposed source can never settle, so an isPending companion
