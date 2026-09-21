@@ -30,7 +30,7 @@ import {
   wokenTransitions,
   zombieQueue
 } from "./scheduler.js";
-import type { Computed, Disposable, Link, Owner, Root } from "./types.js";
+import type { Computed, Disposable, Link, NodeExtension, Owner, Root } from "./types.js";
 
 const PENDING_OWNER = {} as Owner; // Dummy owner to trigger store's read() path
 
@@ -72,12 +72,6 @@ export function disposeChildren(node: Owner, self: boolean = false, zombie?: boo
   const flags = (node as any)._flags;
   if (flags & REACTIVE_DISPOSED) return;
   if (self) {
-    // Before the DISPOSED flag: it makes the commit-time zombie walk bail (#3561).
-    if (
-      node._x !== null &&
-      (node._x._pendingFirstChild !== null || node._x._pendingDisposal !== null)
-    )
-      disposeChildren(node, false, true);
     (node as any)._flags = flags | REACTIVE_DISPOSED;
     // Companions are created detached and outlive their owner, but a verdict
     // must not: a disposed source can never settle, so an isPending companion
@@ -103,33 +97,12 @@ export function disposeChildren(node: Owner, self: boolean = false, zombie?: boo
   if (self && __DEV__) clearSignals(node);
   if (self && (node as any)._fn && (node as Computed<unknown>)._x !== null)
     (node as Computed<unknown>)._x!._inFlight = null;
-  let child = zombie ? ((node._x?._pendingFirstChild ?? null) as Owner | null) : node._firstChild;
-  while (child) {
-    const nextChild = child._nextSibling;
-    const n = child as Computed<unknown>;
-    // Owner teardown is death regardless of the child's own lifecycle
-    // (#3024): strip AUTO_DISPOSE so a post-disposal read freezes at the
-    // last committed value instead of reawakening in a torn-down tree.
-    // Runs before the recursion so already-dormant children (whose
-    // disposeChildren call early-returns on REACTIVE_DISPOSED) die too.
-    // Only unobserved()'s own node keeps its dormancy — it is never in
-    // this loop; its children are rebuilt fresh on reawaken.
-    n._config &= ~CONFIG_AUTO_DISPOSE;
-    // Heap removal must not be gated on `_deps`: a dependency-free
-    // computation queued by refresh() has a null dep list but still sits in
-    // the dirty heap, and left there the post-disposal flush recomputes it —
-    // recompute() rewriting `_flags` clears REACTIVE_DISPOSED and the node
-    // comes back to life (post-unmount runs, leaked cleanups, #2983).
-    // deleteFromHeap self-guards on the in-heap flags (and tolerates plain
-    // Owners, whose _flags is undefined), so no gate here.
-    deleteFromHeap(n, queueFor(n));
-    clearDeps(n);
-    disposeChildren(child, true);
-    child = nextChild;
-  }
+  const x = node._x;
+  if (self && x !== null) retireParkedFrame(x);
   if (zombie) {
-    if (node._x !== null) node._x._pendingFirstChild = null;
+    if (x !== null) retireParkedFrame(x);
   } else {
+    disposeFrame(node._firstChild);
     node._firstChild = null;
     node._childCount = 0;
   }
@@ -161,7 +134,10 @@ export function disposeChildren(node: Owner, self: boolean = false, zombie?: boo
     if (next !== null) next._prevSibling = prev;
     node._prevSibling = null;
   }
-  runDisposal(node, zombie);
+  if (!zombie) {
+    runDisposal(node._disposal);
+    node._disposal = null;
+  }
   // Final effect-returned cleanup fires at true disposal, after `_disposal`
   // to mirror rerun ordering (compute-phase teardown first, cleanup last).
   if (self && node._cleanup) {
@@ -171,21 +147,51 @@ export function disposeChildren(node: Owner, self: boolean = false, zombie?: boo
   }
 }
 
-function runDisposal(node: Owner, zombie?: boolean): void {
-  let disposal = zombie ? node._x?._pendingDisposal : node._disposal;
-  if (!disposal) return;
+function disposeFrame(child: Owner | null): void {
+  while (child) {
+    const nextChild = child._nextSibling;
+    const n = child as Computed<unknown>;
+    // Owner teardown is death regardless of the child's own lifecycle
+    // (#3024): strip AUTO_DISPOSE so a post-disposal read freezes at the
+    // last committed value instead of reawakening in a torn-down tree.
+    // Runs before the recursion so already-dormant children (whose
+    // disposeChildren call early-returns on REACTIVE_DISPOSED) die too.
+    // Only unobserved()'s own node keeps its dormancy — it is never in
+    // this loop; its children are rebuilt fresh on reawaken.
+    n._config &= ~CONFIG_AUTO_DISPOSE;
+    // Heap removal must not be gated on `_deps`: a dependency-free
+    // computation queued by refresh() has a null dep list but still sits in
+    // the dirty heap, and left there the post-disposal flush recomputes it —
+    // recompute() rewriting `_flags` clears REACTIVE_DISPOSED and the node
+    // comes back to life (post-unmount runs, leaked cleanups, #2983).
+    // deleteFromHeap self-guards on the in-heap flags (and tolerates plain
+    // Owners, whose _flags is undefined), so no gate here.
+    deleteFromHeap(n, queueFor(n));
+    clearDeps(n);
+    disposeChildren(child, true);
+    child = nextChild;
+  }
+}
 
+function retireParkedFrame(x: NodeExtension): void {
+  const child = x._pendingFirstChild;
+  const disposal = x._pendingDisposal;
+  x._pendingFirstChild = null;
+  x._pendingDisposal = null;
+  disposeFrame(child);
+  runDisposal(disposal);
+}
+
+function runDisposal(disposal: Disposable | Disposable[] | null): void {
+  if (!disposal) return;
   if (Array.isArray(disposal)) {
     for (let i = 0; i < disposal.length; i++) {
       const callable = disposal[i];
       callable.call(callable);
     }
   } else {
-    (disposal as Disposable).call(disposal);
+    disposal.call(disposal);
   }
-  if (zombie) {
-    if (node._x !== null) node._x._pendingDisposal = null;
-  } else node._disposal = null;
 }
 
 function childId(owner: Owner, consume: boolean): string {
