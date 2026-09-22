@@ -727,6 +727,8 @@ function settleServerAsync<T, U>(
   isDisposed: () => boolean
 ) {
   let first = true;
+  // A sync render attaches no consumer, so a late rejection would be unhandled.
+  deferred.promise.then(undefined, () => {});
 
   const attempt = () => {
     if (isDisposed()) return;
