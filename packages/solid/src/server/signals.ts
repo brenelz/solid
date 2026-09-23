@@ -439,17 +439,15 @@ export function disposeOwner(owner: Owner, self: boolean = true): void {
   }
   node._firstChild = null;
   node._childCount = 0;
-  const d = node._disposal;
-  if (d) {
-    // Detach first: a cleanup that disposes an ancestor re-enters this node.
-    node._disposal = null;
-    if (Array.isArray(d)) {
-      // Unwind order, mirroring the client `runDisposal` (#3572): later
-      // registrations run before earlier ones.
-      for (let i = d.length - 1; i >= 0; i--) d[i]();
-    } else {
-      d();
-    }
+  let d: Disposable | Disposable[] | null;
+  // Unwind order, mirroring the client `runDisposal` (#3572): later
+  // registrations run before earlier ones. Consumed in place: a cleanup that
+  // disposes an ancestor re-enters here.
+  while ((d = node._disposal)) {
+    const list = Array.isArray(d);
+    const fn = list ? (d as Disposable[]).pop() : (d as Disposable);
+    if (!list || !fn) node._disposal = null;
+    if (fn) fn();
   }
   if (self) unlinkOwner(node);
   // Recycle the disposed owner. Skip the root case (`self=false`) and the

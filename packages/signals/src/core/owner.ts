@@ -192,23 +192,21 @@ export function linkChild(parent: Owner, node: Owner): void {
 }
 
 function runDisposal(node: Owner, zombie?: boolean): void {
-  let disposal = zombie ? node._x?._pendingDisposal : node._disposal;
-  if (!disposal) return;
-  // Detach first: a cleanup that disposes an ancestor re-enters this node.
-  if (zombie) node._x!._pendingDisposal = null;
-  else node._disposal = null;
-
-  if (Array.isArray(disposal)) {
-    // Unwind order (#3572, restores 1.x #1562): later registrations run
-    // before earlier ones. Children have already been disposed by the caller,
-    // so with LIFO a body that registers cleanup before creating its children
-    // tears down after them — the same order a per-component owner gives.
-    for (let i = disposal.length - 1; i >= 0; i--) {
-      const callable = disposal[i];
-      callable.call(callable);
+  const x = node._x;
+  let disposal: Disposable | Disposable[] | null | undefined;
+  // Unwind order (#3572, restores 1.x #1562): later registrations run
+  // before earlier ones. Children have already been disposed by the caller,
+  // so with LIFO a body that registers cleanup before creating its children
+  // tears down after them — the same order a per-component owner gives.
+  // Consumed in place: a cleanup that disposes an ancestor re-enters here.
+  while ((disposal = zombie ? x?._pendingDisposal : node._disposal)) {
+    const list = Array.isArray(disposal);
+    const callable = list ? (disposal as Disposable[]).pop() : (disposal as Disposable);
+    if (!list || !callable) {
+      if (zombie) x!._pendingDisposal = null;
+      else node._disposal = null;
     }
-  } else {
-    (disposal as Disposable).call(disposal);
+    if (callable) callable.call(callable);
   }
 }
 

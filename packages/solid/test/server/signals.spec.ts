@@ -657,19 +657,23 @@ describe("Server owner tree", () => {
     expect(order).toEqual(["C", "B", "A"]);
   });
 
-  test("a memo cleanup that disposes the root during a retry runs once (#3601)", async () => {
-    const cleanup = vi.fn();
+  test("a memo cleanup that disposes the root during a retry runs once, in unwind order (#3601)", async () => {
+    const order: string[] = [];
     let resolve!: () => void;
     const source = new Promise<void>(r => (resolve = r));
     let pulls = 0;
     createRoot(
       dispose => {
+        onCleanup(() => order.push("root"));
         createMemo(() => {
-          onCleanup(() => {
-            cleanup();
-            dispose();
-          });
-          if (pulls++ === 0) throw new NotReadyErrorClass(source);
+          if (pulls++ === 0) {
+            onCleanup(() => order.push("first"));
+            onCleanup(() => {
+              order.push("second");
+              dispose();
+            });
+            throw new NotReadyErrorClass(source);
+          }
           return pulls;
         });
       },
@@ -678,8 +682,7 @@ describe("Server owner tree", () => {
     resolve();
     await source;
     await Promise.resolve();
-    expect(pulls).toBe(2);
-    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["second", "first", "root"]);
   });
 
   test("disposing a parent does not dispose an owner recycled into another root", () => {
