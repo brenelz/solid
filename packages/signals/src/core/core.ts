@@ -61,7 +61,7 @@ import {
   type Refreshable
 } from "./constants.js";
 import { NotReadyError } from "./error.js";
-import { dormantNodes, link, trimStaleDeps } from "./graph.js";
+import { clearDeps, dormantNodes, link, trimStaleDeps } from "./graph.js";
 import {
   deleteFromHeap,
   enqueueSub,
@@ -514,7 +514,9 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     // (markNode(c) in read()) marks the running node as part of ordinary
     // bookkeeping, and those marks are correctly discarded here.
     missedWake = (el._flags & REACTIVE_MISSED_WAKE) !== 0;
-    el._flags = (el._flags & REACTIVE_ZOMBIE) | (create ? el._flags & REACTIVE_SNAPSHOT_STALE : 0);
+    el._flags =
+      (el._flags & (REACTIVE_ZOMBIE | REACTIVE_DISPOSED)) |
+      (create ? el._flags & REACTIVE_SNAPSHOT_STALE : 0);
     context = oldcontext;
   }
   // The cast re-widens: TS narrowed `stagedEntry` to `null` at the reset
@@ -880,7 +882,9 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // accept the node. Equality gates stop same-value landings from cascading,
   // and a re-run only latches again if another nested commit changes a dep
   // beneath it — convergent unless deps genuinely keep changing.
-  if (missedWake) {
+  // Reads after a mid-pass disposal re-linked the dead node to its sources.
+  if (el._flags & REACTIVE_DISPOSED) clearDeps(el);
+  else if (missedWake) {
     enqueueSub(el);
     schedule();
   }
@@ -916,7 +920,11 @@ function updateIfNecessary(el: Computed<unknown>): void {
 
   el._flags =
     el._flags &
-    (REACTIVE_SNAPSHOT_STALE | REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT | REACTIVE_ZOMBIE);
+    (REACTIVE_SNAPSHOT_STALE |
+      REACTIVE_IN_HEAP |
+      REACTIVE_IN_HEAP_HEIGHT |
+      REACTIVE_ZOMBIE |
+      REACTIVE_DISPOSED);
 }
 
 export function computed<T>(fn: (prev?: T) => T | PromiseLike<T> | AsyncIterable<T>): Computed<T>;
