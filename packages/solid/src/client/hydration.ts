@@ -1152,6 +1152,9 @@ function withHydrationGate(create: (hydrated: () => boolean) => any) {
 // _hydrateSignalLike slot precisely so the wrapper does not statically couple
 // the optimistic engine to this body (which would drag it into CSR bundles).
 function hydrateSignalLike(coreFn: Function, fn: any, options?: any) {
+  const o = getOwner();
+  // An owner without an id has no child counter to consume (see childId).
+  if (options?.transparent || !o || o.id == null) return coreFn(fn, options);
   markTopLevelSnapshotScope();
 
   const ssrSource = options?.ssrSource;
@@ -1266,9 +1269,7 @@ function hydrateSignalLike(coreFn: Function, fn: any, options?: any) {
 }
 
 function hydratedCreateMemo(compute: any, options?: any) {
-  if (!sharedConfig.hydrating || options?.transparent) {
-    return coreMemo(compute, options);
-  }
+  if (!sharedConfig.hydrating) return coreMemo(compute, options);
   return hydrateSignalLike(coreMemo, compute, options);
 }
 
@@ -1448,6 +1449,8 @@ function hydrateStoreLikeFn(
 // onHydrationEnd it defers through) is unchanged — only how the code is
 // reached moved.
 function hydrateStoreLike(coreFn: Function, fn: any, initialValue: any, options?: any) {
+  const o = getOwner();
+  if (!o || o.id == null) return coreFn(fn, initialValue, options);
   markTopLevelSnapshotScope();
   return hydrateStoreLikeFn(coreFn, fn, initialValue, options, options?.ssrSource);
 }
