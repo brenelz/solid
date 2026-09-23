@@ -441,6 +441,8 @@ export function disposeOwner(owner: Owner, self: boolean = true): void {
   node._childCount = 0;
   const d = node._disposal;
   if (d) {
+    // Detach first: a cleanup that disposes an ancestor re-enters this node.
+    node._disposal = null;
     if (Array.isArray(d)) {
       // Unwind order, mirroring the client `runDisposal` (#3572): later
       // registrations run before earlier ones.
@@ -448,7 +450,6 @@ export function disposeOwner(owner: Owner, self: boolean = true): void {
     } else {
       d();
     }
-    node._disposal = null;
   }
   if (self) unlinkOwner(node);
   // Recycle the disposed owner. Skip the root case (`self=false`) and the

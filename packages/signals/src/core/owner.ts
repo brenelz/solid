@@ -194,6 +194,9 @@ export function linkChild(parent: Owner, node: Owner): void {
 function runDisposal(node: Owner, zombie?: boolean): void {
   let disposal = zombie ? node._x?._pendingDisposal : node._disposal;
   if (!disposal) return;
+  // Detach first: a cleanup that disposes an ancestor re-enters this node.
+  if (zombie) node._x!._pendingDisposal = null;
+  else node._disposal = null;
 
   if (Array.isArray(disposal)) {
     // Unwind order (#3572, restores 1.x #1562): later registrations run
@@ -207,9 +210,6 @@ function runDisposal(node: Owner, zombie?: boolean): void {
   } else {
     (disposal as Disposable).call(disposal);
   }
-  if (zombie) {
-    if (node._x !== null) node._x._pendingDisposal = null;
-  } else node._disposal = null;
 }
 
 function childId(owner: Owner, consume: boolean): string {
