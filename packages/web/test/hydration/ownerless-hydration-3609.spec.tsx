@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, expect, test } from "vitest";
 import {
+  createErrorBoundary,
   createMemo,
   createOptimistic,
   createProjection,
@@ -53,14 +54,35 @@ test("an ownerless function-form createSignal during hydrate() computes and cons
   expect(owned()).toBe(42);
 });
 
-test("an ownerless createOptimistic during hydrate() computes", () => {
+test("an ownerless createOptimistic during hydrate() computes and consumes no hydration id", () => {
   let detached!: () => number;
+  let owned!: () => number;
   dispose = hydrate(() => {
     [detached] = runWithOwner(null, () => createOptimistic(() => 1))!;
+    owned = createMemo(() => 2);
     return null;
   }, container);
   flush();
   expect(detached()).toBe(1);
+  expect(owned()).toBe(42);
+});
+
+test("an ownerless createErrorBoundary during hydrate() renders and consumes no hydration id", () => {
+  let detached!: () => number;
+  let owned!: () => number;
+  dispose = hydrate(() => {
+    detached = runWithOwner(null, () =>
+      createErrorBoundary(
+        () => 1,
+        () => 2
+      )
+    )!;
+    owned = createMemo(() => 2);
+    return null;
+  }, container);
+  flush();
+  expect(detached()).toBe(1);
+  expect(owned()).toBe(42);
 });
 
 test("an ownerless function-form createStore during hydrate() computes and consumes no hydration id", () => {
@@ -83,8 +105,9 @@ test("an ownerless function-form createStore during hydrate() computes and consu
   expect(owned()).toBe(42);
 });
 
-test("an ownerless createProjection during hydrate() computes", () => {
+test("an ownerless createProjection during hydrate() computes and consumes no hydration id", () => {
   let detached!: { n: number };
+  let owned!: () => number;
   dispose = hydrate(() => {
     detached = runWithOwner(null, () =>
       createProjection<{ n: number }>(
@@ -94,10 +117,12 @@ test("an ownerless createProjection during hydrate() computes", () => {
         { n: 0 }
       )
     )!;
+    owned = createMemo(() => 2);
     return null;
   }, container);
   flush();
   expect(detached.n).toBe(1);
+  expect(owned()).toBe(42);
 });
 
 test("a memo under an owner without an id computes during hydrate()", () => {

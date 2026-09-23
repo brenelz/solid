@@ -1282,9 +1282,10 @@ function hydratedCreateErrorBoundary<T, U>(
   fn: () => T,
   fallback: (error: () => unknown, reset: () => void) => U
 ): Accessor<T | U> {
-  if (!sharedConfig.hydrating) return coreErrorBoundary(fn, fallback);
+  const parent = getOwner();
+  if (!sharedConfig.hydrating || !parent || parent.id == null)
+    return coreErrorBoundary(fn, fallback);
   markTopLevelSnapshotScope();
-  const parent = getOwner()!;
   const expectedId = peekNextChildId(parent);
   if (sharedConfig.has!(expectedId)) {
     const err = sharedConfig.load!(expectedId);
