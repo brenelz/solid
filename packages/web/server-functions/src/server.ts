@@ -1098,9 +1098,8 @@ function declaresRead(id) {
 // event for HTTP dispatch. Deliberately NOT `event.locals`: locals is
 // user/integration space, not the runtime's — and its per-call copy
 // (#3156) makes writes call-local, which is the wrong lifetime for state
-// the wrapper established before the copy existed. Process state, like the
-// registries above: the frames server bundle carries its own copy of this
-// module and reads the invocation the handler's copy recorded (#3641).
+// the wrapper established before the copy existed.
+// Process state: the frames server bundle carries its own copy of this module.
 const INVOCATIONS = processState("solid.ServerFunctionInvocations", () => new WeakMap());
 
 // Server mirror of the client transport's late-bound RPC registration (see
@@ -3161,7 +3160,10 @@ export function sanitizeServerError(value: unknown): unknown;
 // and the <Errored> that contains it reuses the answer without reporting
 // again. Per-request hooks ride the event (the handler's option); the
 // channel sites read the event off the scope their operations run in.
-const REQUEST_ERROR_HOOKS = new WeakMap();
+const REQUEST_ERROR_HOOKS = processState(
+  "solid.ServerFunctionRequestErrorHooks",
+  () => new WeakMap()
+);
 
 function siteFor(handling, event, direct) {
   const invocation = event ? INVOCATIONS.get(event) : undefined;
@@ -4051,6 +4053,7 @@ export async function handleServerFunctionRequest(request, options = {}) {
     request,
     collectsFlight,
     codec,
+    scope,
     transformFlightResult
   };
 

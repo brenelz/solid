@@ -2038,7 +2038,8 @@ export async function frameTransformFlightResult(event, outcome, context) {
       value: primary ? undefined : value,
       data: serialized
     },
-    codec: context && context.codec
+    codec: context && context.codec,
+    scope: context && context.scope
   });
 }
 
@@ -2051,7 +2052,7 @@ export async function frameTransformFlightResult(event, outcome, context) {
  * inside flight data settle progressively exactly as they do in a plain
  * single-flight body — the consumer replays them into the same decoder.
  */
-export function frameFlightResponse({ primary, regions = [], outcome, codec }, init = {}) {
+export function frameFlightResponse({ primary, regions = [], outcome, codec, scope }, init = {}) {
   const frames = primary ? [primary, ...regions] : regions;
   const headers = copyInitHeaders(init.headers);
   headers.set("Content-Type", "application/x-frame-stream");
@@ -2091,9 +2092,12 @@ export function frameFlightResponse({ primary, regions = [], outcome, codec }, i
           // own serializer, so a rejection nested in flight data would
           // otherwise reach the wire with its message and own-properties
           // intact — under a 200, since the head is long committed.
-          const reader = new ChunkReader(
-            serializeStream(guardFailures(outcome), flightCodec(codec))
-          );
+          // This stream runs outside the request scope; the guard re-enters it.
+          const guard = { seen: new WeakMap(), cyclic: new WeakSet(), scope };
+          const guarded = scope
+            ? scope(() => guardFailures(outcome, guard))
+            : guardFailures(outcome, guard);
+          const reader = new ChunkReader(serializeStream(guarded, flightCodec(codec)));
           for (let node = await reader.next(); !node.done; node = await reader.next()) {
             write({ type: "outcome", payload: node.value });
           }

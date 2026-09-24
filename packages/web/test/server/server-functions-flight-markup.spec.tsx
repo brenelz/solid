@@ -69,7 +69,7 @@ async function decodeOutcome(chunks: any[]) {
   }) as Promise<any>;
 }
 
-function flightRequest(id: string, sources = "true") {
+function plainRequest(id: string, headers: Record<string, string> = {}) {
   return new Request(`http://localhost/_server/data/${id}`, {
     method: "POST",
     body: "[]",
@@ -77,9 +77,13 @@ function flightRequest(id: string, sources = "true") {
       "Content-Type": "application/json",
       "Sec-Fetch-Site": "same-origin",
       "X-Server-Function-Format": "8",
-      [SINGLE_FLIGHT_HEADER]: sources
+      ...headers
     }
   });
+}
+
+function flightRequest(id: string, sources = "true") {
+  return plainRequest(id, { [SINGLE_FLIGHT_HEADER]: sources });
 }
 
 // What a query cache holds for a server component route: the direct call's
@@ -192,8 +196,6 @@ describe("single-flight mutations that revalidate a server component (built bund
   });
 
   it("the called function's own component is the primary frame, addressed by its id (#3641)", async () => {
-    // the handler records the invocation in server-functions/dist and the
-    // transform reads it from frames/dist: the two bundles must share it
     registerServerFunction("flight-primary-3641", async () => View);
     configureServerFunctionsServer({
       transformResult: frameTransformResult,
@@ -214,6 +216,52 @@ describe("single-flight mutations that revalidate a server component (built bund
       html: "fresh markup"
     });
     expect(await decodeOutcome(chunks)).toEqual({ data: { true: { "/notes": ["fresh"] } } });
+  });
+
+  it("a plain call's component is framed under the function id", async () => {
+    registerServerFunction("frame-primary-3641", async () => View);
+    configureServerFunctionsServer({ transformResult: frameTransformResult });
+
+    const response = await handleServerFunctionRequest(plainRequest("frame-primary-3641"));
+
+    expect(response.headers.get("Content-Type")).toBe("application/x-frame-stream");
+    expect(response.headers.get("X-Frame-Stream")).toBe("frame-primary-3641");
+    const chunks = await readFrameStream(response);
+    expect(chunks.find(chunk => chunk.type === "html")).toMatchObject({
+      id: "frame-primary-3641",
+      html: "fresh markup"
+    });
+  });
+
+  it("the handler's onError hook maps a rejected flight entry on the frame-stream body", async () => {
+    registerServerFunction("flight-markup-hook", async () => "ok");
+    configureServerFunctionsServer({
+      transformFlightResult: frameTransformFlightResult,
+      collectFlightData: () => ({
+        "view[7]": brandedView(),
+        "broken[]": Promise.reject(new Error("connection string: postgres://secret"))
+      })
+    });
+    const contexts: any[] = [];
+
+    const response = await handleServerFunctionRequest(flightRequest("flight-markup-hook"), {
+      onError: (_error, context) => {
+        contexts.push(context);
+        return new Error("hook said");
+      }
+    });
+
+    expect(response.headers.get("Content-Type")).toBe("application/x-frame-stream");
+    const text = JSON.stringify(await readFrameStream(response));
+    expect(text).toContain("hook said");
+    expect(text).not.toContain("Internal Server Error");
+    expect(text).not.toContain("postgres://secret");
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]).toMatchObject({
+      kind: "server-function",
+      handling: "channel",
+      functionId: "flight-markup-hook"
+    });
   });
 
   it("the fold's header names every folded source on the frame-stream body too", async () => {
