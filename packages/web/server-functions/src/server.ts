@@ -1098,8 +1098,10 @@ function declaresRead(id) {
 // event for HTTP dispatch. Deliberately NOT `event.locals`: locals is
 // user/integration space, not the runtime's — and its per-call copy
 // (#3156) makes writes call-local, which is the wrong lifetime for state
-// the wrapper established before the copy existed.
-const INVOCATIONS = new WeakMap();
+// the wrapper established before the copy existed. Process state, like the
+// registries above: the frames server bundle carries its own copy of this
+// module and reads the invocation the handler's copy recorded (#3641).
+const INVOCATIONS = processState("solid.ServerFunctionInvocations", () => new WeakMap());
 
 // Server mirror of the client transport's late-bound RPC registration (see
 // client.js provideRPC and registry.js): the server half's `GET` records the

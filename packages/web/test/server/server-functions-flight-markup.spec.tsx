@@ -191,6 +191,31 @@ describe("single-flight mutations that revalidate a server component (built bund
     });
   });
 
+  it("the called function's own component is the primary frame, addressed by its id (#3641)", async () => {
+    // the handler records the invocation in server-functions/dist and the
+    // transform reads it from frames/dist: the two bundles must share it
+    registerServerFunction("flight-primary-3641", async () => View);
+    configureServerFunctionsServer({
+      transformResult: frameTransformResult,
+      transformDirectResult: frameTransformDirectResult,
+      transformFlightResult: frameTransformFlightResult,
+      collectFlightData: async () => ({ "/notes": ["fresh"] })
+    });
+
+    const response = await handleServerFunctionRequest(flightRequest("flight-primary-3641"));
+
+    expect(response.headers.get("Content-Type")).toBe("application/x-frame-stream");
+    expect(response.headers.get("X-Frame-Stream")).toBe("flight-primary-3641");
+    const chunks = await readFrameStream(response);
+    expect(chunks.find(chunk => chunk.type === "html")).toEqual({
+      type: "html",
+      id: "flight-primary-3641",
+      version: 1,
+      html: "fresh markup"
+    });
+    expect(await decodeOutcome(chunks)).toEqual({ data: { true: { "/notes": ["fresh"] } } });
+  });
+
   it("the fold's header names every folded source on the frame-stream body too", async () => {
     registerServerFunction("flight-markup-named", async () => undefined);
     unregisters.push(registerFlightDataSource("sq", () => ({ queries: ["fresh"] })));
