@@ -1,16 +1,7 @@
-/**
- * Single-flight through the frames sink. `foldFlightData` keys the payload
- * by source, `{ [source]: slice }`, so a component-valued entry sits one
- * level down; the frame policy has to find it there, keep the keys the
- * client routes slices by, and name every folded source on the response.
- *
- * Like the other server-function specs, these run against the built bundles
- * (frames/dist/server.js, server-functions/dist/server.js, wired up in
- * vite.config.server.mjs).
- */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  ERROR_HEADER,
   SINGLE_FLIGHT_HEADER,
   handleServerFunctionRequest,
   registerFlightDataSource,
@@ -27,8 +18,6 @@ const RequestContext = Symbol.for("solid.RequestContext");
 
 beforeAll(() => {
   (globalThis as any)[RequestContext] = new AsyncLocalStorage();
-  // Without a transport installed, a decoded flight reference resolves
-  // through the document registry: stand one in that names the function.
   (globalThis as any)._$SC = { r: (id: string) => `component:${id}` };
 });
 
@@ -37,8 +26,6 @@ afterAll(() => {
   delete (globalThis as any)._$SC;
 });
 
-// What an integration's cache holds once an in-process call resolved to a
-// server component: the branded wrap of the direct-result transform.
 function cachedComponent(id: string, markup: string) {
   return frameTransformDirectResult(() => markup, { id, args: [] });
 }
@@ -131,6 +118,86 @@ describe("single-flight regions through the frames sink", () => {
     } finally {
       unregister();
     }
+  });
+
+  it("keeps a rejected entry for the codec instead of failing the mutation", async () => {
+    registerServerFunction("flight-regions-rejected", async () => "saved");
+    const unregister = registerFlightDataSource("query", () => ({
+      "q:1": cachedComponent("query-rejected", "query markup")
+    }));
+    const failing = Promise.reject(new Error("db down"));
+    failing.catch(() => {});
+    try {
+      const response = await handleServerFunctionRequest(
+        flightRequest("flight-regions-rejected", "true,query"),
+        {
+          collectFlightData: () => ({ "/notes": failing }),
+          transformFlightResult: frameTransformFlightResult
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.has(ERROR_HEADER)).toBe(false);
+      expect(response.headers.get("Content-Type")).toBe("application/x-frame-stream");
+      const chunks = await readChunks(response);
+      expect(chunks.filter(chunk => chunk.type === "html").map(chunk => chunk.id)).toEqual([
+        "query-rejected"
+      ]);
+      const decoded: any = await decodeOutcome(chunks);
+      expect(decoded.value).toBe("saved");
+      expect(decoded.data.query).toEqual({ "q:1": "component:query-rejected" });
+      await expect(decoded.data.true["/notes"]).rejects.toBeInstanceOf(Error);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("passes a slice that is not a plain object through unchanged", async () => {
+    registerServerFunction("flight-regions-map", async () => "saved");
+    const unregister = registerFlightDataSource("query", () => ({
+      "q:1": cachedComponent("query-map", "query markup")
+    }));
+    try {
+      const response = await handleServerFunctionRequest(
+        flightRequest("flight-regions-map", "true,query"),
+        {
+          collectFlightData: () => new Map([["/notes", ["fresh"]]]),
+          transformFlightResult: frameTransformFlightResult
+        }
+      );
+
+      expect(response.headers.get(SINGLE_FLIGHT_HEADER)).toBe("true,query");
+      const decoded: any = await decodeOutcome(await readChunks(response));
+      expect(decoded.data.true).toEqual(new Map([["/notes", ["fresh"]]]));
+      expect(decoded.data.query).toEqual({ "q:1": "component:query-map" });
+    } finally {
+      unregister();
+    }
+  });
+
+  it("settles every source's entries at once", async () => {
+    const subscribed: string[] = [];
+    let release!: (value: unknown) => void;
+    const held = {
+      then(resolve: (value: unknown) => void) {
+        subscribed.push("a");
+        release = resolve;
+      }
+    };
+    const ready = {
+      then(resolve: (value: unknown) => void) {
+        subscribed.push("b");
+        resolve("b");
+      }
+    };
+    const transformed = frameTransformFlightResult(undefined, {
+      value: "saved",
+      data: { a: { "a:1": held }, b: { "b:1": ready } }
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(subscribed).toEqual(["a", "b"]);
+    release("a");
+    expect(await transformed).toBeUndefined();
   });
 
   it("declines a keyed envelope with nothing to frame", async () => {

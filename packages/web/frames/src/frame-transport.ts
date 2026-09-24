@@ -13,11 +13,13 @@
 import {
   ChunkReader,
   ERROR_HEADER,
+  REDIRECT_HEADER,
   SINGLE_FLIGHT_HEADER,
   createChunk,
   deserializeStream,
   frameAddress,
   getFlightDataConsumer,
+  getFlightDataSourceIds,
   getServerFunctionsCodec
 } from "../../server-functions/src/shared.js";
 import { REVALIDATE_HEADER } from "../../src/response.js";
@@ -117,6 +119,11 @@ export interface ServerComponentHandlerOptions<C = unknown> {
    * gives this module a private copy. Defaults to the local copy's reader.
    */
   consumer?(source: string): FlightConsumer | undefined;
+  /**
+   * Reads the source ids with a registered consumer, in registration order —
+   * same instance-identity contract as `consumer`.
+   */
+  sources?(): string[];
   /**
    * Reads the configured codec options at decode time — same instance-
    * identity contract as `consumer`. Defaults to the local copy's reader.
@@ -476,6 +483,7 @@ export function createServerComponentHandler({
   // them passes getters that read the built instance. The defaults read the
   // local copy — correct whenever there is only one.
   consumer = getFlightDataConsumer,
+  sources = getFlightDataSourceIds,
   codec = getServerFunctionsCodec
 }) {
   // Mount components, one per FUNCTION (the equals-gate identity).
@@ -637,10 +645,12 @@ export function createServerComponentHandler({
     if (!carried) throw new Error("Single-flight frame response carried no outcome");
 
     const envelope = await payload;
-    // The header names the folded sources and the envelope is keyed by them:
-    // each slice goes to its source's consumer, as on the data-only path.
     const data = envelope.data;
-    for (const source of response.headers.get(SINGLE_FLIGHT_HEADER).split(",")) {
+    const folded = response.headers.get(SINGLE_FLIGHT_HEADER).split(",");
+    const metadata =
+      response.headers.has(REDIRECT_HEADER) || response.headers.has(REVALIDATE_HEADER);
+    for (const source of sources()) {
+      if (!metadata && !folded.includes(source)) continue;
       const deliver = consumer(source);
       if (deliver) await deliver(data ? data[source] : undefined, { response });
     }

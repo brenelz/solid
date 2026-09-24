@@ -2,10 +2,6 @@
  * @jsxImportSource @solidjs/web
  * @vitest-environment jsdom
  */
-// The client half of single-flight through frames: a mutation response that
-// carries regions delivers the `{ value, data }` envelope the way a plain
-// single-flight body does — each folded source's slice to its own consumer,
-// the unnamed one under "true" — and resolves the caller with the value.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createFrameHost, installServerComponents } from "../frames/src/client.js";
 import {
@@ -20,7 +16,12 @@ import {
   createServerReference,
   subscribeFlightData
 } from "../server-functions/src/client.js";
-import { ChunkReader, createChunk, serializeStream } from "../server-functions/src/shared.js";
+import {
+  ChunkReader,
+  REDIRECT_HEADER,
+  createChunk,
+  serializeStream
+} from "../server-functions/src/shared.js";
 
 function makeHost() {
   const table = createJSONDataTable();
@@ -30,8 +31,6 @@ function makeHost() {
   });
 }
 
-// A component as the server's envelope carries it: branded with its function
-// id and call address, so the codec writes it as a flight reference.
 function component(id: string) {
   const fn: any = () => null;
   fn[SERVER_COMPONENT] = id;
@@ -39,7 +38,12 @@ function component(id: string) {
   return fn;
 }
 
-async function flightResponse(sources: string, regions: string[], outcome: unknown) {
+async function flightResponse(
+  sources: string,
+  regions: string[],
+  outcome: unknown,
+  headers: Record<string, string> = {}
+) {
   const chunks: any[] = [];
   for (const id of regions) {
     chunks.push(
@@ -63,7 +67,8 @@ async function flightResponse(sources: string, regions: string[], outcome: unkno
       "Content-Type": "application/x-frame-stream",
       "X-Frame-Stream": "",
       "X-Content-Raw": "1",
-      [SINGLE_FLIGHT_HEADER]: sources
+      [SINGLE_FLIGHT_HEADER]: sources,
+      ...headers
     }
   });
 }
@@ -112,5 +117,24 @@ describe("single-flight frame responses", () => {
     expect(delivered.true).toEqual({ "/notes": ["fresh"] });
     expect(Object.keys(delivered.query)).toEqual(["q:1"]);
     expect(delivered.query["q:1"][COMPONENT_BINDING].address).toBe("q");
+  });
+
+  test("delivers a redirect to every registered consumer, folded or not", async () => {
+    const calls: [string, unknown][] = [];
+    subscriptions.push(subscribeFlightData(data => void calls.push(["true", data])));
+    subscriptions.push(subscribeFlightData("query", data => void calls.push(["query", data])));
+    vi.stubGlobal("fetch", async () =>
+      flightResponse(
+        "query",
+        ["q"],
+        { value: "saved", data: { query: { "q:1": component("q") } } },
+        { [REDIRECT_HEADER]: "302 /notes" }
+      )
+    );
+
+    expect(await save()).toBe("saved");
+    expect(calls.map(([source]) => source)).toEqual(["true", "query"]);
+    expect(calls[0][1]).toBeUndefined();
+    expect(Object.keys(calls[1][1] as object)).toEqual(["q:1"]);
   });
 });

@@ -1968,18 +1968,13 @@ export async function frameTransformFlightResult(event, outcome, context) {
   const regions = [];
   let serialized = data;
   if (data && typeof data === "object") {
-    // The fold keys the payload by source (`{ [source]: slice }`, the
-    // unnamed hook's under "true") and the client routes each slice to its
-    // consumer by that key, so the entries to frame sit one level down and
-    // the keys stay.
-    serialized = {};
-    for (const source of Object.keys(data)) {
-      const slice = data[source];
-      serialized[source] =
-        slice && typeof slice === "object" && !Array.isArray(slice)
-          ? await frameFlightSlice(slice, regions)
-          : slice;
-    }
+    serialized = { ...data };
+    const sources = Object.keys(data).filter(source => isPlainObject(data[source]));
+    const framed = await Promise.all(sources.map(source => frameFlightSlice(data[source])));
+    sources.forEach((source, i) => {
+      serialized[source] = framed[i].serialized;
+      regions.push(...framed[i].regions);
+    });
   }
   const invocation = getEventServerFunctionInvocation(event);
   // The called function's own markup keeps the function id as its address,
@@ -2002,17 +1997,25 @@ export async function frameTransformFlightResult(event, outcome, context) {
   });
 }
 
-async function frameFlightSlice(slice, regions) {
+function isPlainObject(value) {
+  if (!value || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+async function frameFlightSlice(slice) {
   const serialized = {};
+  const regions = [];
   // Collected entries arrive unresolved (an integration's cache stores the
   // in-flight promise), and a value has to be in hand to know whether it is
   // markup. So a mutation's payload settles before its response starts,
   // where a data-only one streams as the codec produces it — the cost of
   // knowing what kind of thing each entry is.
   const keys = Object.keys(slice);
-  const values = await Promise.all(keys.map(key => slice[key]));
+  const settled = await Promise.allSettled(keys.map(key => slice[key]));
   for (let i = 0; i < keys.length; i++) {
-    const entry = values[i];
+    // A rejected entry stays the collector's promise for the codec to sanitize.
+    const entry = settled[i].status === "fulfilled" ? settled[i].value : slice[keys[i]];
     // A component-valued entry is not a different KIND of payload, just a
     // different representation of one: it stays in the map like any other
     // value, serialized by reference (see `ServerComponentPlugin`) so the
@@ -2029,7 +2032,7 @@ async function frameFlightSlice(slice, regions) {
       });
     }
   }
-  return serialized;
+  return { serialized, regions };
 }
 
 /**
@@ -2047,8 +2050,6 @@ export function frameFlightResponse({ primary, regions = [], outcome, codec }, i
   headers.set("Content-Type", "application/x-frame-stream");
   headers.set(FRAME_STREAM_HEADER, primary ? primary.id : "");
   headers.set("X-Content-Raw", "1");
-  // Names the folded sources, as the plain envelope's header does: the
-  // client routes each slice of the keyed data to its consumer by it.
   const sources =
     outcome && outcome.data && typeof outcome.data === "object" ? Object.keys(outcome.data) : [];
   headers.set(SINGLE_FLIGHT_HEADER, sources.length ? sources.join(",") : "true");
