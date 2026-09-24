@@ -1968,31 +1968,17 @@ export async function frameTransformFlightResult(event, outcome, context) {
   const regions = [];
   let serialized = data;
   if (data && typeof data === "object") {
+    // The fold keys the payload by source (`{ [source]: slice }`, the
+    // unnamed hook's under "true") and the client routes each slice to its
+    // consumer by that key, so the entries to frame sit one level down and
+    // the keys stay.
     serialized = {};
-    // Collected entries arrive unresolved (an integration's cache stores the
-    // in-flight promise), and a value has to be in hand to know whether it is
-    // markup. So a mutation's payload settles before its response starts,
-    // where a data-only one streams as the codec produces it — the cost of
-    // knowing what kind of thing each entry is.
-    const keys = Object.keys(data);
-    const values = await Promise.all(keys.map(key => data[key]));
-    for (let i = 0; i < keys.length; i++) {
-      const entry = values[i];
-      // A component-valued entry is not a different KIND of payload, just a
-      // different representation of one: it stays in the map like any other
-      // value, serialized by reference (see `ServerComponentPlugin`) so the
-      // client seeds its cache with the boundary component and re-stamps
-      // freshness through the ordinary path. Its content rides alongside as a
-      // region addressed by the CALL — the address both peers derive
-      // independently — so markup ships once as html and the map carries only
-      // a pointer to it.
-      serialized[keys[i]] = entry;
-      if (typeof entry === "function") {
-        regions.push({
-          id: entry[SERVER_COMPONENT_ADDRESS] || keys[i],
-          component: entry[SERVER_COMPONENT_SOURCE] || entry
-        });
-      }
+    for (const source of Object.keys(data)) {
+      const slice = data[source];
+      serialized[source] =
+        slice && typeof slice === "object" && !Array.isArray(slice)
+          ? await frameFlightSlice(slice, regions)
+          : slice;
     }
   }
   const invocation = getEventServerFunctionInvocation(event);
@@ -2016,6 +2002,36 @@ export async function frameTransformFlightResult(event, outcome, context) {
   });
 }
 
+async function frameFlightSlice(slice, regions) {
+  const serialized = {};
+  // Collected entries arrive unresolved (an integration's cache stores the
+  // in-flight promise), and a value has to be in hand to know whether it is
+  // markup. So a mutation's payload settles before its response starts,
+  // where a data-only one streams as the codec produces it — the cost of
+  // knowing what kind of thing each entry is.
+  const keys = Object.keys(slice);
+  const values = await Promise.all(keys.map(key => slice[key]));
+  for (let i = 0; i < keys.length; i++) {
+    const entry = values[i];
+    // A component-valued entry is not a different KIND of payload, just a
+    // different representation of one: it stays in the map like any other
+    // value, serialized by reference (see `ServerComponentPlugin`) so the
+    // client seeds its cache with the boundary component and re-stamps
+    // freshness through the ordinary path. Its content rides alongside as a
+    // region addressed by the CALL — the address both peers derive
+    // independently — so markup ships once as html and the map carries only
+    // a pointer to it.
+    serialized[keys[i]] = entry;
+    if (typeof entry === "function") {
+      regions.push({
+        id: entry[SERVER_COMPONENT_ADDRESS] || keys[i],
+        component: entry[SERVER_COMPONENT_SOURCE] || entry
+      });
+    }
+  }
+  return serialized;
+}
+
 /**
  * A framed response carrying several frames and a single-flight outcome:
  * each frame's chunks in order (the host routes and buffers by id), then the
@@ -2031,7 +2047,11 @@ export function frameFlightResponse({ primary, regions = [], outcome, codec }, i
   headers.set("Content-Type", "application/x-frame-stream");
   headers.set(FRAME_STREAM_HEADER, primary ? primary.id : "");
   headers.set("X-Content-Raw", "1");
-  headers.set(SINGLE_FLIGHT_HEADER, "true");
+  // Names the folded sources, as the plain envelope's header does: the
+  // client routes each slice of the keyed data to its consumer by it.
+  const sources =
+    outcome && outcome.data && typeof outcome.data === "object" ? Object.keys(outcome.data) : [];
+  headers.set(SINGLE_FLIGHT_HEADER, sources.length ? sources.join(",") : "true");
   // Same disconnect guard as serverComponentResponse: post-cancel writes
   // drop instead of throwing through a serializer flush.
   let closed = false;

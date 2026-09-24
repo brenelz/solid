@@ -111,12 +111,12 @@ export interface ServerComponentHandlerOptions<C = unknown> {
    */
   intercept?(info: { id: string; meta: unknown; args: unknown[] }): C | undefined;
   /**
-   * Reads the registered single-flight consumer at delivery time. The
-   * consumer is module state in the server-function client's SHARED
-   * instance; pass a getter reading that instance when your bundling gives
-   * this module a private copy. Defaults to the local copy's reader.
+   * Reads the single-flight consumer registered for a source id at delivery
+   * time. The consumers are module state in the server-function client's
+   * SHARED instance; pass a getter reading that instance when your bundling
+   * gives this module a private copy. Defaults to the local copy's reader.
    */
-  consumer?(): FlightConsumer | undefined;
+  consumer?(source: string): FlightConsumer | undefined;
   /**
    * Reads the configured codec options at decode time — same instance-
    * identity contract as `consumer`. Defaults to the local copy's reader.
@@ -637,8 +637,13 @@ export function createServerComponentHandler({
     if (!carried) throw new Error("Single-flight frame response carried no outcome");
 
     const envelope = await payload;
-    const deliver = consumer();
-    if (deliver) await deliver(envelope.data, { response });
+    // The header names the folded sources and the envelope is keyed by them:
+    // each slice goes to its source's consumer, as on the data-only path.
+    const data = envelope.data;
+    for (const source of response.headers.get(SINGLE_FLIGHT_HEADER).split(",")) {
+      const deliver = consumer(source);
+      if (deliver) await deliver(data ? data[source] : undefined, { response });
+    }
     // Mirrors the data-only path: responses carrying integration metadata
     // are control flow for the consumer to interpret; a bare error-tagged
     // one throws.
