@@ -2218,20 +2218,31 @@ describe("live-branded sources — automatic takeover", () => {
   const LIVE = Symbol.for("solid.LiveSource");
 
   // A live transport call: constructs its iterable synchronously (no wire
-  // activity until pulled), branded. Each iteration is its own "connection".
-  function makeLiveSource<T>(value: T, connections: { count: number }) {
+  // activity until pulled), branded. Each iteration is its own "connection",
+  // or, `shared`, one channel opened by the first pull serves every iteration
+  // (router-style). The standing answer stays open unless `update` resolves.
+  function makeLiveSource<T>(
+    value: T,
+    connections: { count: number },
+    options: { shared?: boolean; update?: Promise<T> } = {}
+  ) {
+    let channel: Promise<IteratorResult<T>> | undefined;
+    const open = () => {
+      connections.count++;
+      return Promise.resolve({ done: false, value });
+    };
     return {
       [LIVE]: true,
       [Symbol.asyncIterator]() {
-        connections.count++;
-        let sent = false;
+        const own = options.shared ? undefined : open();
+        let sent = 0;
         return {
           next: () => {
-            if (!sent) {
-              sent = true;
-              return Promise.resolve({ done: false, value });
-            }
-            return new Promise<never>(() => {}); // standing answer: stays open
+            sent++;
+            if (sent === 1) return own ?? (channel ??= open());
+            if (sent === 2 && options.update)
+              return options.update.then(v => ({ done: false, value: v }));
+            return new Promise<never>(() => {});
           },
           return: (v?: any) => Promise.resolve({ done: true, value: v })
         };
@@ -2269,30 +2280,8 @@ describe("live-branded sources — automatic takeover", () => {
   test("the trace never pulls a live source: a shared channel connects once, after hydration", async () => {
     startHydration({ t0: { v: "server-current", s: 1 } });
 
-    // Router-style channel: one connection shared by every iteration, opened by the first pull.
-    let channel: Promise<IteratorResult<string>> | undefined;
     const connections = { count: 0 };
-    const source = {
-      [LIVE]: true,
-      [Symbol.asyncIterator]() {
-        let sent = false;
-        return {
-          next: () => {
-            if (!channel) {
-              connections.count++;
-              channel = Promise.resolve({ done: false, value: "live-current" });
-            }
-            if (!sent) {
-              sent = true;
-              return channel;
-            }
-            return new Promise<never>(() => {});
-          },
-          return: (v?: any) => Promise.resolve({ done: true, value: v })
-        };
-      }
-    };
-
+    const source = makeLiveSource("live-current", connections, { shared: true });
     let result: any;
     createRoot(
       () => {
@@ -2312,6 +2301,56 @@ describe("live-branded sources — automatic takeover", () => {
 
     expect(connections.count).toBe(1);
     expect(result()).toBe("live-current");
+  });
+
+  test("hybrid handoff: a shared channel connects once and keeps delivering", async () => {
+    startHydration({
+      t0: { v: "server-current", s: 1 },
+      t1: { v: { value: "server-store" }, s: 1 }
+    });
+
+    const memoConnections = { count: 0 };
+    const storeConnections = { count: 0 };
+    const memoUpdate = deferred<string>();
+    const storeUpdate = deferred<{ value: string }>();
+    const memoSource = makeLiveSource("live-first", memoConnections, {
+      shared: true,
+      update: memoUpdate.promise
+    });
+    const storeSource = makeLiveSource({ value: "live-first" }, storeConnections, {
+      shared: true,
+      update: storeUpdate.promise
+    });
+    let result: any;
+    let store: any;
+    createRoot(
+      () => {
+        result = createMemo(() => memoSource as any, { ssrSource: "hybrid" });
+        [store] = createStore(() => storeSource as any, { value: "seed" }, { ssrSource: "hybrid" });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe("server-current");
+    expect(store.value).toBe("server-store");
+
+    stopHydration();
+    await tick();
+
+    expect(memoConnections.count).toBe(1);
+    expect(storeConnections.count).toBe(1);
+    expect(result()).toBe("server-current");
+    expect(store.value).toBe("server-store");
+
+    memoUpdate.resolve("live-second");
+    storeUpdate.resolve({ value: "live-second" });
+    await tick();
+
+    expect(memoConnections.count).toBe(1);
+    expect(storeConnections.count).toBe(1);
+    expect(result()).toBe("live-second");
+    expect(store.value).toBe("live-second");
   });
 
   test("store consumers adopt the serialized value, then reconnect after hydration", async () => {
