@@ -382,7 +382,8 @@ function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
     window.fetch = () => new MockPromise() as any;
     Promise = MockPromise as any;
     const result = fn(prev);
-    if (result && typeof result[Symbol.asyncIterator] === "function") {
+    // A live iterable's first pull connects; its brand is on the object already.
+    if (result && typeof result[Symbol.asyncIterator] === "function" && !result[LIVE_SOURCE]) {
       result[Symbol.asyncIterator]().next();
     }
     // The trace run's flight is never consumed (the serialized value is

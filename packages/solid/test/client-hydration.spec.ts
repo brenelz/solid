@@ -2266,6 +2266,54 @@ describe("live-branded sources — automatic takeover", () => {
     expect(result()).toBe("live-current");
   });
 
+  test("the trace never pulls a live source: a shared channel connects once, after hydration", async () => {
+    startHydration({ t0: { v: "server-current", s: 1 } });
+
+    // Router-style channel: one connection shared by every iteration, opened by the first pull.
+    let channel: Promise<IteratorResult<string>> | undefined;
+    const connections = { count: 0 };
+    const source = {
+      [LIVE]: true,
+      [Symbol.asyncIterator]() {
+        let sent = false;
+        return {
+          next: () => {
+            if (!channel) {
+              connections.count++;
+              channel = Promise.resolve({ done: false, value: "live-current" });
+            }
+            if (!sent) {
+              sent = true;
+              return channel;
+            }
+            return new Promise<never>(() => {});
+          },
+          return: (v?: any) => Promise.resolve({ done: true, value: v })
+        };
+      }
+    };
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    expect(result()).toBe("server-current");
+    expect(connections.count).toBe(0);
+
+    stopHydration();
+    flush();
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+
+    expect(connections.count).toBe(1);
+    expect(result()).toBe("live-current");
+  });
+
   test("store consumers adopt the serialized value, then reconnect after hydration", async () => {
     startHydration({
       t0: { v: { value: "server-projection" }, s: 1 },
@@ -2302,11 +2350,9 @@ describe("live-branded sources — automatic takeover", () => {
     expect(projection.value).toBe("server-projection");
     expect(store.value).toBe("server-store");
     expect(optimistic.value).toBe("server-optimistic");
-    // The adoption trace opens each source under mocked transport so it can
-    // discover dependencies and the live brand without network activity.
-    expect(projectionConnections.count).toBe(1);
-    expect(storeConnections.count).toBe(1);
-    expect(optimisticConnections.count).toBe(1);
+    expect(projectionConnections.count).toBe(0);
+    expect(storeConnections.count).toBe(0);
+    expect(optimisticConnections.count).toBe(0);
 
     stopHydration();
     flush();
@@ -2316,9 +2362,9 @@ describe("live-branded sources — automatic takeover", () => {
     expect(projection.value).toBe("live-projection");
     expect(store.value).toBe("live-store");
     expect(optimistic.value).toBe("live-optimistic");
-    expect(projectionConnections.count).toBe(2);
-    expect(storeConnections.count).toBe(2);
-    expect(optimisticConnections.count).toBe(2);
+    expect(projectionConnections.count).toBe(1);
+    expect(storeConnections.count).toBe(1);
+    expect(optimisticConnections.count).toBe(1);
   });
 
   test("unbranded computes keep adopt-and-latch semantics — no takeover", async () => {
