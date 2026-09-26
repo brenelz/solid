@@ -2614,29 +2614,27 @@ function visibleDescriptor(
     if (target.del !== null && target.del.has(key)) return undefined;
     if (desc === undefined) desc = Object.getOwnPropertyDescriptor(target.v, key);
   }
-  if (
-    !authoritativeServe() &&
-    target.fam?.opt &&
-    (!inDraft(target) || draftSeesOverrides(target))
-  ) {
-    const draft = inDraft(target);
+  const draft = inDraft(target);
+  if (!authoritativeServe() && target.fam?.opt && (!draft || draftSeesOverrides(target))) {
     const node = target.h?.[key as any];
     if (node !== undefined && (draft ? hasActiveOverride(node) : visibleOverride(node))) {
       if (!unwrapOverride(node._x?._overrideValue)) return undefined; // opt delete
       if (desc === undefined) {
         const vn = target.n?.[key as any];
-        return {
-          value:
-            vn === undefined
-              ? undefined
-              : draft && hasActiveOverride(vn)
-                ? unwrapOverride(vn._x?._overrideValue)
-                : nodeValue(vn, undefined),
+        desc = {
+          value: vn !== undefined && !draft ? nodeValue(vn, undefined) : undefined,
           writable: true,
           enumerable: true,
           configurable: true
         };
       }
+    }
+    if (draft && desc !== undefined && !desc.get && !desc.set) {
+      const vn = target.n?.[key as any];
+      if (key === "length" && Array.isArray(src) && !(target.ch && src === target.v))
+        desc.value = optHooks!.optimisticView(target, src, true).length;
+      else if (vn !== undefined && hasActiveOverride(vn))
+        desc.value = unwrapOverride(vn._x?._overrideValue);
     }
   }
   return desc;

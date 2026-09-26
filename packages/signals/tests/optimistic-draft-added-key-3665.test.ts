@@ -1,10 +1,3 @@
-/**
- * #3665 — inside one action body, a key the first setter added to an
- * optimistic store (`push`, `d[1] = …`, `d.b = …`) reads as `undefined` in
- * the next setter's draft although that draft's `length` and `in` already
- * see it. The draft is the writer's channel and composes on the tick's own
- * writes; readers outside the draft see nothing until the flush (A28).
- */
 import {
   action,
   createOptimisticStore,
@@ -13,6 +6,7 @@ import {
   flush,
   untrack
 } from "../src/index.js";
+import { $TARGET } from "../src/store/store.js";
 
 afterEach(() => flush());
 
@@ -73,47 +67,82 @@ describe("#3665 a second setter's draft sees the key the first setter added", ()
     expect(seen.at(-1)).toEqual([{ id: "a" }]);
   });
 
-  it("index set d[1], then read in the next setter", () => {
-    const [, setRows] = createOptimisticStore<Row[]>([{ id: "a" }]);
+  it("index set d[1], then read and descriptors in the next setter", async () => {
+    const gate = deferred();
+    const [rows, setRows] = createOptimisticStore<Row[]>([{ id: "a" }]);
     let second: Row | undefined;
-    action(function* () {
+    let lengthDesc: PropertyDescriptor | undefined;
+    let indexDesc: PropertyDescriptor | undefined;
+    const p = action(function* () {
       setRows(d => {
         d[1] = { id: "b" };
       });
       setRows(d => {
         second = d[1];
+        lengthDesc = Object.getOwnPropertyDescriptor(d, "length");
+        indexDesc = Object.getOwnPropertyDescriptor(d, 1);
       });
-      yield;
+      yield gate.promise;
     })();
     expect(second).toEqual({ id: "b" });
+    expect(lengthDesc?.value).toBe(2);
+    expect(indexDesc).toMatchObject({ value: { id: "b" }, enumerable: true });
+    expect(untrack(() => rows.length)).toBe(1);
+
+    flush();
+    expect(untrack(() => rows.length)).toBe(2);
+    gate.resolve();
+    await p;
+    flush();
+    expect(untrack(() => rows.length)).toBe(1);
+    expect(untrack(() => rows[1])).toBeUndefined();
   });
 
-  it("object key add d.b, then read, keys and spread in the next setter", () => {
+  it("object key add d.b and replace d.a, then read, keys, spread and descriptors in the next setter", async () => {
+    const gate = deferred();
     const [rows, setRows] = createOptimisticStore<Record<string, Row>>({ a: { id: "a" } });
     let b: Row | undefined;
     let keys: string[] = [];
     let spread: Record<string, Row> = {};
-    let desc: PropertyDescriptor | undefined;
-    action(function* () {
+    let descA: PropertyDescriptor | undefined;
+    let descB: PropertyDescriptor | undefined;
+    let rawB: unknown;
+    const p = action(function* () {
       setRows(d => {
         d.b = { id: "b" };
+        d.a = { id: "z" };
       });
       expect(untrack(() => rows.b)).toBeUndefined();
+      expect(untrack(() => rows.a)).toEqual({ id: "a" });
       expect(untrack(() => Object.keys(rows))).toEqual(["a"]);
       setRows(d => {
         expect("b" in d).toBe(true);
         b = d.b;
+        rawB = (d.b as any)[$TARGET].v;
         keys = Object.keys(d);
         spread = { ...d };
-        desc = Object.getOwnPropertyDescriptor(d, "b");
+        descA = Object.getOwnPropertyDescriptor(d, "a");
+        descB = Object.getOwnPropertyDescriptor(d, "b");
       });
-      yield;
+      yield gate.promise;
     })();
     expect(b).toEqual({ id: "b" });
     expect(keys).toEqual(["a", "b"]);
-    expect(spread).toEqual({ a: { id: "a" }, b: { id: "b" } });
-    expect(desc).toMatchObject({ value: { id: "b" }, enumerable: true });
+    expect(spread).toEqual({ a: { id: "z" }, b: { id: "b" } });
+    expect(descA?.value).toEqual({ id: "z" });
+    expect(descB).toMatchObject({ value: { id: "b" }, enumerable: true });
+    expect(descB?.value).toBe(rawB);
     expect(untrack(() => rows.b)).toBeUndefined();
+    expect(untrack(() => Object.keys(rows))).toEqual(["a"]);
+
+    flush();
+    expect(untrack(() => rows.b)).toEqual({ id: "b" });
+    expect(untrack(() => rows.a)).toEqual({ id: "z" });
+    gate.resolve();
+    await p;
+    flush();
+    expect(untrack(() => rows.b)).toBeUndefined();
+    expect(untrack(() => rows.a)).toEqual({ id: "a" });
     expect(untrack(() => Object.keys(rows))).toEqual(["a"]);
   });
 });
