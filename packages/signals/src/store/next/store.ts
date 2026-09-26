@@ -2196,7 +2196,7 @@ const traps: ProxyHandler<StoreNextTarget> = {
         !authoritativeServe()
       ) {
         const node = target.n?.[key];
-        if (node !== undefined && visibleOverride(node))
+        if (node !== undefined && hasActiveOverride(node))
           v = unwrapOverride(node._x?._overrideValue);
       }
       if (target.s) return serveShallow(target, key, v);
@@ -2614,14 +2614,24 @@ function visibleDescriptor(
     if (target.del !== null && target.del.has(key)) return undefined;
     if (desc === undefined) desc = Object.getOwnPropertyDescriptor(target.v, key);
   }
-  if (!authoritativeServe() && target.fam?.opt && !inDraft(target)) {
+  if (
+    !authoritativeServe() &&
+    target.fam?.opt &&
+    (!inDraft(target) || draftSeesOverrides(target))
+  ) {
+    const draft = inDraft(target);
     const node = target.h?.[key as any];
-    if (node !== undefined && visibleOverride(node)) {
+    if (node !== undefined && (draft ? hasActiveOverride(node) : visibleOverride(node))) {
       if (!unwrapOverride(node._x?._overrideValue)) return undefined; // opt delete
       if (desc === undefined) {
         const vn = target.n?.[key as any];
         return {
-          value: vn !== undefined ? nodeValue(vn, undefined) : undefined,
+          value:
+            vn === undefined
+              ? undefined
+              : draft && hasActiveOverride(vn)
+                ? unwrapOverride(vn._x?._overrideValue)
+                : nodeValue(vn, undefined),
           writable: true,
           enumerable: true,
           configurable: true

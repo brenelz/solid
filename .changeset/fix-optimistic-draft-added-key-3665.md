@@ -1,0 +1,5 @@
+---
+"@solidjs/signals": patch
+---
+
+Inside an action, a key the first setter adds to a `createOptimisticStore` (`d.push(x)`, `d[1] = x`, `d.b = x`) now reads as its value in the next setter's draft, where it read `undefined` although that draft's `length` and `in` already reported it (#3665, a regression in rc.9's A28). The get trap's draft arm selected the override with the reader rule (`visibleOverride`: armed and carried by a flush) while the `has` trap and `ownKeys` used the writer rule (`hasActiveOverride`) for drafts; the draft is the writer's channel and composes on the tick's own unflushed writes. `getOwnPropertyDescriptor` gains the same draft arm, so `Object.keys(d)` and `{ ...d }` in the second setter include the added key too. Readers outside the draft are unchanged: an unflushed optimistic write stays invisible until the flush that carries it (A28).
