@@ -206,12 +206,11 @@ describe("OPTIMISTIC_REVERTED", () => {
         flush();
       }
     };
-    const rows = [{ id: "a", done: false }];
     const sources: Record<string, () => Promise<Row[]> | AsyncIterable<Row[]>> = {
-      promise: () => Promise.resolve(rows),
+      promise: () => Promise.resolve([{ id: "a", done: false }]),
       "async iterable": () => ({
         async *[Symbol.asyncIterator]() {
-          yield rows;
+          yield [{ id: "a", done: false }];
           await new Promise(() => {});
         }
       })
@@ -222,7 +221,7 @@ describe("OPTIMISTIC_REVERTED", () => {
         const { findings } = arm();
         const seen: string[] = [];
         let toggle!: () => Promise<unknown>;
-        createRoot(() => {
+        const dispose = createRoot(dispose => {
           const [list, setList] = createOptimisticStore<Row[]>(source, [], {
             key: "id",
             name: "list"
@@ -238,6 +237,7 @@ describe("OPTIMISTIC_REVERTED", () => {
               yield Promise.reject(new Error("x"));
             } catch {}
           });
+          return dispose;
         });
         await settle();
         expect(seen.at(-1)).toBe("a:false");
@@ -246,24 +246,48 @@ describe("OPTIMISTIC_REVERTED", () => {
         expect(seen.at(-1)).toBe("a:false");
         expect(findings).toHaveLength(1);
         expect(findings[0].data).toMatchObject({ shown: "true", truth: "false", how: "reverted" });
+        dispose();
       });
     }
 
-    it("createOptimistic: a failed action drops the write", async () => {
+    it("superseded: the source answers the row with a different value while the guess is showing", async () => {
       const { findings } = arm();
-      const [busy, setBusy] = createOptimistic(false, { name: "busy" });
-      createRoot(() => createRenderEffect(busy, () => {}, { name: "spinner" }));
-      flush();
-      const run = action(function* run() {
-        setBusy(true);
-        try {
-          yield Promise.reject(new Error("x"));
-        } catch {}
+      const gate = deferred();
+      const seen: string[] = [];
+      let bump!: () => Promise<unknown>;
+      const dispose = createRoot(dispose => {
+        const [list, setList] = createOptimisticStore<{ id: string; count: number }[]>(
+          () => ({
+            async *[Symbol.asyncIterator]() {
+              yield [{ id: "a", count: 0 }];
+              await gate.promise;
+              yield [{ id: "a", count: 2 }];
+              await new Promise(() => {});
+            }
+          }),
+          [],
+          { key: "id", name: "list" }
+        );
+        createRenderEffect(
+          () => list.map(r => `${r.id}:${r.count}`).join(" "),
+          v => void seen.push(v),
+          { name: "rows" }
+        );
+        bump = action(function* bump() {
+          setList(l => void (l[0].count = 1));
+          gate.resolve();
+          yield settle();
+        });
+        return dispose;
       });
-      await run();
       await settle();
-      expect(busy()).toBe(false);
+      expect(seen.at(-1)).toBe("a:0");
+      await bump();
+      await settle();
+      expect(seen.at(-1)).toBe("a:2");
       expect(findings).toHaveLength(1);
+      expect(findings[0].data).toMatchObject({ shown: "1", truth: "2", how: "superseded" });
+      dispose();
     });
   });
 
