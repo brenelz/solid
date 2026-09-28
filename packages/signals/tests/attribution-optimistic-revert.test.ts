@@ -14,6 +14,7 @@ import {
   action,
   createMemo,
   createOptimistic,
+  createOptimisticStore,
   createRenderEffect,
   createRoot,
   createSignal,
@@ -194,6 +195,76 @@ describe("OPTIMISTIC_REVERTED", () => {
     flush();
     expect(shown).toContain("b-p2");
     expect(findings).toHaveLength(0);
+  });
+
+  describe("a store row reverts under the engine (#3687)", () => {
+    type Row = { id: string; done: boolean };
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    const settle = async () => {
+      for (let i = 0; i < 4; i++) {
+        await tick();
+        flush();
+      }
+    };
+    const rows = [{ id: "a", done: false }];
+    const sources: Record<string, () => Promise<Row[]> | AsyncIterable<Row[]>> = {
+      promise: () => Promise.resolve(rows),
+      "async iterable": () => ({
+        async *[Symbol.asyncIterator]() {
+          yield rows;
+          await new Promise(() => {});
+        }
+      })
+    };
+
+    for (const [kind, source] of Object.entries(sources)) {
+      it(`${kind} source: a failed action drops the row write and reports the revert`, async () => {
+        const { findings } = arm();
+        const seen: string[] = [];
+        let toggle!: () => Promise<unknown>;
+        createRoot(() => {
+          const [list, setList] = createOptimisticStore<Row[]>(source, [], {
+            key: "id",
+            name: "list"
+          });
+          createRenderEffect(
+            () => list.map(r => `${r.id}:${r.done}`).join(" "),
+            v => void seen.push(v),
+            { name: "rows" }
+          );
+          toggle = action(function* toggle() {
+            setList(l => void (l[0].done = true));
+            try {
+              yield Promise.reject(new Error("x"));
+            } catch {}
+          });
+        });
+        await settle();
+        expect(seen.at(-1)).toBe("a:false");
+        await toggle();
+        await settle();
+        expect(seen.at(-1)).toBe("a:false");
+        expect(findings).toHaveLength(1);
+        expect(findings[0].data).toMatchObject({ shown: "true", truth: "false", how: "reverted" });
+      });
+    }
+
+    it("createOptimistic: a failed action drops the write", async () => {
+      const { findings } = arm();
+      const [busy, setBusy] = createOptimistic(false, { name: "busy" });
+      createRoot(() => createRenderEffect(busy, () => {}, { name: "spinner" }));
+      flush();
+      const run = action(function* run() {
+        setBusy(true);
+        try {
+          yield Promise.reject(new Error("x"));
+        } catch {}
+      });
+      await run();
+      await settle();
+      expect(busy()).toBe(false);
+      expect(findings).toHaveLength(1);
+    });
   });
 
   it("`optimisticReverts: false` disables the finding", async () => {

@@ -3027,7 +3027,7 @@ function checkOptimisticRevert(
   // census uses to skip them.
   if (!options.optimisticReverts || isCompanion(el)) return;
   const equals = (el as { _equals?: false | ((a: unknown, b: unknown) => boolean) })._equals;
-  if (equals && equals(shown, truth)) return;
+  if (equals && equals.call(el, shown, truth)) return;
   const source = nodeName(el);
   // The two values are user data: quoted only under `values: "full"`; the
   // other levels say what happened without saying what was shown.
