@@ -22,8 +22,6 @@ export const IS_OBSERVE = "_SOLID_OBSERVE_" as string | boolean;
 /**
  * Brand symbol marking dev-built components for `solid-devtools` /
  * AI-readiness instrumentation. Internal cross-package wiring.
- *
- * @internal
  */
 export const $DEVCOMP = Symbol(IS_DEV ? "COMPONENT_DEV" : 0);
 

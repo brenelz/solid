@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
+import ts from "typescript";
 import { expect, test } from "vitest";
 
 // The merge()/omit() view protocol and the server-scope seams are consumed by
@@ -56,3 +57,36 @@ test("solid-js/internal's declarations carry the protocol and the seams", () => 
   const missing = INTERNAL.filter(name => !new RegExp(`\\b${name}\\b`).test(declarations));
   expect(missing).toEqual([]);
 });
+
+// A name an entry re-exports from a module that `stripInternal` dropped it
+// from is `any` for a consumer with `skipLibCheck` on, and TS2305 with it off.
+test("every entry's declarations resolve what they re-export", () => {
+  const entries = [
+    "index.d.ts",
+    "server/index.d.ts",
+    "internal.d.ts",
+    "attribution.d.ts",
+    "refresh/index.d.ts"
+  ];
+  const program = ts.createProgram(
+    entries.map(file => resolve(typesDir, file)),
+    {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      target: ts.ScriptTarget.ESNext,
+      lib: ["lib.dom.d.ts", "lib.esnext.d.ts", "lib.dom.iterable.d.ts"],
+      types: [],
+      strict: true,
+      skipLibCheck: false,
+      noEmit: true
+    }
+  );
+  const errors = ts
+    .getPreEmitDiagnostics(program)
+    .filter(d => d.file !== undefined && d.file.fileName.startsWith(typesDir + "/"))
+    .map(
+      d =>
+        `${relative(typesDir, d.file!.fileName)}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`
+    );
+  expect(errors).toEqual([]);
+}, 30_000);

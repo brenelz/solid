@@ -174,8 +174,6 @@ type SharedConfig = {
    * enableHydration(); absent in CSR bundles and on the server sharedConfig —
    * treat absence as "not hydrating". Cross-package wiring; not part of the
    * user-facing API.
-   *
-   * @internal
    */
   isHydrationInProgress?: () => boolean;
   /**
@@ -186,8 +184,6 @@ type SharedConfig = {
    * hydration is definitionally complete, so fire the callback via
    * queueMicrotask yourself. Cross-package wiring; not part of the
    * user-facing API.
-   *
-   * @internal
    */
   onHydrationEnd?: (callback: () => void) => void;
   /**
@@ -208,8 +204,6 @@ type SharedConfig = {
  * Shared hydration coordination object — populated by `enableHydration()` and
  * consumed by the hydration-aware primitive wrappers and SSR streaming
  * runtime. Cross-package wiring; not part of the user-facing API.
- *
- * @internal
  */
 export const sharedConfig: SharedConfig = {
   hydrating: false,
@@ -2020,8 +2014,6 @@ export const createSignal: {
  * **Hydration:** if the server serialized an error for this boundary,
  * the client re-throws it on the first hydration pass so `fallback`
  * renders the same content the server emitted.
- *
- * @internal
  */
 export const createErrorBoundary = ((...args: any[]) =>
   (_createErrorBoundary || coreErrorBoundary)(...args)) as <T, U>(
@@ -2032,8 +2024,6 @@ export const createErrorBoundary = ((...args: any[]) =>
 /**
  * Internal primitive that backs `<Reveal>` coordination of sibling loading
  * boundaries. App code should use `<Reveal>` directly.
- *
- * @internal
  */
 export function createRevealOrder<T>(
   fn: () => T,
@@ -2921,8 +2911,6 @@ function scheduleResumeAfterAssets(
  * directly. This primitive is kept exported for renderer, test, and
  * compatibility use, but it is not part of the recommended application
  * authoring surface.
- *
- * @internal
  */
 export const createLoadingBoundary = (<T, U>(
   fn: () => T,

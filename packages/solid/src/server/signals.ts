@@ -3828,7 +3828,6 @@ export interface ClientErrorsConfig {
   onError?: ClientErrorHook;
 }
 export function configureClientErrors(_config: ClientErrorsConfig): void {}
-/** @internal */
 export const ROOT_ERROR_HOOK: unique symbol = Symbol.for("solid-js/root-error-hook") as any;
 
 export function resolve<T>(fn: () => T): Promise<T> {
