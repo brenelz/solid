@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
 import { expect, test } from "vitest";
 
@@ -39,6 +39,8 @@ const INTERNAL = [
   "getProjectionTrace",
   "materializeContainerTrace"
 ];
+// Read from "solid-js" at runtime by @solidjs/web's render(); never declared.
+const ENTRY_INTERNAL = ["ROOT_ERROR_HOOK"];
 
 const typesDir = resolve(import.meta.dirname, "../types");
 const read = (file: string) => readFileSync(resolve(typesDir, file), "utf8");
@@ -48,7 +50,9 @@ test.each([
   ["server", "server/index.d.ts"]
 ])("no internal name reaches the %s entry's declarations", (_tier, file) => {
   const declarations = read(file);
-  const leaked = INTERNAL.filter(name => new RegExp(`\\b${name}\\b`).test(declarations));
+  const leaked = [...INTERNAL, ...ENTRY_INTERNAL].filter(name =>
+    new RegExp(`\\b${name}\\b`).test(declarations)
+  );
   expect(leaked).toEqual([]);
 });
 
@@ -58,18 +62,18 @@ test("solid-js/internal's declarations carry the protocol and the seams", () => 
   expect(missing).toEqual([]);
 });
 
-// A name an entry re-exports from a module that `stripInternal` dropped it
-// from is `any` for a consumer with `skipLibCheck` on, and TS2305 with it off.
 test("every entry's declarations resolve what they re-export", () => {
-  const entries = [
-    "index.d.ts",
-    "server/index.d.ts",
-    "internal.d.ts",
-    "attribution.d.ts",
-    "refresh/index.d.ts"
-  ];
+  const pkg = JSON.parse(readFileSync(resolve(typesDir, "../package.json"), "utf8"));
+  const typesOf = (exports: unknown): string[] =>
+    typeof exports === "object" && exports !== null
+      ? Object.entries(exports).flatMap(([condition, target]) =>
+          condition === "types" && typeof target === "string" ? [target] : typesOf(target)
+        )
+      : [];
+  const entries = [...new Set([...typesOf(pkg.exports), "./types/server/index.d.ts"])];
+  expect(entries).toContain("./types/index.d.ts");
   const program = ts.createProgram(
-    entries.map(file => resolve(typesDir, file)),
+    entries.map(file => resolve(typesDir, "..", file)),
     {
       module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -81,12 +85,16 @@ test("every entry's declarations resolve what they re-export", () => {
       noEmit: true
     }
   );
+  const inTypes = (file: string) => {
+    const path = relative(typesDir, file);
+    return !isAbsolute(path) && !path.startsWith("..");
+  };
   const errors = ts
     .getPreEmitDiagnostics(program)
-    .filter(d => d.file !== undefined && d.file.fileName.startsWith(typesDir + "/"))
+    .filter(d => d.file === undefined || inTypes(d.file.fileName))
     .map(
       d =>
-        `${relative(typesDir, d.file!.fileName)}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`
+        `${d.file ? relative(typesDir, d.file.fileName) : "global"}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`
     );
   expect(errors).toEqual([]);
 }, 30_000);

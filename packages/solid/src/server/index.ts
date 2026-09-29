@@ -53,10 +53,11 @@ export {
   enableExternalSource,
   enforceLoadingBoundary,
   untrack,
-  configureClientErrors,
-  ROOT_ERROR_HOOK
+  configureClientErrors
 } from "./signals.js";
 export type { ClientErrorContext, ClientErrorHook, ClientErrorsConfig } from "./signals.js";
+/** @internal */
+export { ROOT_ERROR_HOOK } from "./signals.js";
 
 // All type re-exports from signals
 export type {
