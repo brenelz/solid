@@ -6601,7 +6601,8 @@ function deriveHead(stub, responseInit = {}) {
  * appends a client-side script redirect before the stream closes when its
  * target resolves to HTTP(S).
  * Synchronous for string results; resolves at shell flush for stream
- * results.
+ * results, or with an empty 500 (or the stub's redirect) when the render
+ * fails before the shell flushes.
  */
 export function createSSRResponse(
   result: string,
