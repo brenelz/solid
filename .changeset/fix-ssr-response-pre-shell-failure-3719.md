@@ -1,0 +1,5 @@
+---
+"@solidjs/web": patch
+---
+
+Fix `createSSRResponse` never settling when a streamed render fails before the shell flushes (#3719). A failure that reaches `failRender` pre-shell (an async read that rejects with no `<Loading>` or `<Errored>` above it, a `<Loading>` that trips its convergence budget while a root read holds the shell) ends the `pipe()` sink with nothing written, and `createSSRResponse` only resolved from its first `write`, so the returned `Promise<Response>` hung and the request never answered. An `end()` that arrives before any write now commits the stub and resolves with an empty 500 `Response`, or with the redirect when the stub already carries a `Location`, mirroring the pre-flush redirect branch of `write()`. So that a successful render with an empty shell (`renderToStream(() => null)`) is not taken for that failure, the shell handoff in `pipe()` now always reaches the sink as its first write, even when the shell is empty; that render resolves with an empty 200 instead of hanging.

@@ -601,6 +601,19 @@ describe("awaited renderToStream: response head freezes at completion", () => {
     expect(response.headers.get("x-test")).toBe("yes");
     expect(await response.text()).toContain("not found");
   });
+
+  test("an empty shell still freezes the head and resolves a 200", async () => {
+    const event = createRequestEvent(new Request("http://localhost/"));
+    const response = await storage.run(event, () =>
+      createSSRResponse(
+        renderToStream(() => null),
+        event
+      )
+    );
+    expect(event.response.committed).toBe(true);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("");
+  });
 });
 
 describe("clientOnly (server)", () => {

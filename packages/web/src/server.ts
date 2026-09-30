@@ -3287,9 +3287,8 @@ export function renderToStream(code, options = {}) {
             if (!shellCompleted) return flush();
             const sink = guardSink(w);
             buffer = writable = coalesceWrites(sink.write, sink.end);
-            buffer.write(tmp);
-            // Shell TTFB is never deferred — flush the handoff synchronously.
-            buffer.flush();
+            // Shell TTFB is never deferred; an empty shell is still the sink's first write.
+            sink.write(tmp);
             firstFlushed = true;
             if (completed) {
               dispose();
@@ -6636,6 +6635,9 @@ export function createSSRResponse(
  *   can only be honored client-side, so stream completion appends
  *   `<script>window.location=...</script>` for relative or HTTP(S) targets
  *   (carrying `options.nonce` for strict `script-src` CSPs) before closing.
+ *   A render that fails before the shell flushes (the sink is ended with
+ *   nothing written) resolves with an empty 500, or with the redirect when
+ *   the stub already carries a `Location`.
  *
  * `options.transformChunk(chunk)` rewrites each outgoing HTML chunk (entry
  * script injection, doctype prefixes, ...). The default `content-type` is
@@ -6713,7 +6715,18 @@ export function createSSRResponse(result, event, options = {}) {
         enqueue(transformChunk ? transformChunk(chunk) : chunk);
       },
       end() {
-        if (closed || !controller) return;
+        if (closed) return;
+        if (!flushed) {
+          // Ended with nothing written: the render failed before the shell.
+          closed = true;
+          if (stub) commitResponseStub(stub, { event });
+          const head = deriveHead(stub, responseInit);
+          const status =
+            stub && stub.headers.get("Location") ? getExpectedRedirectStatus(stub) : 500;
+          resolve(new Response(null, { status, headers: head.headers }));
+          return;
+        }
+        if (!controller) return;
         // A Location that appears here was written after the head went out
         // (a pre-flush one short-circuited above) — client-side is the only
         // side that can still honor it.

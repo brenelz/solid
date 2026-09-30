@@ -39,7 +39,14 @@
  *    failure gets the same treatment here.
  */
 import { describe, expect, test } from "vitest";
-import { renderToStream, Loading, Errored, type ServerErrorContext } from "@solidjs/web";
+import {
+  renderToStream,
+  createRequestEvent,
+  createSSRResponse,
+  Loading,
+  Errored,
+  type ServerErrorContext
+} from "@solidjs/web";
 import { NotReadyError, createMemo } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { hydrationRecordKeys } from "../harness/hydration-records.js";
@@ -412,5 +419,47 @@ describe("#3569 (b) a render failure completes the consumer", () => {
     expect(value.settled).toBe(true);
     expect((value as { value: string }).value).toBe("");
     expect(heard.map(h => h.context.handling)).toEqual(["failed"]);
+  }, 10_000);
+
+  test("createSSRResponse: settles with a 500 instead of hanging (#3719)", async () => {
+    const { App, options, heard } = failingPreShell();
+    const event = createRequestEvent(new Request("http://localhost/"));
+    const { escaped, value } = await watchRejections(() =>
+      settleOrHang(
+        createSSRResponse(
+          renderToStream(() => <App />, options),
+          event
+        ),
+        2000
+      )
+    );
+    expect(messages(escaped)).toEqual([]);
+    expect(heard.map(h => h.context.handling)).toEqual(["failed"]);
+    expect(value.settled).toBe(true);
+    const response = (value as { value: Response }).value;
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe("");
+    expect(event.response.committed).toBe(true);
+  }, 10_000);
+
+  test("createSSRResponse: a Location already on the stub still redirects (#3719)", async () => {
+    const { App, options, heard } = failingPreShell();
+    const event = createRequestEvent(new Request("http://localhost/"));
+    event.response.headers.set("Location", "/login");
+    const { escaped, value } = await watchRejections(() =>
+      settleOrHang(
+        createSSRResponse(
+          renderToStream(() => <App />, options),
+          event
+        ),
+        2000
+      )
+    );
+    expect(messages(escaped)).toEqual([]);
+    expect(heard.map(h => h.context.handling)).toEqual(["failed"]);
+    expect(value.settled).toBe(true);
+    const response = (value as { value: Response }).value;
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/login");
   }, 10_000);
 });
