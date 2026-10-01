@@ -204,6 +204,46 @@ describe("ssrElement with multiple sources", () => {
     ).toBe('<textarea id="t">v</textarea>');
   });
 
+  test("children are read after the other getters and the trailing attributes", () => {
+    const order: string[] = [];
+    const source = {
+      get children() {
+        order.push("children");
+        return "c";
+      },
+      get id() {
+        order.push("id");
+        return "x";
+      }
+    };
+    const attrs = () => {
+      order.push("attrs");
+      return ' title="t"';
+    };
+    expect(
+      renderToString(() => ssrElement("div", source, undefined, false, undefined, attrs))
+    ).toBe('<div id="x" title="t">c</div>');
+    expect(order).toEqual(["id", "attrs", "children"]);
+  });
+
+  test("textarea value wins over children in either key order", () => {
+    expect(render("textarea", { children: "draft", value: "saved" })).toBe(
+      "<textarea>saved</textarea>"
+    );
+    expect(render("textarea", { value: "saved", children: "draft" })).toBe(
+      "<textarea>saved</textarea>"
+    );
+  });
+
+  test("the first child property wins and the later one stays unread", () => {
+    const a = counting({ children: "c", innerHTML: "<b>raw</b>" });
+    expect(render("div", a.source)).toBe("<div>c</div>");
+    expect(a.reads).toEqual({ children: 1, innerHTML: 0 });
+    const b = counting({ innerHTML: "<b>raw</b>", children: "c" });
+    expect(render("div", b.source)).toBe("<div><b>raw</b></div>");
+    expect(b.reads).toEqual({ innerHTML: 1, children: 0 });
+  });
+
   test("nullish sources are empty and function sources resolve once, without ids", () => {
     let calls = 0;
     const thunk = () => {

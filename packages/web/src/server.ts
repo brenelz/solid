@@ -4419,8 +4419,6 @@ export function ssrElement(tag, props, children, needsId, skip, attrs, claims) {
   // element, and it is too large for a helper call per read to be inlined.
   const last = sources === null ? 0 : sources.length - 1;
   let keysOf = null;
-  // The `children` getter is read after the walk: the client's spread reads
-  // every other getter before `children` consumes hydration ids (#3741).
   let childrenSource = null;
   if (sources !== null) {
     keysOf = new Array(last + 1);
@@ -4465,7 +4463,7 @@ export function ssrElement(tag, props, children, needsId, skip, attrs, claims) {
         continue;
       }
       if (ChildProperties.has(prop)) {
-        if (children === undefined && !skipChildren) {
+        if (children === undefined && childrenSource === null && !skipChildren) {
           if (prop === "children") childrenSource = props;
           else children = info.raw || prop === "innerHTML" ? props[prop] : escape(props[prop]);
         }
@@ -4556,11 +4554,12 @@ export function ssrElement(tag, props, children, needsId, skip, attrs, claims) {
   // gate the template path's guard reads — so plain SSR never evaluates a
   // handler expression. Called here, after the walk and before the tail
   // thunk, for the same hydration-id reason.
-  if (childrenSource !== null)
-    children = info.raw ? childrenSource.children : escape(childrenSource.children);
   if (slots && (behaviors !== null || claims !== undefined))
     result += spreadBehaviorMarkers(behaviors, claims, ctx.claims);
   if (attrs !== undefined) result += typeof attrs === "function" ? attrs() : attrs;
+  // Read last: the client's spread reads `children` after its other getters.
+  if (childrenSource !== null && children === undefined)
+    children = info.raw ? childrenSource.children : escape(childrenSource.children);
   // The hydration key is unquoted, so a void element needs the space before
   // `/>` or the slash becomes part of the key's value.
   if (skipChildren) return { t: result + " />" };

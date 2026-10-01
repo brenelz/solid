@@ -1,0 +1,5 @@
+{
+  "name": "spread-children-before-tail-attribute",
+  "shell": "<div _hk=0><!--$--><a _hk=1 aria-label=\"b 0\"><i _hk=3>icon</i></a><!--/--><span>tail <!--$-->0<!--/--></span></div>",
+  "rest": ""
+}

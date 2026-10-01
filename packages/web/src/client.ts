@@ -1010,55 +1010,53 @@ export function spread(node, props, skipChildren, skip, name) {
     if (r !== prevProps.ref && (typeof r === "function" || Array.isArray(r))) ref(() => r, node);
     assign(node, newProps, true, prevProps, true);
   };
-  // The attribute effect comes first: the server reads the getters before
-  // `children` consumes hydration ids, so the client must too (#3741). The
-  // children inserts are transparent by design (see `unscopedByDesign`); the
-  // mark spans their synchronous first compute.
-  if (Array.isArray(props)) {
-    effect(() => collectSources({}, props, undefined, skip), apply);
-    if (!skipChildren && !(skip !== undefined && skip("children"))) {
-      if ("_SOLID_DEV_") unscopedByDesign = node;
+  const array = Array.isArray(props);
+  effect(
+    array
+      ? () => collectSources({}, props, undefined, skip)
+      : () => {
+          const source = resolveSource(props);
+          const newProps = {};
+          // A merge() proxy is read through its SOURCES, not through the proxy: a
+          // spread mixed with other attributes compiles to
+          // `spread(el, merge(statics, () => rest))`, and going through the proxy
+          // costs merge's `keys()` (a Set plus an own-enumerable scan of every
+          // source) and then, per key, a right-to-left `in` walk of the sources.
+          // The union of own string keys with later sources overriding earlier
+          // — Object.assign order, merge's own contract — is all a spread needs.
+          // An omit() proxy likewise is read through its VIEW RECORD — its source
+          // walked directly with the hidden keys filtered — never through its
+          // traps (a descriptor trap per key, allocating, on every rerun).
+          //
+          // A view over plain objects only has a RESOLVED TABLE — key → owning
+          // leaf, shadowing already applied — built once; on every rerun this
+          // effect then does exactly what it did over an eager copy: one read per
+          // key, no re-enumeration and no per-key walk of the later sources.
+          const table = resolvedTable(source);
+          if (table !== undefined) return collectTable(newProps, table, skip);
+          if (source != null) {
+            const view = viewOf(source);
+            if (view instanceof OmitView) collectProps(newProps, view, SOURCE_OMIT, skip);
+            else if (view !== undefined) collectSources(newProps, view.sources, view.kinds, skip);
+            else
+              collectProps(newProps, source, $PROXY in source ? SOURCE_PROXY : SOURCE_PLAIN, skip);
+          }
+          return newProps;
+        },
+    apply
+  );
+  // The children inserts below are transparent by design (see
+  // `unscopedByDesign`); the mark spans their synchronous first compute.
+  if (!skipChildren && !(skip !== undefined && skip("children"))) {
+    if ("_SOLID_DEV_") unscopedByDesign = node;
+    if (array)
       insert(node, () => {
         for (let i = props.length - 1; i >= 0; i--) {
           const s = resolveSource(props[i]);
           if (s != null && entryHas(s, "children")) return entryGet(s, "children");
         }
       });
-      if ("_SOLID_DEV_") unscopedByDesign = null;
-    }
-    return prevProps;
-  }
-  effect(() => {
-    const source = resolveSource(props);
-    const newProps = {};
-    // A merge() proxy is read through its SOURCES, not through the proxy: a
-    // spread mixed with other attributes compiles to
-    // `spread(el, merge(statics, () => rest))`, and going through the proxy
-    // costs merge's `keys()` (a Set plus an own-enumerable scan of every
-    // source) and then, per key, a right-to-left `in` walk of the sources.
-    // The union of own string keys with later sources overriding earlier
-    // — Object.assign order, merge's own contract — is all a spread needs.
-    // An omit() proxy likewise is read through its VIEW RECORD — its source
-    // walked directly with the hidden keys filtered — never through its
-    // traps (a descriptor trap per key, allocating, on every rerun).
-    //
-    // A view over plain objects only has a RESOLVED TABLE — key → owning
-    // leaf, shadowing already applied — built once; on every rerun this
-    // effect then does exactly what it did over an eager copy: one read per
-    // key, no re-enumeration and no per-key walk of the later sources.
-    const table = resolvedTable(source);
-    if (table !== undefined) return collectTable(newProps, table, skip);
-    if (source != null) {
-      const view = viewOf(source);
-      if (view instanceof OmitView) collectProps(newProps, view, SOURCE_OMIT, skip);
-      else if (view !== undefined) collectSources(newProps, view.sources, view.kinds, skip);
-      else collectProps(newProps, source, $PROXY in source ? SOURCE_PROXY : SOURCE_PLAIN, skip);
-    }
-    return newProps;
-  }, apply);
-  if (!skipChildren && !(skip !== undefined && skip("children"))) {
-    if ("_SOLID_DEV_") unscopedByDesign = node;
-    if (typeof props !== "function" && props != null && hasStaticKeys(props)) {
+    else if (typeof props !== "function" && props != null && hasStaticKeys(props)) {
       // A plain object's key set can't change reactively — nor can a
       // merge/omit view's over plain objects, and its descriptor trap tells
       // the truth about the owning leaf: no `children` key means nothing to

@@ -2141,8 +2141,7 @@ function SpreadSiblingsMemberHole() {
   );
 }
 
-// A dynamic() tag spreading a getter that mints an id (the compiler memoizes
-// the ternary's condition) beside an element child (#3741).
+// A dynamic() tag spreading an id-minting getter (a memoized ternary) beside an element child.
 let setDynamicLabel!: (v: number) => void;
 const LabelButton = dynamic(() => "button");
 function DynamicSpreadMemoGetter() {
@@ -2158,7 +2157,7 @@ function DynamicSpreadMemoGetter() {
   );
 }
 
-// The same getter merged AFTER a source that already carries `children`.
+// The same getter merged after a source that already carries `children`.
 let setDynamicWrapLabel!: (v: number) => void;
 const LabelLink = dynamic(() => "a");
 function DynamicSpreadChildrenBeforeGetter() {
@@ -2166,6 +2165,24 @@ function DynamicSpreadChildrenBeforeGetter() {
   setDynamicWrapLabel = set;
   const Wrap = (props: { children: JSX.Element }) => (
     <LabelLink {...props} aria-label={n() ? `a ${n()}` : `b ${n()}`} />
+  );
+  return (
+    <div>
+      <Wrap>
+        <i>icon</i>
+      </Wrap>
+      <span>tail {n()}</span>
+    </div>
+  );
+}
+
+// An id-minting expression as an intrinsic element's trailing attribute after the spread.
+let setSpreadTailLabel!: (v: number) => void;
+function SpreadChildrenBeforeTailAttribute() {
+  const [n, set] = createSignal(0);
+  setSpreadTailLabel = set;
+  const Wrap = (props: { children: JSX.Element }) => (
+    <a {...props} aria-label={createMemo(() => (n() ? `a ${n()}` : `b ${n()}`))()} />
   );
   return (
     <div>
@@ -3033,6 +3050,15 @@ export const scenarios: Scenario[] = [
     App: DynamicSpreadChildrenBeforeGetter,
     expectedText: "icontail 0",
     update: () => setDynamicWrapLabel(1),
+    expectedTextAfterUpdate: "icontail 1",
+    stableSelector: "a, i, span",
+    adoptAll: true
+  },
+  {
+    name: "spread-children-before-tail-attribute",
+    App: SpreadChildrenBeforeTailAttribute,
+    expectedText: "icontail 0",
+    update: () => setSpreadTailLabel(1),
     expectedTextAfterUpdate: "icontail 1",
     stableSelector: "a, i, span",
     adoptAll: true
