@@ -23,13 +23,13 @@ test("refresh() landing beside an unrelated async write carries the write's hold
   const onError = (e: any) => errors.push(e?.reason ?? e);
   process.on("unhandledRejection", onError);
   process.on("uncaughtException", onError);
+  let dispose: (() => void) | undefined;
   try {
     const aFlights: ReturnType<typeof deferred<number>>[] = [];
     const bFlights: ReturnType<typeof deferred<number>>[] = [];
     let a!: () => number;
     let b!: () => number;
     let setX!: (v: number) => void;
-    let dispose!: () => void;
     createRoot(d => {
       dispose = d;
       let run = 0;
@@ -78,8 +78,8 @@ test("refresh() landing beside an unrelated async write carries the write's hold
     await expect(refreshedAgain).resolves.toBe(2);
     expect(a()).toBe(2);
     expect(errors).toHaveLength(0);
-    dispose();
   } finally {
+    dispose?.();
     process.removeListener("unhandledRejection", onError);
     process.removeListener("uncaughtException", onError);
   }

@@ -1113,8 +1113,7 @@ export class GlobalQueue extends Queue {
       this.restoreQueues(outgoing._queueStash);
       transitions.delete(outgoing);
       activeTransition = transition;
-      // The adoption below re-stamps the batch's nodes only; under
-      // runInTransition the batch is another's (#3738).
+      // Under runInTransition the batch is not the outgoing transaction.
       if (this._batch !== outgoing) {
         reassignPendingTransition(outgoing._pendingNodes);
         transition._pendingNodes.push(...outgoing._pendingNodes);
