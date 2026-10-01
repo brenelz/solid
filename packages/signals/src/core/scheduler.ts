@@ -283,20 +283,14 @@ function mergeTransitionState(target: Transition, outgoing: Transition): void {
   target._actions.push(...outgoing._actions);
   target._acted ||= outgoing._acted;
   for (const lane of activeLanes) if (lane._transition === outgoing) lane._transition = target;
-  if (outgoing._optimisticNodes.length) {
-    // Move (don't copy): the global queue's batch may still be the outgoing
-    // transition, and the adoption pass in initTransition would re-push its
-    // contents into the target — duplicating every entry.
-    target._optimisticNodes.push(...outgoing._optimisticNodes);
-    outgoing._optimisticNodes.length = 0;
-  }
-  if (outgoing._affectsNodes.length) {
-    // Move (don't copy): the global queue's batch may still be the outgoing
-    // transition, and the adoption pass in initTransition would re-push its
-    // contents into the target — double-releasing every mark.
-    target._affectsNodes.push(...outgoing._affectsNodes);
-    outgoing._affectsNodes.length = 0;
-  }
+  // Move (don't copy): the global queue's batch may still be the outgoing
+  // transition, and the adoption pass in initTransition would re-push its
+  // contents into the target — duplicating every entry, double-releasing
+  // every mark.
+  target._optimisticNodes.push(...outgoing._optimisticNodes);
+  outgoing._optimisticNodes.length = 0;
+  target._affectsNodes.push(...outgoing._affectsNodes);
+  outgoing._affectsNodes.length = 0;
   for (const store of outgoing._optimisticStores) target._optimisticStores.add(store);
   // Legal transfer, not a new registration: entries move between transitions.
   if (__DEV__) beginAsyncReporterWrites();
@@ -1119,6 +1113,12 @@ export class GlobalQueue extends Queue {
       this.restoreQueues(outgoing._queueStash);
       transitions.delete(outgoing);
       activeTransition = transition;
+      // The adoption below re-stamps the batch's nodes only; under
+      // runInTransition the batch is another's (#3738).
+      if (this._batch !== outgoing) {
+        reassignPendingTransition(outgoing._pendingNodes);
+        transition._pendingNodes.push(...outgoing._pendingNodes);
+      }
     }
     transitions.add(activeTransition);
     activeTransition._time = clock;
@@ -1135,8 +1135,7 @@ export class GlobalQueue extends Queue {
       // must not make it read as held-and-carried (CONFIG_ADOPTED_UNFLUSHED;
       // the carrying flush clears it in reassignPendingTransition).
       const adopted = this._running ? 0 : CONFIG_ADOPTED_UNFLUSHED;
-      for (let i = 0; i < batch._pendingNodes.length; i++) {
-        const node = batch._pendingNodes[i];
+      for (const node of batch._pendingNodes) {
         // A tick that nets to the committed value proposed nothing (A34, #3494):
         // `setShow(false); setShow(true)` beside a write that opens a hold
         // left `show` staged at its own value, stamped, pending to the
@@ -1173,12 +1172,11 @@ export class GlobalQueue extends Queue {
         node._config |= adopted;
         activeTransition._pendingNodes.push(node);
       }
-      for (let i = 0; i < batch._optimisticNodes.length; i++) {
-        const node = batch._optimisticNodes[i];
+      for (const node of batch._optimisticNodes) {
         node._transition = activeTransition;
         activeTransition._optimisticNodes.push(node);
       }
-      if (batch._affectsNodes.length) activeTransition._affectsNodes.push(...batch._affectsNodes);
+      activeTransition._affectsNodes.push(...batch._affectsNodes);
       for (const store of batch._optimisticStores) activeTransition._optimisticStores.add(store);
       // Gated readers recorded against the ambient batch move with it: their
       // replay-at-commit now happens at the transaction's completion.
