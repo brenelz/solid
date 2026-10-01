@@ -2141,6 +2141,42 @@ function SpreadSiblingsMemberHole() {
   );
 }
 
+// A dynamic() tag spreading a getter that mints an id (the compiler memoizes
+// the ternary's condition) beside an element child (#3741).
+let setDynamicLabel!: (v: number) => void;
+const LabelButton = dynamic(() => "button");
+function DynamicSpreadMemoGetter() {
+  const [n, set] = createSignal(0);
+  setDynamicLabel = set;
+  return (
+    <div>
+      <LabelButton aria-label={n() ? `a ${n()}` : `b ${n()}`}>
+        <i>icon</i>
+      </LabelButton>
+      <span>tail {n()}</span>
+    </div>
+  );
+}
+
+// The same getter merged AFTER a source that already carries `children`.
+let setDynamicWrapLabel!: (v: number) => void;
+const LabelLink = dynamic(() => "a");
+function DynamicSpreadChildrenBeforeGetter() {
+  const [n, set] = createSignal(0);
+  setDynamicWrapLabel = set;
+  const Wrap = (props: { children: JSX.Element }) => (
+    <LabelLink {...props} aria-label={n() ? `a ${n()}` : `b ${n()}`} />
+  );
+  return (
+    <div>
+      <Wrap>
+        <i>icon</i>
+      </Wrap>
+      <span>tail {n()}</span>
+    </div>
+  );
+}
+
 // The shell's onSettled writes a signal the shell reads (an identity minted
 // on the client — the server rendered with `null`) while a boundary lower on
 // the page is still pending. The write is held for the root pass and must
@@ -2981,6 +3017,24 @@ export const scenarios: Scenario[] = [
     update: () => setSpreadCount(1),
     expectedTextAfterUpdate: "link 1link 1tail",
     stableSelector: "a, span",
+    adoptAll: true
+  },
+  {
+    name: "dynamic-spread-memo-getter",
+    App: DynamicSpreadMemoGetter,
+    expectedText: "icontail 0",
+    update: () => setDynamicLabel(1),
+    expectedTextAfterUpdate: "icontail 1",
+    stableSelector: "button, i, span",
+    adoptAll: true
+  },
+  {
+    name: "dynamic-spread-children-before-getter",
+    App: DynamicSpreadChildrenBeforeGetter,
+    expectedText: "icontail 0",
+    update: () => setDynamicWrapLabel(1),
+    expectedTextAfterUpdate: "icontail 1",
+    stableSelector: "a, i, span",
     adoptAll: true
   },
   {
