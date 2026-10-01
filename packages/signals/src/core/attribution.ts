@@ -3161,7 +3161,8 @@ function trackGraph(navigation: NavigationEvent): void {
   const event: GraphEvent = { at: now(), ...size, navigation };
   if (route !== undefined) event.route = route;
   records.emit("graph", event, undefined);
-  if (cfg === false || route === undefined) return;
+  // An initial declaration settles before its route's content mounts: not a visit.
+  if (cfg === false || route === undefined || navigation.initial === true) return;
   let history = routeCounts.get(route);
   if (history === undefined) routeCounts.set(route, (history = []));
   history.push(size);

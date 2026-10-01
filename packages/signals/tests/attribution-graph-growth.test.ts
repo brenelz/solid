@@ -104,6 +104,43 @@ function navigate(setLocation: (v: string) => void, to: string, name = to) {
   flush();
 }
 
+/**
+ * What a router does on the first load: declare the route the document
+ * arrived on while building its context, before any route content exists.
+ * The page then mounts at that route with `rows()` memos, a count the test
+ * moves between visits within bounds.
+ */
+function declaredApp(leak: boolean) {
+  OBSERVE!.attribution.withOrigin(
+    { kind: "navigation", initial: true, name: "/orders", to: "/orders" },
+    () => {}
+  );
+  const [location, setLocation] = createSignal("/orders", { name: "location" });
+  const [rows, setRows] = createSignal(100, { name: "rows" });
+  const leaked: (() => void)[] = [];
+  const dispose = createRoot(dispose => {
+    const page = createMemo(() => location(), { name: "page" });
+    createMemo(
+      () => {
+        if (page() !== "/orders") return;
+        const [n] = createSignal(0);
+        for (let i = 0; i < rows(); i++) createMemo(() => n() + i);
+        if (leak)
+          runWithOwner(null, () =>
+            createRoot(d => {
+              leaked.push(d);
+              for (let i = 0; i < rows(); i++) createMemo(() => n() + i);
+            })
+          );
+      },
+      { name: "content" }
+    );
+    return dispose;
+  });
+  flush();
+  return { setLocation, setRows, dispose, leaked };
+}
+
 describe("graphSize()", () => {
   it("counts the owner tree, then the computations, signals and edges it reaches", () => {
     const before = graphSize();
@@ -227,6 +264,39 @@ describe("GRAPH_GROWTH", () => {
     const orders = graphs.filter(g => g.route === "/orders").map(g => g.owners);
     expect(new Set(orders).size).toBe(1);
     expect(findings).toHaveLength(0);
+    dispose();
+  });
+
+  it("the initial declaration is recorded but is not a visit the growth check compares", () => {
+    const { findings, graphs } = arm({ visits: 3, ratio: 1.25 });
+    const { setLocation, setRows, dispose } = declaredApp(false);
+    for (const count of [101, 102, 103]) {
+      navigate(setLocation, "/", "/");
+      setRows(count);
+      navigate(setLocation, "/orders");
+    }
+    const orders = graphs.filter(g => g.route === "/orders");
+    expect(orders).toHaveLength(4);
+    expect(orders[0].navigation.initial).toBe(true);
+    expect(orders[0].owners).toBeLessThan(orders[1].owners / 1.25);
+    expect(findings).toHaveLength(0);
+    dispose();
+  });
+
+  it("a root left behind after the initial declaration is still reported", () => {
+    const { findings } = arm({ visits: 3, ratio: 1.25 });
+    const { setLocation, dispose, leaked } = declaredApp(true);
+    for (let i = 0; i < 3; i++) {
+      navigate(setLocation, "/", "/");
+      navigate(setLocation, "/orders");
+    }
+    expect(leaked).toHaveLength(4);
+    expect(findings).toHaveLength(1);
+    const data = findings[0].data as { routes: string[]; grew: string[]; history: unknown[] };
+    expect(data.routes).toEqual(["/", "/orders"]);
+    expect(data.grew).toContain("owners");
+    expect(data.history).toHaveLength(3);
+    for (const d of leaked) d();
     dispose();
   });
 
