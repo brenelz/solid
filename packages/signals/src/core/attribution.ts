@@ -527,7 +527,9 @@ export interface AttributionOptions {
    * settle of the same route has climbed on `visits` consecutive visits
    * (default 3) to `ratio` or more of the first (default 1.25) — a root or a
    * subscription each visit leaves behind, the leak class a heap snapshot
-   * finds. The count is a walk at settle, never per node. `false` disables.
+   * finds. The router's initial declaration (`NavigationEvent.initial`) is
+   * not a visit compared. The count is a walk at settle, never per node.
+   * `false` disables.
    */
   graphGrowth?: { visits: number; ratio: number } | false;
   /**
@@ -3161,10 +3163,11 @@ function trackGraph(navigation: NavigationEvent): void {
   const event: GraphEvent = { at: now(), ...size, navigation };
   if (route !== undefined) event.route = route;
   records.emit("graph", event, undefined);
-  // An initial declaration settles before its route's content mounts: not a visit.
-  if (cfg === false || route === undefined || navigation.initial === true) return;
+  if (cfg === false || route === undefined) return;
   let history = routeCounts.get(route);
   if (history === undefined) routeCounts.set(route, (history = []));
+  // An initial declaration settles before its route's content mounts: not a visit.
+  if (navigation.initial === true) return;
   history.push(size);
   if (history.length > cfg.visits) history.shift();
   if (history.length < cfg.visits) return;

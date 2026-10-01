@@ -286,16 +286,43 @@ describe("GRAPH_GROWTH", () => {
   it("a root left behind after the initial declaration is still reported", () => {
     const { findings } = arm({ visits: 3, ratio: 1.25 });
     const { setLocation, dispose, leaked } = declaredApp(true);
-    for (let i = 0; i < 3; i++) {
-      navigate(setLocation, "/", "/");
+    for (const away of ["/", "/customers", "/"]) {
+      navigate(setLocation, away);
       navigate(setLocation, "/orders");
     }
     expect(leaked).toHaveLength(4);
     expect(findings).toHaveLength(1);
-    const data = findings[0].data as { routes: string[]; grew: string[]; history: unknown[] };
-    expect(data.routes).toEqual(["/", "/orders"]);
+    const data = findings[0].data as {
+      route: string;
+      routes: string[];
+      grew: string[];
+      history: unknown[];
+    };
+    expect(data.route).toBe("/orders");
+    expect(data.routes).toEqual(["/orders", "/", "/customers"]);
     expect(data.grew).toContain("owners");
     expect(data.history).toHaveLength(3);
+    expect(findings[0].message).toContain("3 consecutive visits to /orders");
+    for (const d of leaked) d();
+    dispose();
+  });
+
+  it("the landing route is among the routes seen even when it is never visited again", () => {
+    const { findings } = arm({ visits: 3, ratio: 1.25 });
+    OBSERVE!.attribution.withOrigin(
+      { kind: "navigation", initial: true, name: "/", to: "/" },
+      () => {}
+    );
+    const { setLocation, dispose, leaked } = app("root");
+    for (const away of ["/a", "/b", "/c"]) {
+      navigate(setLocation, "/orders");
+      navigate(setLocation, away);
+    }
+    expect(findings).toHaveLength(1);
+    const data = findings[0].data as { route: string; routes: string[] };
+    expect(data.route).toBe("/orders");
+    expect(data.routes).toEqual(["/", "/orders", "/a", "/b"]);
+    expect(findings[0].message).toContain("across visits to /, /orders, /a, /b");
     for (const d of leaked) d();
     dispose();
   });
