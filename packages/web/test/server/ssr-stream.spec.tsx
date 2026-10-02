@@ -1859,6 +1859,62 @@ describe("SSR Streaming — CSS Asset Handling", () => {
     expect(streamOutput).toContain("function $df(");
   });
 
+  test("post-shell lazy CSS gates its fragment without inline handlers (#3747)", async () => {
+    const manifest = {
+      "./Panel.tsx": { file: "assets/panel.js", css: ["assets/panel.css"] }
+    };
+
+    const Panel = () => <div>Panel</div>;
+    const LazyPanel = lazy(() => Promise.resolve({ default: Panel }), undefined, "./Panel.tsx");
+    await LazyPanel.preload!();
+    const gate = deferred<string>();
+
+    function Gated() {
+      const data = createMemo(async () => gate.promise);
+      return (
+        <Show when={data()}>
+          <LazyPanel />
+        </Show>
+      );
+    }
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <Loading fallback={<span>Wait</span>}>
+              <Gated />
+            </Loading>
+          </body>
+        </html>
+      );
+    }
+
+    const { shell, chunks } = await collectChunks(() => <App />, {
+      manifest,
+      nonce: { script: "n0nce", style: false },
+      onCompleteShell() {
+        queueMicrotask(() => gate.resolve("gate"));
+      }
+    });
+    expect(shell).not.toContain("/assets/panel.css");
+
+    const streamOutput = chunks.slice(1).join("");
+    const [link] = streamOutput.match(/<link[^>]*href="\/assets\/panel\.css"[^>]*>/)!;
+    expect(link).not.toMatch(/\son(load|error)=/);
+    expect(link).toMatch(/\sdata-dfc="[^"]+"/);
+    expect(streamOutput).toMatch(/\$dfs\("[^"]+",1,0\)/);
+    expect(streamOutput.indexOf("function $dfc(")).toBeLessThan(streamOutput.indexOf(link));
+    expect(streamOutput).toContain('document.addEventListener("load",$dfe,!0)');
+    expect(streamOutput).toContain('document.addEventListener("error",$dfe,!0)');
+    for (const script of streamOutput.match(/<script[^>]*>/g)!) {
+      expect(script).toContain('nonce="n0nce"');
+    }
+  });
+
   test("pre-flush lazy CSS goes to head and uses $df (not $dfs) at fragment resolution", async () => {
     const manifest = {
       "./Styled.tsx": { file: "assets/styled.js", css: ["assets/styled.css"] }
