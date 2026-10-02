@@ -19,7 +19,8 @@ import {
   StyledIsland,
   APP_ROOT_MARKUP,
   STYLED_SHELL_CSS,
-  STYLED_LATE_CSS
+  STYLED_LATE_CSS,
+  STYLED_LATE_CSS_2
 } from "../harness/document-shell.jsx";
 import { hydrationRecordKeys } from "../harness/hydration-records.js";
 
@@ -121,11 +122,12 @@ describe("document-shell pattern — server render (#3000)", () => {
 
     expect(shell).toContain(`<link rel="stylesheet" href="${STYLED_SHELL_CSS}">`);
     expect(shell).toContain("waiting");
-    // The fragment's swap waits on the sheet's load, but its `_fr` record
+    // The fragment's swap waits on its sheets' load, but its `_fr` record
     // settles in the same chunk: the client must not resume before the swap.
     expect(rest).toMatch(new RegExp(`href="${STYLED_LATE_CSS}" data-dfc="[^"]+">`));
+    expect(rest).toMatch(new RegExp(`href="${STYLED_LATE_CSS_2}" data-dfc="[^"]+">`));
     expect(rest).not.toMatch(/\son(load|error)=/);
-    expect(rest).toMatch(/\$dfs\("[^"]+",1,0\)/);
+    expect(rest).toMatch(/\$dfs\("[^"]+",2,0\)/);
     expect(rest).not.toMatch(/\$df\("/);
   });
 });

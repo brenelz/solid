@@ -128,9 +128,11 @@ export function HeadShellApp() {
  */
 export const STYLED_SHELL_CSS = "/styled-shell.css";
 export const STYLED_LATE_CSS = "/styled-late.css";
+export const STYLED_LATE_CSS_2 = "/styled-late-2.css";
 
 function LateSheet() {
   useHead({ tag: "link", props: { rel: "stylesheet", href: STYLED_LATE_CSS } });
+  useHead({ tag: "link", props: { rel: "stylesheet", href: STYLED_LATE_CSS_2 } });
   return null;
 }
 

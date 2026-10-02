@@ -1908,8 +1908,9 @@ describe("SSR Streaming — CSS Asset Handling", () => {
     expect(link).toMatch(/\sdata-dfc="[^"]+"/);
     expect(streamOutput).toMatch(/\$dfs\("[^"]+",1,0\)/);
     expect(streamOutput.indexOf("function $dfc(")).toBeLessThan(streamOutput.indexOf(link));
-    expect(streamOutput).toContain('document.addEventListener("load",$dfe,!0)');
-    expect(streamOutput).toContain('document.addEventListener("error",$dfe,!0)');
+    const [dfs] = streamOutput.match(/function \$dfs\([^)]*\)\{.*?\}function \$dfg/)!;
+    expect(dfs).toContain('document.addEventListener("load",$dfe,!0)');
+    expect(dfs).toContain('document.addEventListener("error",$dfe,!0)');
     for (const script of streamOutput.match(/<script[^>]*>/g)!) {
       expect(script).toContain('nonce="n0nce"');
     }

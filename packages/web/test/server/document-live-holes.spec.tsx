@@ -94,7 +94,7 @@ describe("document face — live holes against the real core", () => {
     const html = await collect(() => Inline({}));
 
     const sandbox: any = {
-      document: { getElementById: () => null, addEventListener() {} },
+      document: { getElementById: () => null },
       _$HY: { r: {}, fe() {} },
       ReadableStream,
       Promise,

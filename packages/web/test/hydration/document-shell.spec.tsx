@@ -25,7 +25,8 @@ import {
   computeRuns,
   setHeadShellStarted,
   APP_ROOT_MARKUP,
-  STYLED_LATE_CSS
+  STYLED_LATE_CSS,
+  STYLED_LATE_CSS_2
 } from "../harness/document-shell.jsx";
 
 const artifactsDir = resolve(dirname(fileURLToPath(import.meta.url)), "../harness/__artifacts__");
@@ -198,8 +199,9 @@ describe("document-shell pattern — client hydrate (#3000)", () => {
     expect(root.querySelector("#waiting")).not.toBeNull();
     expect(root.querySelector("#late")).toBeNull();
 
-    const link = container.querySelector(`link[href="${STYLED_LATE_CSS}"]`)!;
-    link.dispatchEvent(new Event("load"));
+    for (const href of [STYLED_LATE_CSS, STYLED_LATE_CSS_2]) {
+      container.querySelector(`link[href="${href}"]`)!.dispatchEvent(new Event("load"));
+    }
     await sleep(20);
     flush();
 
@@ -208,6 +210,59 @@ describe("document-shell pattern — client hydrate (#3000)", () => {
     root.querySelector<HTMLElement>("#late")!.click();
     flush();
     expect(root.textContent).toBe("shell 1late 1");
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
+    dispose();
+    container.remove();
+  });
+
+  test("a failed or repeated sheet event releases the $dfs gate once (#3747)", async () => {
+    (globalThis as any)._$HY = { events: [], completed: new WeakSet(), r: {}, fe() {} };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { chunks } = JSON.parse(
+      readFileSync(resolve(artifactsDir, "document-shell-styled.json"), "utf-8")
+    ) as { chunks: string[] };
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    applyChunk(container, chunks[0], true);
+    const root = container.querySelector("#app-root") as HTMLElement;
+    const dispose = hydrate(() => <StyledIsland />, root);
+    flush();
+    await sleep(20);
+    flush();
+
+    applyChunk(container, chunks[1], false);
+    await sleep(30);
+    flush();
+    const first = container.querySelector(`link[href="${STYLED_LATE_CSS}"]`)!;
+    const second = container.querySelector(`link[href="${STYLED_LATE_CSS_2}"]`)!;
+    expect(first.hasAttribute("data-dfc")).toBe(true);
+    expect(second.hasAttribute("data-dfc")).toBe(true);
+
+    // An errored sheet counts as settled; repeats on the same link count once.
+    first.dispatchEvent(new Event("error"));
+    first.dispatchEvent(new Event("load"));
+    first.dispatchEvent(new Event("error"));
+    await sleep(20);
+    flush();
+    expect(first.hasAttribute("data-dfc")).toBe(false);
+    expect(second.hasAttribute("data-dfc")).toBe(true);
+    expect(root.querySelector("#waiting")).not.toBeNull();
+    expect(root.querySelector("#late")).toBeNull();
+
+    second.dispatchEvent(new Event("load"));
+    await sleep(20);
+    flush();
+    expect(root.querySelector("#waiting")).toBeNull();
+    expect(root.querySelectorAll("#late")).toHaveLength(1);
+    root.querySelector<HTMLElement>("#late")!.click();
+    flush();
+    expect(root.textContent).toBe("shell 0late 1");
 
     expect(error).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
