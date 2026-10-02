@@ -12,7 +12,8 @@ import {
   RevealGroupContext,
   reportServerError,
   throwerOf,
-  ownerId
+  ownerId,
+  onCleanup
 } from "./signals.js";
 import { OBSERVE } from "@solidjs/signals";
 import { sharedConfig, NoHydrateContext, callerRenderContext } from "./shared.js";
@@ -110,6 +111,10 @@ function ssrLoadingBoundary(
   let done: ((value?: string, error?: any) => boolean) | undefined;
   let handledRenderError: any;
   let retryPromise: Promise<any> | undefined;
+  // An ancestor re-run disposes this scope and creates the boundary again at
+  // the same id; that instance owns the fragment from then on.
+  let superseded = false;
+  if (parent) onCleanup(() => (superseded = true));
 
   // Render passes over the content: discovery, plus one per wait. Doubles as
   // the convergence budget's counter below.
@@ -599,6 +604,7 @@ function ssrLoadingBoundary(
           if (hasFinalHole()) return clientHandoff();
           checkBudget();
           await retryPromise.catch(() => {});
+          if (superseded) return;
           ret = runDiscovery();
         }
         commitBoundaryState();
@@ -607,6 +613,7 @@ function ssrLoadingBoundary(
           if (hasFinalHole()) return clientHandoff();
           checkBudget();
           await Promise.all(pending.p).catch(() => {});
+          if (superseded) return;
           passes++;
           ret = runLoadingPhase(() => resolveIn(() => ctx.ssr(pending.t, ...pending.h))) as any;
         }
@@ -622,7 +629,7 @@ function ssrLoadingBoundary(
         // template write. Skipping release on error parks a sequential
         // frontier on this boundary forever, so resolved later siblings never
         // get their activation script (#2776).
-        if (revealGroup) revealGroup.onResolved(id);
+        if (revealGroup && !superseded) revealGroup.onResolved(id);
       }
     })();
     return skipLive(() => fallbackResult);
