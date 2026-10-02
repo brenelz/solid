@@ -111,10 +111,6 @@ function ssrLoadingBoundary(
   let done: ((value?: string, error?: any) => boolean) | undefined;
   let handledRenderError: any;
   let retryPromise: Promise<any> | undefined;
-  // An ancestor re-run disposes this scope and creates the boundary again at
-  // the same id; that instance owns the fragment from then on.
-  let superseded = false;
-  if (parent) onCleanup(() => (superseded = true));
 
   // Render passes over the content: discovery, plus one per wait. Doubles as
   // the convergence budget's counter below.
@@ -556,6 +552,9 @@ function ssrLoadingBoundary(
   if (ctx.async) {
     const regOpts = revealGroup ? { revealGroup: revealGroup.id } : undefined;
     done = ctx.registerFragment(id, regOpts);
+    // An ancestor re-run disposes this scope and re-creates the boundary.
+    let superseded = false;
+    onCleanup(() => (superseded = true));
     // A final hole surfacing only now: an earlier real async read masked it
     // during the initial discovery, or the hole was reached through a
     // derived async computation, whose FINAL classification lands a

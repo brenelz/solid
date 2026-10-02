@@ -1,10 +1,6 @@
 /**
  * @jsxImportSource @solidjs/web
  */
-// Repro for solidjs/solid#3750: a root hole settling re-pulls the provider's
-// children, so the <Errored> re-renders its subtree while the <Loading>
-// inside it still awaits a stable promise. Built with createComponent calls,
-// the issue's shape: compiled JSX wraps the children in memos.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Errored, Loading, renderToStream } from "@solidjs/web";
 import {
