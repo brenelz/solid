@@ -545,6 +545,10 @@ fn setup_statements_end_at_the_rendered_output_without_a_semicolon() {
             "export function F({ xs }) @{\n  <ul>@for (const x of xs) {\n    const text = String(x)\n    <li>{text}</li>\n  }</ul>\n}\n",
             "const text = String(x);",
         ),
+        (
+            "export function F({ x }) @{\n  if (x) track()\n  <div>{x}</div>\n}\n",
+            "if (x) track();",
+        ),
     ];
     for (source, declaration) in cases {
         for generate in [Generate::Dom, Generate::Ssr] {
@@ -561,6 +565,33 @@ fn setup_statements_end_at_the_rendered_output_without_a_semicolon() {
                 "{generate:?}: {source:?} must keep its setup statement: {}",
                 output.code
             );
+        }
+    }
+}
+
+#[test]
+fn setup_statements_without_a_semicolon_keep_their_source_mappings() {
+    for (source, needles) in [
+        (
+            "export function F() @{\n  const a = () => 1\n  <div>{a()}</div>\n}\n",
+            &["const a"][..],
+        ),
+        (
+            "export function F({ x }) @{\n  if (x) track()\n  <div>{x}</div>\n}\n",
+            &["if (x)", "track()"][..],
+        ),
+    ] {
+        let output = compile(
+            source,
+            &CompileOptions {
+                filename: Some("F.tsrx".into()),
+                source_map: true,
+                ..fixture_options(Generate::Dom)
+            },
+        )
+        .unwrap_or_else(|error| panic!("{source:?} must compile: {error}"));
+        for needle in needles {
+            assert_maps_to(&output, needle, 0, source, needle);
         }
     }
 }

@@ -5,7 +5,7 @@ use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::ast::{BindingPattern, Expression, Program, Statement};
 use oxc_ast_visit::{Visit, VisitMut, walk, walk_mut};
 use oxc_span::{GetSpan, SourceType, Span};
-use tsrx_syntax::{ControlContext, ProjectionSegment, project_for_parser, scan_for_parser};
+use tsrx_syntax::{ControlContext, ProjectionView, project_for_parser, scan_for_parser};
 
 use super::semantic::AuthoredSpan;
 use crate::error::CompileError;
@@ -48,7 +48,7 @@ impl<'a> LeafProgram<'a> {
         }
         Ok(Self {
             program: parsed.program,
-            map: LeafMap::new(projection.view().segments),
+            map: LeafMap::new(projection.view()),
             marker_prefix,
             control_contexts,
         })
@@ -115,7 +115,6 @@ impl<'a> LeafProgram<'a> {
         let mut finder = StatementFinder {
             allocator,
             map: &self.map,
-            source: self.program.source_text,
             target: authored,
             found: None,
         };
@@ -132,22 +131,44 @@ struct LeafSegment {
 
 pub(super) struct LeafMap {
     segments: Vec<LeafSegment>,
+    inserted_terminators: Vec<u32>,
 }
 
 impl LeafMap {
-    fn new(segments: &[ProjectionSegment]) -> Self {
+    fn new(projection: ProjectionView<'_>) -> Self {
+        let segments = projection
+            .segments
+            .iter()
+            .map(|segment| LeafSegment {
+                projected: Span::new(segment.projected.start, segment.projected.end),
+                authored_start: segment.original_start,
+            })
+            .collect::<Vec<_>>();
+        // The projection writes an ASI `;` before a line-leading element; no authored byte owns it.
+        let inserted_terminators = segments
+            .iter()
+            .zip(segments.iter().skip(1))
+            .map(|(segment, next)| (segment.projected.end, next.projected.start))
+            .filter(|&(end, next_start)| {
+                end < next_start && projection.source.as_bytes().get(end as usize) == Some(&b';')
+            })
+            .map(|(end, _)| end)
+            .collect();
         Self {
-            segments: segments
-                .iter()
-                .map(|segment| LeafSegment {
-                    projected: Span::new(segment.projected.start, segment.projected.end),
-                    authored_start: segment.original_start,
-                })
-                .collect(),
+            segments,
+            inserted_terminators,
+        }
+    }
+
+    fn mapped_end(&self, end: u32) -> u32 {
+        match end.checked_sub(1) {
+            Some(before) if self.inserted_terminators.binary_search(&before).is_ok() => before,
+            _ => end,
         }
     }
 
     fn authored_span(&self, projected: Span) -> Option<AuthoredSpan> {
+        let projected = Span::new(projected.start, self.mapped_end(projected.end));
         let mut index = self
             .segments
             .partition_point(|segment| segment.projected.start <= projected.start)
@@ -185,25 +206,16 @@ impl LeafMap {
         (start <= end).then_some(AuthoredSpan { start, end })
     }
 
-    /// A statement may end in the `;` the projection inserts before a rendered element.
-    fn statement_extent(&self, projected: Span, source: &str) -> Option<AuthoredSpan> {
-        if let Some(extent) = self.authored_extent(projected) {
-            return Some(extent);
-        }
-        let before = projected.end.checked_sub(1)?;
-        if source.as_bytes().get(before as usize) != Some(&b';')
-            || self.authored_endpoint(projected.end, false).is_some()
-        {
-            return None;
-        }
-        self.authored_extent(Span::new(projected.start, before))
-    }
-
     pub(super) fn authored_start(&self, projected: Span) -> Option<u32> {
         self.authored_endpoint(projected.start, true)
     }
 
     fn authored_endpoint(&self, offset: u32, start: bool) -> Option<u32> {
+        let offset = if start {
+            offset
+        } else {
+            self.mapped_end(offset)
+        };
         let index = if start {
             self.segments
                 .partition_point(|segment| segment.projected.start <= offset)
@@ -274,7 +286,6 @@ impl<'a> Visit<'a> for BindingPatternFinder<'a, '_> {
 struct StatementFinder<'a, 'm> {
     allocator: &'a Allocator,
     map: &'m LeafMap,
-    source: &'a str,
     target: AuthoredSpan,
     found: Option<Statement<'a>>,
 }
@@ -284,7 +295,7 @@ impl<'a> Visit<'a> for StatementFinder<'a, '_> {
         if self.found.is_some() {
             return;
         }
-        if self.map.statement_extent(statement.span(), self.source) == Some(self.target) {
+        if self.map.authored_extent(statement.span()) == Some(self.target) {
             let mut statement = statement.clone_in(self.allocator);
             SpanRebaser { map: self.map }.visit_statement(&mut statement);
             self.found = Some(statement);
