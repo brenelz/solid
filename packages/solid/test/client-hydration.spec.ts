@@ -2625,9 +2625,7 @@ describe("live-branded sources — automatic takeover", () => {
     uninstall();
   });
 
-  // The issue's shape (#3764): the boundary's content reads a live node the
-  // SHELL owns. The source is held behind a gate so the first live yield lands
-  // only when the test says; `shown` unwraps the boundary's accessor.
+  // A live source whose first yield lands when the test releases it.
   function makeGatedLiveSource(connections: { count: number }) {
     let release!: (value: any) => void;
     const first = new Promise<any>(r => (release = r));
@@ -2647,6 +2645,25 @@ describe("live-branded sources — automatic takeover", () => {
       }
     };
     return { source, release };
+  }
+
+  function makePendingRecord() {
+    let answer!: (value: any) => void;
+    let fail!: (error: any) => void;
+    const record: any = new Promise((res, rej) => {
+      answer = (value: any) => {
+        record.s = 1;
+        record.v = value;
+        res(value);
+      };
+      fail = (error: any) => {
+        record.s = 2;
+        record.v = error;
+        rej(error);
+      };
+    });
+    record.catch(() => {});
+    return { record, answer, fail };
   }
 
   function mountShellNodeUnderBoundary(source: any) {
@@ -2683,8 +2700,6 @@ describe("live-branded sources — automatic takeover", () => {
     expect(result()).toBe("server-current");
     expect(shown()).toBe("loading...");
 
-    // the root pass is over: the shell node took over and connected; its
-    // first yield is still in flight when the boundary resumes
     sharedConfig.hydrating = false;
     flush();
     expect(connections.count).toBe(1);
@@ -2706,16 +2721,7 @@ describe("live-branded sources — automatic takeover", () => {
   test("a shell live node whose server answer streams with the boundary takes over from the landing", async () => {
     const connections = { count: 0 };
     const { source, release } = makeGatedLiveSource(connections);
-    // the server took the source's first value after the shell flushed: the
-    // node's answer is a pending record the boundary's late chunk resolves
-    let answer!: (value: any) => void;
-    const record: any = new Promise(r => {
-      answer = (value: any) => {
-        record.s = 1;
-        record.v = value;
-        r(value);
-      };
-    });
+    const { record, answer } = makePendingRecord();
     const slow = makeLoadingPromise();
     const uninstall = installHY({ t1: slow.promise });
     startHydration({ t0: record, t1: slow.promise });
@@ -2723,14 +2729,10 @@ describe("live-branded sources — automatic takeover", () => {
     const { shown } = mountShellNodeUnderBoundary(source);
     expect(shown()).toBe("loading...");
 
-    // the root pass is over, but the node has no value to take over from
-    // yet: it keeps waiting for the server's answer instead of superseding it
     sharedConfig.hydrating = false;
     flush();
     expect(connections.count).toBe(0);
 
-    // the late chunk: the answer lands, then the boundary resumes against
-    // it; the takeover connects from the landed value
     answer("server-current");
     slow.resolve();
     await new Promise(r => setTimeout(r, 10));
@@ -2744,6 +2746,205 @@ describe("live-branded sources — automatic takeover", () => {
     flush();
     expect(shown()).toBe("live-current");
     expect(connections.count).toBe(1);
+    uninstall();
+  });
+
+  test("a shell live node with a loading window takes over once its streamed answer lands", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const { record, answer } = makePendingRecord();
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: record, t1: slow.promise });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any, { loadingValue: "placeholder" });
+        Loading({
+          fallback: "loading...",
+          get children() {
+            return "content" as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+    expect(result()).toBe("placeholder");
+
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(0);
+
+    answer("server-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(sharedConfig.done).toBe(false);
+    expect(result()).toBe("server-current");
+    expect(connections.count).toBe(1);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(result()).toBe("live-current");
+    expect(connections.count).toBe(1);
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
+    uninstall();
+  });
+
+  test("a shell live node whose server answer rejected stays pending through its takeover", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const { record, fail } = makePendingRecord();
+    fail(new Error("boom"));
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: record, t1: slow.promise });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any);
+        Loading({
+          fallback: "loading...",
+          get children() {
+            return "content" as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+    expect(() => result()).toThrow("boom");
+
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(1);
+    expect(isPending(result)).toBe(true);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(result()).toBe("live-current");
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
+    uninstall();
+  });
+
+  test("a shell live node taking over at hydration end before its answer lands stays pending", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const { record } = makePendingRecord();
+    startHydration({ t0: record });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any);
+      },
+      { id: "t" }
+    );
+    flush();
+
+    sharedConfig.hydrating = false;
+    flush();
+    expect(sharedConfig.done).toBe(true);
+    expect(connections.count).toBe(1);
+    expect(() => result()).toThrow(NotReadyError);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(result()).toBe("live-current");
+  });
+
+  test("a shell live node whose streamed answer rejects after the shell hydrated still reconnects", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const { record, fail } = makePendingRecord();
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: record, t1: slow.promise });
+
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any);
+        Loading({
+          fallback: "loading...",
+          get children() {
+            return "content" as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(0);
+
+    fail(new Error("boom"));
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(connections.count).toBe(1);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(result()).toBe("live-current");
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
+    uninstall();
+  });
+
+  test("a shell live node whose dependency changes while it waits for its answer connects at once", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const { record, answer } = makePendingRecord();
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: record, t1: slow.promise });
+
+    const [dep, setDep] = createSignal("initial");
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(() => (dep(), source as any));
+        Loading({
+          fallback: "loading...",
+          get children() {
+            return "content" as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(0);
+
+    setDep("updated");
+    flush();
+    expect(connections.count).toBe(1);
+
+    answer("server-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(connections.count).toBe(1);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(result()).toBe("live-current");
+    expect(connections.count).toBe(1);
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
     uninstall();
   });
 

@@ -516,8 +516,8 @@ function readSerializedOrCompute(compute: (prev: any) => any, prev: any, options
   // node in the shell must not wait for a slow boundary). Checked before
   // the serialized short-circuit below, which would otherwise re-latch it.
   const gate = nodeGate.get(o);
-  if (gate && (sharedConfig.done || gate())) {
-    if (gate !== TAKEN && !sharedConfig.done && sharedConfig.has!(o.id!)) {
+  if (gate && (sharedConfig.done || gate() || awaiting.has(o))) {
+    if (gate !== TAKEN && !awaiting.has(o) && !sharedConfig.done && sharedConfig.has!(o.id!)) {
       const initP = sharedConfig.load!(o.id!);
       if (
         initP != null &&
@@ -526,7 +526,7 @@ function readSerializedOrCompute(compute: (prev: any) => any, prev: any, options
       )
         return awaitAdoptedAnswer(o, initP);
     }
-    return takeOver(o, gate, compute, prev);
+    return takeOver(o, gate, compute, prev, options);
   }
   // A computation must adopt its serialized server value for the whole
   // hydration lifecycle (`!done`), not just inside a synchronous resume window.
@@ -597,65 +597,52 @@ function readSerializedOrCompute(compute: (prev: any) => any, prev: any, options
  * nothing on the wire (the transport's digest-equal skip). Stamped on the
  * takeover run only; the node's later recomputes are ordinary.
  */
-function takeOver(o: Owner, gate: () => boolean, compute: (prev: any) => any, prev: any) {
+function takeOver(
+  o: Owner,
+  gate: () => boolean,
+  compute: (prev: any) => any,
+  prev: any,
+  options?: any
+) {
   const result = compute(prev);
   if (gate !== TAKEN) {
     nodeGate.set(o, TAKEN);
+    const landed = awaiting.delete(o) ? gate() : adoptedSynchronously(o, options);
     if (result != null && typeof result === "object" && result[LIVE_SOURCE]) {
       result[LIVE_RESUME_FROM] = prev;
-      if (isAsyncIterable(result)) return continueFrom(result, prev);
+      // The landed answer is step 0, so the takeover opens no pending window.
+      if (landed && isAsyncIterable(result)) return wrapFirstYield(result, undefined, prev, false);
     }
   }
   return result;
 }
 
-/**
- * A takeover whose gate opened before the adopted server answer landed — the
- * shell released while the answer still streams, in a boundary's late chunk.
- * Taking over now would supersede that flight and lose the answer (the hybrid
- * handoff's rule 1), so the node re-adopts it as a one-yield stream and the
- * takeover rides the landing: the engine's pull for the next step flips a
- * gate of the node's own, and the run it triggers takes over from the value
- * that landed. A rejected answer is adopted as is; the next run computes live.
- */
+// Whether `prev` holds the server answer: the adoption committed it synchronously.
+function adoptedSynchronously(o: Owner, options: any): boolean {
+  if (!sharedConfig.has) return false;
+  if (!sharedConfig.has(o.id!)) return true;
+  const initP = sharedConfig.load!(o.id!);
+  return (
+    initP == null ||
+    typeof initP.then !== "function" ||
+    (initP.s === 1 && !hasLoadingWindow(options))
+  );
+}
+
+// The gate opened on a pending answer: take over from its landing, not ahead of it.
 function awaitAdoptedAnswer(o: Owner, answer: any) {
   const [landed, setLanded] = coreSignal(false, { ownedWrite: true });
   nodeGate.set(o, landed);
+  awaiting.add(o);
   landed();
   return adoptedAnswerStream(
     answer,
     () => setLanded(true),
-    () => nodeGate.set(o, TAKEN)
-  );
-}
-
-/**
- * The takeover run's live source, as the engine consumes it: the adopted
- * value is step 0, landed synchronously, and the source's yields follow. The
- * takeover continues the stream the page already holds, so it opens no
- * pending window (the hybrid handoff's rule 5): a streamed `<Loading>`
- * resuming before the first live yield lands reads the adopted value settled
- * and claims its fragment rather than selecting its fallback.
- */
-function continueFrom(iterable: any, value: any) {
-  return {
-    [Symbol.asyncIterator]() {
-      const srcIt = iterable[Symbol.asyncIterator]();
-      let first = true;
-      return {
-        next() {
-          if (first) {
-            first = false;
-            return syncThenable({ done: false, value });
-          }
-          return srcIt.next();
-        },
-        return(v?: any) {
-          return forwardIteratorReturn(srcIt, v);
-        }
-      };
+    () => {
+      // The error settles first; the re-run then takes over with no answer landed.
+      if (awaiting.delete(o)) queueMicrotask(() => setLanded(true));
     }
-  };
+  );
 }
 
 /**
@@ -721,6 +708,8 @@ const openScopes = new Set<Owner>();
 const liveGates = new Map<Owner | null, [() => boolean, (v: boolean) => void]>();
 const nodeGate = new WeakMap<Owner, () => boolean>();
 const TAKEN = () => true;
+// Nodes waiting on a pending answer to take over from (awaitAdoptedAnswer).
+const awaiting = new WeakSet<Owner>();
 function liveScopeOf(o: Owner): Owner | null {
   if (openScopes.size === 0) return null;
   let owner: Owner | null = o;
@@ -922,9 +911,10 @@ function createShadowDraft(realDraft: any, shallow?: boolean) {
  * and the duplicate's writes went to the shadow draft (`activate` switches
  * the proxy to the real draft once they have). A signal-shaped node
  * (hydrateSignalLike) yields the adopted value itself — its `prev` — so the
- * duplicate lands as an equal write, a no-op at the node.
+ * duplicate lands as an equal write, a no-op at the node. A live takeover's
+ * first yield is new data, not the duplicate: it passes `duplicate` false.
  */
-function wrapFirstYield(iterable: any, activate?: () => void, quiet?: any) {
+function wrapFirstYield(iterable: any, activate?: () => void, quiet?: any, duplicate = true) {
   const srcIt = iterable[Symbol.asyncIterator]();
   let step = 0;
   return {
@@ -938,6 +928,7 @@ function wrapFirstYield(iterable: any, activate?: () => void, quiet?: any) {
           const p = srcIt.next();
           if (step === 1) {
             step = 2;
+            if (!duplicate) return p;
             // The source's first yield, the duplicate.
             return p.then((r: any) => {
               activate?.();

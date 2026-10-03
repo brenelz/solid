@@ -1,10 +1,7 @@
 /**
  * @jsxImportSource @solidjs/web
  *
- * Server half of the #3764 pair (see test/harness/live-takeover-3764.tsx).
- * Renders each variant with renderToStream and writes the chunk artifact
- * test/hydration/live-takeover-3764.spec.tsx replays into jsdom against the
- * dom-generate compilation of the same fixture.
+ * Writes the chunk artifact test/hydration/live-takeover-3764.spec.tsx replays.
  */
 import { describe, expect, test } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -42,7 +39,7 @@ function collectChunks(code: () => any): Promise<{ shell: string; rest: string }
 const visibleText = (html: string) =>
   html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]*>/g, "");
 
-describe("live source outside a streamed Loading (#3764) — server render", () => {
+describe("live source outside a streamed Loading — server render", () => {
   for (const variant of variants) {
     test(`${variant.name}: suspends into the shell, streams the content, writes the artifact`, async () => {
       const { shell, rest } = await collectChunks(() => <variant.App />);

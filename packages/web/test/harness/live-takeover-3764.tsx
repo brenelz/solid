@@ -1,21 +1,8 @@
 /**
  * @jsxImportSource @solidjs/web
  *
- * Fixture for solidjs/solid#3764: a live source (an async iterable branded
- * `Symbol.for("solid.LiveSource")`) created OUTSIDE a streamed `<Loading>`
- * whose content reads it. The server takes the source's first value after a
- * delay, so the boundary flushes its fallback into the shell and streams the
- * content later. The client adopts the serialized value, and the node takes
- * over — reconnects to the live source — when the shell finishes hydrating,
- * before the boundary's fragment arrives.
- *
- * Shared by test/server/live-takeover-3764.spec.tsx (ssr generate, writes the
- * chunk artifacts) and test/hydration/live-takeover-3764.spec.tsx (dom
- * generate, replays them).
- *
- * `control` is the live source's first yield. On the server it is unused (the
- * server source is a plain promise); the hydrate spec swaps it for a gate so
- * the yield lands exactly when the test says.
+ * Shared by the server spec (writes the chunk artifacts) and the hydration
+ * spec (replays them); `control` gates the live source's first yield.
  */
 import { createMemo, Loading } from "solid-js";
 import { isServer, Show } from "@solidjs/web";
@@ -47,7 +34,6 @@ function source(): any {
   };
 }
 
-/** A memo over the live source, read by the boundary's content. */
 export function MemoApp() {
   const rows = createMemo<{ id: number }[]>(() => source());
   return (

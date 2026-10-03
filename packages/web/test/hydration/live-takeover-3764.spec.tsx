@@ -1,19 +1,6 @@
 /**
  * @jsxImportSource @solidjs/web
  * @vitest-environment jsdom
- *
- * solidjs/solid#3764: a live source created outside a streamed `<Loading>`
- * whose content reads it. The node takes over — reconnects to the live
- * source — when the shell finishes hydrating, while the boundary still waits
- * for its fragment. The takeover run made the node read pending until the
- * first live yield landed, so the boundary resuming in between selected its
- * fallback against the resolved fragment: the server content stayed
- * unclaimed and a second copy was client-rendered once the yield landed.
- *
- * Replays the chunk artifacts test/server/live-takeover-3764.spec.tsx writes,
- * with the live source's first yield held behind a gate: shell, hydrate, the
- * late chunk (the answer lands, the takeover connects, the boundary resumes
- * against the fragment), then the yield.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -64,7 +51,7 @@ afterEach(() => {
   Object.assign(control, originalControl);
 });
 
-describe("live source takeover vs streamed <Loading> claim (#3764)", () => {
+describe("live source outside a streamed <Loading>", () => {
   for (const variant of variants) {
     test(variant.name, async () => {
       const { shell, rest } = loadArtifact(variant.name);
@@ -88,30 +75,21 @@ describe("live source takeover vs streamed <Loading> claim (#3764)", () => {
         dispose = hydrate(() => <variant.App />, container);
         flush();
         await drain();
-        // The shell hydrated while the node's answer still streams: nothing
-        // to take over from yet, so the source stays unconnected and the
-        // boundary shows its fallback.
         expect(text()).toBe("loading");
         expect(connects).toBe(0);
 
-        // The late chunk: the answer resolves, the fragment swaps in, the
-        // boundary's record settles.
         applyChunk(container, rest, false);
         const serverList = container.querySelector("ul")!;
         expect(serverList).not.toBeNull();
         await drain();
         await new Promise(r => setTimeout(r, 10));
 
-        // The boundary resumed against the fragment: it claimed the server
-        // list (same node, not re-created) and shows the adopted value. The
-        // takeover connected from that value; its first yield is in flight.
         expect(warnings).toEqual([]);
         expect(text()).toBe(variant.content);
         expect(container.querySelectorAll("ul").length).toBe(1);
         expect(container.querySelector("ul")).toBe(serverList);
         expect(connects).toBe(1);
 
-        // The first live yield updates the claimed DOM in place.
         gate.release([{ id: 1 }, { id: 2 }, { id: 3 }]);
         await drain();
         expect(text()).toBe(variant.next);
