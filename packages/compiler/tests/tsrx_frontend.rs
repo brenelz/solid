@@ -527,6 +527,45 @@ fn rejects_statement_containers_without_rendered_output() {
 }
 
 #[test]
+fn setup_statements_end_at_the_rendered_output_without_a_semicolon() {
+    let cases = [
+        (
+            "export function F() @{\n  const a = () => 1\n  <div>{a()}</div>\n}\n",
+            "const a = () => 1;",
+        ),
+        (
+            "export function F() @{\n  const a = 1\n  <>{a}</>\n}\n",
+            "const a = 1;",
+        ),
+        (
+            "export function F({ ok }) @{\n  @if (ok) {\n    const label = \"yes\"\n    <p>{label}</p>\n  }\n}\n",
+            "const label = \"yes\";",
+        ),
+        (
+            "export function F({ xs }) @{\n  <ul>@for (const x of xs) {\n    const text = String(x)\n    <li>{text}</li>\n  }</ul>\n}\n",
+            "const text = String(x);",
+        ),
+    ];
+    for (source, declaration) in cases {
+        for generate in [Generate::Dom, Generate::Ssr] {
+            let output = compile(
+                source,
+                &CompileOptions {
+                    filename: Some("F.tsrx".into()),
+                    ..fixture_options(generate)
+                },
+            )
+            .unwrap_or_else(|error| panic!("{generate:?}: {source:?} must compile: {error}"));
+            assert!(
+                output.code.contains(declaration),
+                "{generate:?}: {source:?} must keep its setup statement: {}",
+                output.code
+            );
+        }
+    }
+}
+
+#[test]
 fn parse_errors_carry_authored_line_and_column() {
     let error = compile(
         "const broken = <div\n",

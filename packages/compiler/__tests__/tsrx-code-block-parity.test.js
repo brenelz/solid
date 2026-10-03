@@ -36,4 +36,13 @@ describe("native TSRX statement-container parity", () => {
       };
     `);
   });
+
+  test("matches setup statements without a semicolon before the rendered output", () => {
+    compare(`
+      export function F() @{
+        const a = () => 1
+        <div>{a()}</div>
+      }
+    `);
+  });
 });

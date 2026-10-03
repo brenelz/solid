@@ -115,6 +115,7 @@ impl<'a> LeafProgram<'a> {
         let mut finder = StatementFinder {
             allocator,
             map: &self.map,
+            source: self.program.source_text,
             target: authored,
             found: None,
         };
@@ -182,6 +183,20 @@ impl LeafMap {
         let start = self.authored_endpoint(projected.start, true)?;
         let end = self.authored_endpoint(projected.end, false)?;
         (start <= end).then_some(AuthoredSpan { start, end })
+    }
+
+    /// A statement may end in the `;` the projection inserts before a rendered element.
+    fn statement_extent(&self, projected: Span, source: &str) -> Option<AuthoredSpan> {
+        if let Some(extent) = self.authored_extent(projected) {
+            return Some(extent);
+        }
+        let before = projected.end.checked_sub(1)?;
+        if source.as_bytes().get(before as usize) != Some(&b';')
+            || self.authored_endpoint(projected.end, false).is_some()
+        {
+            return None;
+        }
+        self.authored_extent(Span::new(projected.start, before))
     }
 
     pub(super) fn authored_start(&self, projected: Span) -> Option<u32> {
@@ -259,6 +274,7 @@ impl<'a> Visit<'a> for BindingPatternFinder<'a, '_> {
 struct StatementFinder<'a, 'm> {
     allocator: &'a Allocator,
     map: &'m LeafMap,
+    source: &'a str,
     target: AuthoredSpan,
     found: Option<Statement<'a>>,
 }
@@ -268,7 +284,7 @@ impl<'a> Visit<'a> for StatementFinder<'a, '_> {
         if self.found.is_some() {
             return;
         }
-        if self.map.authored_extent(statement.span()) == Some(self.target) {
+        if self.map.statement_extent(statement.span(), self.source) == Some(self.target) {
             let mut statement = statement.clone_in(self.allocator);
             SpanRebaser { map: self.map }.visit_statement(&mut statement);
             self.found = Some(statement);
