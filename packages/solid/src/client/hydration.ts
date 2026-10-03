@@ -516,7 +516,18 @@ function readSerializedOrCompute(compute: (prev: any) => any, prev: any, options
   // node in the shell must not wait for a slow boundary). Checked before
   // the serialized short-circuit below, which would otherwise re-latch it.
   const gate = nodeGate.get(o);
-  if (gate && (sharedConfig.done || gate())) return takeOver(o, gate, compute, prev);
+  if (gate && (sharedConfig.done || gate())) {
+    if (gate !== TAKEN && !sharedConfig.done && sharedConfig.has!(o.id!)) {
+      const initP = sharedConfig.load!(o.id!);
+      if (
+        initP != null &&
+        typeof initP.then === "function" &&
+        (initP.s == null || (initP.s === 1 && hasLoadingWindow(options)))
+      )
+        return awaitAdoptedAnswer(o, initP);
+    }
+    return takeOver(o, gate, compute, prev);
+  }
   // A computation must adopt its serialized server value for the whole
   // hydration lifecycle (`!done`), not just inside a synchronous resume window.
   // A streamed section can recompute between chunks; running the client body
@@ -590,10 +601,61 @@ function takeOver(o: Owner, gate: () => boolean, compute: (prev: any) => any, pr
   const result = compute(prev);
   if (gate !== TAKEN) {
     nodeGate.set(o, TAKEN);
-    if (result != null && typeof result === "object" && result[LIVE_SOURCE])
+    if (result != null && typeof result === "object" && result[LIVE_SOURCE]) {
       result[LIVE_RESUME_FROM] = prev;
+      if (isAsyncIterable(result)) return continueFrom(result, prev);
+    }
   }
   return result;
+}
+
+/**
+ * A takeover whose gate opened before the adopted server answer landed — the
+ * shell released while the answer still streams, in a boundary's late chunk.
+ * Taking over now would supersede that flight and lose the answer (the hybrid
+ * handoff's rule 1), so the node re-adopts it as a one-yield stream and the
+ * takeover rides the landing: the engine's pull for the next step flips a
+ * gate of the node's own, and the run it triggers takes over from the value
+ * that landed. A rejected answer is adopted as is; the next run computes live.
+ */
+function awaitAdoptedAnswer(o: Owner, answer: any) {
+  const [landed, setLanded] = coreSignal(false, { ownedWrite: true });
+  nodeGate.set(o, landed);
+  landed();
+  return adoptedAnswerStream(
+    answer,
+    () => setLanded(true),
+    () => nodeGate.set(o, TAKEN)
+  );
+}
+
+/**
+ * The takeover run's live source, as the engine consumes it: the adopted
+ * value is step 0, landed synchronously, and the source's yields follow. The
+ * takeover continues the stream the page already holds, so it opens no
+ * pending window (the hybrid handoff's rule 5): a streamed `<Loading>`
+ * resuming before the first live yield lands reads the adopted value settled
+ * and claims its fragment rather than selecting its fallback.
+ */
+function continueFrom(iterable: any, value: any) {
+  return {
+    [Symbol.asyncIterator]() {
+      const srcIt = iterable[Symbol.asyncIterator]();
+      let first = true;
+      return {
+        next() {
+          if (first) {
+            first = false;
+            return syncThenable({ done: false, value });
+          }
+          return srcIt.next();
+        },
+        return(v?: any) {
+          return forwardIteratorReturn(srcIt, v);
+        }
+      };
+    }
+  };
 }
 
 /**

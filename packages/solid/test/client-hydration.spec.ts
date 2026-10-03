@@ -2625,6 +2625,128 @@ describe("live-branded sources — automatic takeover", () => {
     uninstall();
   });
 
+  // The issue's shape (#3764): the boundary's content reads a live node the
+  // SHELL owns. The source is held behind a gate so the first live yield lands
+  // only when the test says; `shown` unwraps the boundary's accessor.
+  function makeGatedLiveSource(connections: { count: number }) {
+    let release!: (value: any) => void;
+    const first = new Promise<any>(r => (release = r));
+    const source = {
+      [LIVE]: true,
+      [Symbol.asyncIterator]() {
+        connections.count++;
+        let sent = false;
+        return {
+          next: () => {
+            if (sent) return new Promise<never>(() => {});
+            sent = true;
+            return first.then(value => ({ done: false, value }));
+          },
+          return: (v?: any) => Promise.resolve({ done: true, value: v })
+        };
+      }
+    };
+    return { source, release };
+  }
+
+  function mountShellNodeUnderBoundary(source: any) {
+    let result: any;
+    let content: any;
+    createRoot(
+      () => {
+        result = createMemo(() => source as any);
+        content = Loading({
+          fallback: "loading...",
+          get children() {
+            return result() as any;
+          }
+        });
+      },
+      { id: "t" }
+    );
+    flush();
+    const shown = () => {
+      const v = content();
+      return typeof v === "function" ? v() : v;
+    };
+    return { result, shown };
+  }
+
+  test("a boundary resuming while a shell live node's takeover is in flight hydrates its content", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: { v: "server-current", s: 1 }, t1: slow.promise });
+
+    const { result, shown } = mountShellNodeUnderBoundary(source);
+    expect(result()).toBe("server-current");
+    expect(shown()).toBe("loading...");
+
+    // the root pass is over: the shell node took over and connected; its
+    // first yield is still in flight when the boundary resumes
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(1);
+
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(sharedConfig.done).toBe(true);
+    expect(shown()).toBe("server-current");
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(shown()).toBe("live-current");
+    expect(connections.count).toBe(1);
+    uninstall();
+  });
+
+  test("a shell live node whose server answer streams with the boundary takes over from the landing", async () => {
+    const connections = { count: 0 };
+    const { source, release } = makeGatedLiveSource(connections);
+    // the server took the source's first value after the shell flushed: the
+    // node's answer is a pending record the boundary's late chunk resolves
+    let answer!: (value: any) => void;
+    const record: any = new Promise(r => {
+      answer = (value: any) => {
+        record.s = 1;
+        record.v = value;
+        r(value);
+      };
+    });
+    const slow = makeLoadingPromise();
+    const uninstall = installHY({ t1: slow.promise });
+    startHydration({ t0: record, t1: slow.promise });
+
+    const { shown } = mountShellNodeUnderBoundary(source);
+    expect(shown()).toBe("loading...");
+
+    // the root pass is over, but the node has no value to take over from
+    // yet: it keeps waiting for the server's answer instead of superseding it
+    sharedConfig.hydrating = false;
+    flush();
+    expect(connections.count).toBe(0);
+
+    // the late chunk: the answer lands, then the boundary resumes against
+    // it; the takeover connects from the landed value
+    answer("server-current");
+    slow.resolve();
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(sharedConfig.done).toBe(true);
+    expect(shown()).toBe("server-current");
+    expect(connections.count).toBe(1);
+
+    release("live-current");
+    await new Promise(r => setTimeout(r, 10));
+    flush();
+    expect(shown()).toBe("live-current");
+    expect(connections.count).toBe(1);
+    uninstall();
+  });
+
   test("a live node under a boundary reconnects when that boundary hydrates, not when the page does", async () => {
     const boundary = makeLoadingPromise();
     const other = makeLoadingPromise(); // never resolved: the page stays un-done

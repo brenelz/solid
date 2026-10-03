@@ -1,0 +1,5 @@
+---
+"solid-js": patch
+---
+
+A live source outside a streamed `<Loading>` takes over from its landed server answer, without a pending window (#3764). A memo or store that returns a live source (`Symbol.for("solid.LiveSource")`) reconnects when the shell finishes hydrating. When its serialized answer was still streaming — it arrives in the boundary's late chunk — that takeover run superseded the server's flight and lost the answer, and the run read pending until the first live yield landed; a boundary resuming in between selected its fallback against resolved server content: a "Hydration key miss" warning, the server markup left unclaimed and a second copy client-rendered once the yield landed. The takeover now waits for a pending answer to land and runs from it, and it lands the adopted value as a synchronous first step with the live yields following, so the node reads settled and a boundary resuming meanwhile hydrates its content against it. Sources created inside the boundary are unchanged.
