@@ -447,13 +447,15 @@ function dissolveLane(l: Transaction, into: Transaction | null, except?: Signal<
       // screen showed stays the screen (committed, inputs published — every
       // one re-derives); never shown, nothing of it reached the screen (a
       // node born in the lane stays uninitialized; its frame goes). One in
-      // flight is asking the void world's question: its landing is nobody's
-      // answer — it re-asks from the truth (whose notification may not reach
-      // it: an input's truth equal to its committed value is silent).
+      // flight, or one that never committed, is asking the void world's
+      // question: its answer is nobody's — it re-asks from the truth (whose
+      // notification may not reach it: an input's truth equal to its
+      // committed value is silent).
       x._transaction = null;
       if (!effect) {
         if (shown !== NOT_PENDING && l._shown) n._pendingValue = shown;
-        if ((n as Computed<any>)._statusFlags & STATUS_PENDING) {
+        const status = (n as Computed<any>)._statusFlags;
+        if (status & STATUS_PENDING || (!l._shown && status & STATUS_UNINITIALIZED)) {
           x._inFlight = null;
           enqueueSub(n as Computed<any>);
         }
@@ -491,10 +493,11 @@ function dissolveLane(l: Transaction, into: Transaction | null, except?: Signal<
  * flight that has never shown (nothing to show), waits on it: its own frame
  * holds (A15, #3334), not the lane's parent. Any other tracked reader is
  * the lane's work from this read — a derivation; a leaf reading a lane that
- * has shown, or one the seam has not judged yet (its run waits on the
- * verdict: released if the lane shows, held if it blocks) — and sees the
- * lane's latest. NOT_PENDING falls through: lane work's read of a pending
- * member throws like any. */
+ * has shown, one the seam has not judged yet (its run waits on the
+ * verdict: released if the lane shows, held if it blocks), or a node of a
+ * held lane that has not shown and has never committed (nothing to show) —
+ * and sees the lane's latest. NOT_PENDING falls through: lane work's read
+ * of a pending member throws like any. */
 export function laneRead(c: Computed<any> | null, el: Signal<any> | Computed<any>): unknown {
   const guess = el._config & CONFIG_GUESS;
   if (c !== null && c._config & CONFIG_AUTHORITATIVE)
