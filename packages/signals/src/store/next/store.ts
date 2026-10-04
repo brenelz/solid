@@ -222,12 +222,11 @@ export function wrapNext<T extends Record<PropertyKey, any>>(
   const existing = lookupTarget(value, fam);
   if (existing !== undefined) return existing.px;
   const t: StoreNextTarget | undefined = (value as any)[$TARGET];
-  // A proxy, or a projection draft wrapper forwarding to one (its $PROXY).
-  if (t !== undefined && (value as any)[$PROXY] === t.px) {
+  if (t !== undefined && t.px === value) {
     // Foreign-family proxies re-wrap into THIS family (writes stay isolated);
     // same-family and plain-store proxies pass through.
-    if (fam === null || t.fam === fam) return t.px;
-    return (lookupTarget(t.px, fam) ?? createTarget(t.px as any, parent, parentKey, fam)).px;
+    if (fam === null || t.fam === fam) return value;
+    return createTarget(value as any, parent, parentKey, fam).px;
   }
   return createTarget(value, parent, parentKey, fam).px;
 }
@@ -236,7 +235,7 @@ export function wrapNext<T extends Record<PropertyKey, any>>(
 export function unwrapValue(v: any): any {
   if (v == null || typeof v !== "object") return v;
   const t: StoreNextTarget | undefined = v[$TARGET];
-  if (t !== undefined && v[$PROXY] === t.px && t.v !== undefined) {
+  if (t !== undefined && (t.px === v || v[$PROXY] === t.px) && t.v !== undefined) {
     // A draft escaping into other storage must be a REAL container that
     // becomes this target's committed backing at fold (the shared-raw
     // contract) — a prototype overlay is neither.
@@ -2903,7 +2902,7 @@ function visibleDescriptor(
  * plain view. Shared references and cycles handled via the visited set. */
 export function deepNext<T>(value: T): T {
   const t0: StoreNextTarget | undefined = (value as any)?.[$TARGET];
-  if (t0 === undefined || t0.px !== value) return value;
+  if (t0 === undefined || (t0.px !== value && (value as any)[$PROXY] !== t0.px)) return value;
   const visited = new Set<object>();
   // One membership node + one deep-witness node PER RECORD (legacy $TRACK
   // parity): the walk stays O(records) in subscriptions instead of O(paths)

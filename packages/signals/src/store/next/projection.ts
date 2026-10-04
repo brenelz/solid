@@ -33,6 +33,8 @@ import {
 import {
   $PROXY,
   $TARGET,
+  isRawValue,
+  isWrappable,
   markRawIngest,
   setWriteOverride,
   STORE_VALUE,
@@ -43,6 +45,23 @@ import {
 import { reconcileNextState } from "./reconcile.js";
 import { derivedStoreWrite, nameStore, storeSetterNext, wrapNext } from "./store.js";
 import type { StoreNextFamily } from "./target.js";
+
+const draftInner = new WeakMap<object, object>();
+
+// A stored wrapper would be adopted as its row's own backing: swap them for their proxies.
+function unwrapDrafts(v: any, seen?: Set<object>): any {
+  if (v === null || typeof v !== "object") return v;
+  const inner = draftInner.get(v);
+  if (inner !== undefined) return inner;
+  if (v[$TARGET] !== undefined || !isWrappable(v) || isRawValue(v) || seen?.has(v)) return v;
+  (seen ??= new Set()).add(v);
+  for (const k of Object.keys(v)) {
+    const c = v[k];
+    const u = unwrapDrafts(c, seen);
+    if (u !== c) v[k] = u;
+  }
+  return v;
+}
 
 /**
  * Wrap a store proxy as a projection DRAFT: every operation carries the write
@@ -69,9 +88,10 @@ import type { StoreNextFamily } from "./target.js";
 function wrapDraft(
   inner: any,
   isActive: () => boolean,
-  aroundWrite?: (op: () => void) => void,
-  shallow?: boolean,
-  afterWrite?: () => void
+  aroundWrite: ((op: () => void) => void) | undefined,
+  shallow: boolean | undefined,
+  afterWrite: (() => void) | undefined,
+  run: { n: number }
 ): any {
   // One bracket for the three mutating traps. A write to a superseded or
   // disposed draft is dropped silently (proj R37 — the same fate as a
@@ -108,13 +128,16 @@ function wrapDraft(
       }
       // A shallow store's leaves are raw by contract (#3498): no draft proxy
       // over them, so identity holds and a frozen leaf is never trapped.
-      return !shallow &&
-        typeof value === "object" &&
-        value !== null &&
-        prop !== $TARGET &&
-        prop !== $PROXY
-        ? wrapDraft(value, isActive, aroundWrite, false, afterWrite)
-        : value;
+      if (
+        shallow ||
+        typeof value !== "object" ||
+        value === null ||
+        prop === $TARGET ||
+        prop === $PROXY
+      )
+        return value;
+      run.n++;
+      return wrapDraft(value, isActive, aroundWrite, false, afterWrite, run);
     },
     has(_, prop) {
       let value;
@@ -131,7 +154,7 @@ function wrapDraft(
     },
     set: (_, prop, value) =>
       mutate(() => {
-        inner[prop] = value;
+        inner[prop] = run.n !== 0 ? unwrapDrafts(value) : value;
       }),
     deleteProperty: (_, prop) =>
       mutate(() => {
@@ -167,11 +190,14 @@ function wrapDraft(
     },
     defineProperty: (_, prop, desc) =>
       mutate(() => {
+        if (run.n !== 0 && "value" in desc) desc = { ...desc, value: unwrapDrafts(desc.value) };
         Reflect.defineProperty(inner, prop, desc);
       })
   };
   // Matching-kind dummy so Array.isArray(draft) answers like the store.
-  return new Proxy(Array.isArray(inner) ? [] : {}, traps);
+  const draft = new Proxy(Array.isArray(inner) ? [] : {}, traps);
+  draftInner.set(draft, inner);
+  return draft;
 }
 
 function createProjectionNextInternal<T extends object = {}>(
@@ -270,6 +296,7 @@ export function runProjectionComputedNext<T extends object>(
   // that closes over the shadow writes into a dead clone once the window has
   // closed — the one carve-out from R37's one-draft-per-run model.)
   const shadow = owner._loading ? cloneState(target[STORE_VALUE] as T, target.s) : null;
+  const drafts = { n: 0 };
   const draft = wrapDraft(
     wrappedStore,
     () => fam.run === run && !isDisposed(owner),
@@ -290,7 +317,8 @@ export function runProjectionComputedNext<T extends object>(
     // (the node is uninitialized, proj R23).
     () => {
       if (!(owner._statusFlags & STATUS_PENDING) && !owner._loading) scheduleWithheld();
-    }
+    },
+    drafts
   );
   storeSetterNext(
     draft,
@@ -302,6 +330,7 @@ export function runProjectionComputedNext<T extends object>(
         // would fuse the draft to the observable store).
         if (shadow && (v === undefined || v === (shadow as any))) v = cloneState(shadow, target.s);
         if (v === (s as any) || v === undefined) return;
+        if (drafts.n !== 0) v = unwrapDrafts(v);
         const write = () =>
           storeSetterNext(wrappedStore, st => reconcileNextState(v, st, key, true), false);
         wrapCommit ? wrapCommit(write, v as T) : write();
