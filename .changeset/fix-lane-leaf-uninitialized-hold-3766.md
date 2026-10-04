@@ -1,0 +1,5 @@
+---
+"@solidjs/signals": patch
+---
+
+A render effect that reads a memo over `isPending(source)` and then a second async memo never mounted once both flights landed (#3766). The `isPending` memo computes as the holding transaction's verdict-lane work, so its first value lives in the lane slot and the memo stays uninitialized until the lane ends. The effect that read it became the lane's work too and then pended on the second memo, which blocked the lane. When that flight landed, the effect re-ran outside the lane's seat, and `laneRead` treated it as a stale reader of a held lane: with no committed value to show, it threw a `NotReadyError` with no source, leaving the effect pending with nothing to wake it while it was itself what blocked the lane's reveal. A leaf reading a never-shown held lane's uninitialized node now reads the lane's value as lane work, as it does for a lane the seam has not judged yet; its run is released at the reveal.

@@ -54,7 +54,6 @@ import {
 } from "./constants.js";
 import { attrHooks } from "./attribution-hooks.js";
 import { ext, stagedRead, tracking } from "./core.js";
-import { NotReadyError } from "./error.js";
 import { enqueueSub } from "./heap.js";
 import {
   blocked,
@@ -531,8 +530,7 @@ export function laneRead(c: Computed<any> | null, el: Signal<any> | Computed<any
       )
         return el._pendingValue;
     }
-    if (l._held) {
-      if (!guess && !l._shown && status & STATUS_UNINITIALIZED) throw new NotReadyError(null);
+    if (l._held && (guess || l._shown || !(status & STATUS_UNINITIALIZED))) {
       // Re-derived at the reveal; once per pass (the pass may also be a stale
       // reader of a transaction, REACTIVE_FRAME_READ — both reruns apply).
       if (!(c._flags & REACTIVE_SCREEN_READ)) {
