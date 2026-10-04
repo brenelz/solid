@@ -222,11 +222,12 @@ export function wrapNext<T extends Record<PropertyKey, any>>(
   const existing = lookupTarget(value, fam);
   if (existing !== undefined) return existing.px;
   const t: StoreNextTarget | undefined = (value as any)[$TARGET];
-  if (t !== undefined && t.px === value) {
+  // A proxy, or a projection draft wrapper forwarding to one (its $PROXY).
+  if (t !== undefined && (value as any)[$PROXY] === t.px) {
     // Foreign-family proxies re-wrap into THIS family (writes stay isolated);
     // same-family and plain-store proxies pass through.
-    if (fam === null || t.fam === fam) return value;
-    return createTarget(value as any, parent, parentKey, fam).px;
+    if (fam === null || t.fam === fam) return t.px;
+    return (lookupTarget(t.px, fam) ?? createTarget(t.px as any, parent, parentKey, fam)).px;
   }
   return createTarget(value, parent, parentKey, fam).px;
 }
@@ -235,7 +236,7 @@ export function wrapNext<T extends Record<PropertyKey, any>>(
 export function unwrapValue(v: any): any {
   if (v == null || typeof v !== "object") return v;
   const t: StoreNextTarget | undefined = v[$TARGET];
-  if (t !== undefined && t.px === v && t.v !== undefined) {
+  if (t !== undefined && v[$PROXY] === t.px && t.v !== undefined) {
     // A draft escaping into other storage must be a REAL container that
     // becomes this target's committed backing at fold (the shared-raw
     // contract) — a prototype overlay is neither.

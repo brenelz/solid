@@ -31,6 +31,7 @@ import {
   setProjectionWriteActive
 } from "../../core/scheduler.js";
 import {
+  $PROXY,
   $TARGET,
   markRawIngest,
   setWriteOverride,
@@ -107,7 +108,11 @@ function wrapDraft(
       }
       // A shallow store's leaves are raw by contract (#3498): no draft proxy
       // over them, so identity holds and a frozen leaf is never trapped.
-      return !shallow && typeof value === "object" && value !== null && prop !== $TARGET
+      return !shallow &&
+        typeof value === "object" &&
+        value !== null &&
+        prop !== $TARGET &&
+        prop !== $PROXY
         ? wrapDraft(value, isActive, aroundWrite, false, afterWrite)
         : value;
     },
