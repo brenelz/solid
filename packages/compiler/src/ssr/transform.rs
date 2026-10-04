@@ -67,10 +67,8 @@ pub(crate) struct AstSsrTransform<'a, 'source> {
     uses_memo: bool,
     uses_ssr_attribute: bool,
     uses_ssr_element_attribute: bool,
-    uses_ssr_style: bool,
     uses_ssr_style_property: bool,
     uses_ssr_style_properties: bool,
-    uses_ssr_class_name: bool,
     uses_ssr_group: bool,
     uses_apply_ref: bool,
     uses_ssr_claim: bool,
@@ -239,10 +237,8 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
             uses_memo: false,
             uses_ssr_attribute: false,
             uses_ssr_element_attribute: false,
-            uses_ssr_style: false,
             uses_ssr_style_property: false,
             uses_ssr_style_properties: false,
-            uses_ssr_class_name: false,
             uses_ssr_group: false,
             uses_apply_ref: false,
             uses_ssr_claim: false,
@@ -541,12 +537,6 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
         }
         if self.uses_ssr_attribute {
             statements.push(self.import_named("ssrAttribute", "_$ssrAttribute"));
-        }
-        if self.uses_ssr_class_name {
-            statements.push(self.import_named("ssrClassName", "_$ssrClassName"));
-        }
-        if self.uses_ssr_style {
-            statements.push(self.import_named("ssrStyle", "_$ssrStyle"));
         }
         if self.uses_ssr_style_property {
             statements.push(self.import_named("ssrStyleProperty", "_$ssrStyleProperty"));
@@ -2167,16 +2157,21 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
 
         let is_dynamic_value =
             !plan.marker_static && self.classify().is_dynamic(None, &expression, true);
-        // Server components (principles §9.2.3): a dynamic `class`/`style`
-        // is the one attribute shape the plain SSR output serializes INSIDE
-        // template quotes (`class="${ssrClassName(x)}"`), where an attribute-slot
-        // value read at that position — the whole value, or a name's
-        // condition in object form — would be stringified instead of
-        // bound. Under the option the whole attribute is a runtime hole,
-        // `ssrElementAttribute("class", x)`, whose helper emits the same
-        // bytes for a plain value and the position marker for a stand-in.
-        // Object literals stay objects (no inlining) for the same reason.
-        if self.server_components && (key == "class" || key == "style") {
+        // A dynamic `class`/`style` is a whole-attribute hole,
+        // `ssrElementAttribute("class", x)`, so a nullish value omits the
+        // attribute; only a spread-free object literal inlines into template
+        // quotes. Server components (principles §9.2.3) send the object
+        // through the hole too, so an attribute-slot value read as a name's
+        // condition binds its position instead of stringifying.
+        let is_plain_object = matches!(
+            &expression,
+            Expression::ObjectExpression(object)
+                if !object
+                    .properties
+                    .iter()
+                    .any(|p| matches!(p, ObjectPropertyKind::SpreadProperty(_)))
+        );
+        if (key == "class" || key == "style") && (self.server_components || !is_plain_object) {
             self.uses_ssr_element_attribute = true;
             let key_literal =
                 self.ast()
@@ -2196,23 +2191,11 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
         let mut do_escape = !is_boolean;
         let mut value = expression;
         if key == "style" {
-            match &value {
-                Expression::ObjectExpression(object)
-                    if !object
-                        .properties
-                        .iter()
-                        .any(|p| matches!(p, ObjectPropertyKind::SpreadProperty(_))) =>
-                {
-                    if object.properties.is_empty() {
-                        return Ok(());
-                    }
-                    value = self.ssr_style_property_chain(span, value);
-                }
-                _ => {
-                    self.uses_ssr_style = true;
-                    value = self.helper_call(span, "_$ssrStyle", vec![value]);
-                }
+            if matches!(&value, Expression::ObjectExpression(object) if object.properties.is_empty())
+            {
+                return Ok(());
             }
+            value = self.ssr_style_property_chain(span, value);
             do_escape = false;
         }
         if key == "class" {
@@ -2339,39 +2322,25 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
         self.helper_call(span, "_$ssrStyleProperties", args)
     }
 
-    /// Babel's SSR class handling: spread-free objects fold through
+    /// Babel's SSR class handling: a spread-free object folds through
     /// `transformClasslistObject` into a literal / single value / template
-    /// literal; anything else wraps in `_$ssrClassName(...)`.
+    /// literal.
     fn ssr_class_value(&mut self, span: Span, value: Expression<'a>) -> Expression<'a> {
-        let is_plain_object = matches!(
-            &value,
-            Expression::ObjectExpression(object)
-                if !object
-                    .properties
-                    .iter()
-                    .any(|p| matches!(p, ObjectPropertyKind::SpreadProperty(_)))
-        );
-        if is_plain_object {
-            let Expression::ObjectExpression(object) = &value else {
-                unreachable!()
-            };
-            let mut values = std::vec::Vec::new();
-            let mut quasis = vec![String::new()];
-            self.transform_classlist_object(object, &mut values, &mut quasis);
-            if values.is_empty() {
-                return self.ast().expression_string_literal(
-                    span,
-                    self.ast().str(&quasis[0]),
-                    None,
-                );
-            }
-            if values.len() == 1 && quasis[0].is_empty() && quasis[1].is_empty() {
-                return values.pop().expect("length checked");
-            }
-            return self.template_literal_from_parts(span, quasis, values);
+        let Expression::ObjectExpression(object) = &value else {
+            unreachable!("class value only sees spread-free objects");
+        };
+        let mut values = std::vec::Vec::new();
+        let mut quasis = vec![String::new()];
+        self.transform_classlist_object(object, &mut values, &mut quasis);
+        if values.is_empty() {
+            return self
+                .ast()
+                .expression_string_literal(span, self.ast().str(&quasis[0]), None);
         }
-        self.uses_ssr_class_name = true;
-        self.helper_call(span, "_$ssrClassName", vec![value])
+        if values.len() == 1 && quasis[0].is_empty() && quasis[1].is_empty() {
+            return values.pop().expect("length checked");
+        }
+        self.template_literal_from_parts(span, quasis, values)
     }
 
     /// Port of Babel's `transformClasslistObject`: static truthy keys join the

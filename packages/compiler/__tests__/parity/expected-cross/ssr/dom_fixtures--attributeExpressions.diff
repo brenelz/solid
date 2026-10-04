@@ -1,9 +1,9 @@
-@@ -334,7 +334,7 @@
-     typeof _g73$ === "function" || Array.isArray(_g73$) ? _$applyRef__r_server(_g73$, r$) : !!o && (o.ref = r$);
+@@ -331,7 +331,7 @@
+     typeof _g72$ === "function" || Array.isArray(_g72$) ? _$applyRef__r_server(_g72$, r$) : !!o && (o.ref = r$);
    }
  });
 -const template89 = _$ssr__r_server("<div _hk=\"should warn _hk is present on template\"></div>");
 +const template89 = _$ssr__r_server("<div></div>");
  const template90 = _$ssr__r_server("<div></div>");
- const template91 = _$ssr__r_server(_g23$, _$ssrAttribute__r_server("something", _$escape__r_server({
+ const template91 = _$ssr__r_server(_g22$, _$ssrAttribute__r_server("something", _$escape__r_server({
    value: {

@@ -38,13 +38,16 @@ describe("SSR serverComponents attribute slots", () => {
     expect(output).toBe(fs.readFileSync(outputPath, "utf8"));
   });
 
-  it("stays inert when the option is off — refs hoist, on* drops, class/style inline", () => {
+  it("stays inert when the option is off — refs hoist, on* drops, class/style objects inline", () => {
     const source = fs.readFileSync(path.join(babelFixtures, "attributeSlots", "code.js"), "utf8");
     const output = transformSsr(source, "attributeSlots", false);
     expect(output).not.toContain("ssrClaim");
     expect(output).not.toContain("sharedConfig");
-    expect(output).not.toContain("ssrElementAttribute");
-    expect(output).toContain("ssrClassName");
+    expect(output).toContain('_$ssrElementAttribute("class", status())');
+    expect(output).toContain('_$ssrElementAttribute("style", row.style)');
+    expect(output).not.toMatch(/_\$ssrElementAttribute\("(class|style)", \{/);
+    expect(output).toContain('`${row.done ? "completed" : ""} ${row.editing ? "editing" : ""}`');
+    expect(output).toContain('_$ssrStyleProperty("color:", _$escape(row.color, true))');
     // Spread elements: `ref`/`on*` drop as before — no claim thunk, no
     // source property, and the handler expressions do not appear at all.
     expect(output).not.toContain("row.go");

@@ -253,7 +253,7 @@ Inline style attributes in templates when the value is a string or `Record<strin
 - Type: `boolean`
 - Default: `false`
 
-SSR-only: keep attribute-slot positions on intrinsic elements bindable — `ref` / `onXxx` handlers compile to a guarded `ssrClaim` hole instead of dropping, and a dynamic `class` / `style` compiles to a whole-attribute `ssrElementAttribute` hole instead of a value inside template quotes.
+SSR-only: keep attribute-slot positions on intrinsic elements bindable — `ref` / `onXxx` handlers compile to a guarded `ssrClaim` hole instead of dropping, and a `class` / `style` object literal compiles to a whole-attribute `ssrElementAttribute` hole, like any other dynamic `class` / `style`, instead of inlining into template quotes.
 
 ### hoistProps
 

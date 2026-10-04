@@ -1,14 +1,14 @@
 import { escape as _$escape } from "r-server";
 import { ssr as _$ssr } from "r-server";
 import { ssrAttribute as _$ssrAttribute } from "r-server";
-import { ssrClassName as _$ssrClassName } from "r-server";
 import { ssrGroup as _$ssrGroup } from "r-server";
 import { ssrElement as _$ssrElement } from "r-server";
+import { ssrElementAttribute as _$ssrElementAttribute } from "r-server";
 var _tmpl$ = "<ul><li _key=\"a\">Apple</li></ul>";
 var _tmpl$2 = [
 	"<ul><li",
-	" class=\"",
-	"\">",
+	"",
+	">",
 	"</li></ul>"
 ];
 var _tmpl$3 = ["<ul>", "</ul>"];
@@ -19,7 +19,7 @@ var _tmpl$3 = ["<ul>", "</ul>"];
 // so it must pass through unrenamed.
 const staticKey = _$ssr(_tmpl$);
 var _g$ = _$ssrGroup(() => {
-	return [_$ssrAttribute("_key", _$escape(item.id, true)), _$ssrClassName(item.cls)];
+	return [_$ssrAttribute("_key", _$escape(item.id, true)), _$ssrElementAttribute("class", item.cls)];
 }, 2), _v$3 = () => {
 	return _$escape(item.text);
 };

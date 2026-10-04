@@ -81,9 +81,10 @@ pub struct TransformOptions {
     pub omit_last_closing_tag: Option<bool>,
     /// Babel's `serverComponents`: SSR-only. Attribute-slot positions on
     /// intrinsic elements stay bindable: `ref`/`on*` compile to a guarded
-    /// `_$ssrClaim` hole instead of dropping, and a dynamic `class`/`style`
-    /// compiles to a whole-attribute `_$ssrElementAttribute` hole instead of
-    /// a value inside template quotes.
+    /// `_$ssrClaim` hole instead of dropping, and a `class`/`style` object
+    /// literal compiles to a whole-attribute `_$ssrElementAttribute` hole,
+    /// like any other dynamic `class`/`style`, instead of inlining into
+    /// template quotes.
     pub server_components: Option<bool>,
     /// SSR-only (default `true`): a component's props literal with getters
     /// compiles to a module-level constructor with shared getters instead of

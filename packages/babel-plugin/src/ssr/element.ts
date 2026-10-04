@@ -629,16 +629,16 @@ function transformAttributes(
           checkMember: true,
           checkTags: true
         });
-        // Server components (principles §9.2.3): a dynamic `class`/`style`
-        // is the one attribute shape the plain SSR output serializes INSIDE
-        // template quotes (`class="${ssrClassName(x)}"`), where an attribute-slot
-        // value read at that position — the whole value, or a name's
-        // condition in object form — would be stringified instead of
-        // bound. Under the option the whole attribute is a runtime hole,
-        // `ssrElementAttribute("class", x)`, whose helper emits the same
-        // bytes for a plain value and the position marker for a stand-in.
-        // Object literals stay objects (no inlining) for the same reason.
-        if (info.serverComponents && (key === "class" || key === "style")) {
+        // A dynamic `class`/`style` is a whole-attribute hole,
+        // `ssrElementAttribute("class", x)`, so a nullish value omits the
+        // attribute; only a spread-free object literal inlines into template
+        // quotes. Server components (principles §9.2.3) send the object
+        // through the hole too, so an attribute-slot value read as a name's
+        // condition binds its position instead of stringifying.
+        const isPlainObject =
+          t.isObjectExpression(value.expression) &&
+          !value.expression.properties.some(p => t.isSpreadElement(p));
+        if ((key === "class" || key === "style") && (info.serverComponents || !isPlainObject)) {
           const attr = t.callExpression(registerImportMethod(path, "ssrElementAttribute"), [
             t.stringLiteral(key),
             value.expression as babelTypes.Expression
@@ -659,81 +659,67 @@ function transformAttributes(
           (t.isJSXExpressionContainer(value) && t.isBooleanLiteral(value.expression));
         if (isBoolean) doEscape = false;
         if (key === "style") {
-          if (
-            t.isJSXExpressionContainer(value) &&
-            t.isObjectExpression(value.expression) &&
-            !value.expression.properties.some(p => t.isSpreadElement(p))
-          ) {
-            if (value.expression.properties.length === 0) {
-              return;
-            }
-            const entries = value.expression.properties.filter(
-              (p): p is babelTypes.ObjectProperty => t.isObjectProperty(p)
-            );
-            // One entry is `ssrStyleProperty(name, value)`; several go to
-            // `ssrStyleProperties`, which writes the `;` only between the
-            // entries it writes, so a nullish one leaves no separator behind.
-            const helper = registerImportMethod(
-              path,
-              entries.length === 1 ? "ssrStyleProperty" : "ssrStyleProperties"
-            );
-            const args = entries.flatMap(p => {
-              let name: babelTypes.Expression;
-              if (p.computed) {
-                // Computed keys are user-controlled at runtime; wrap with
-                // `_$escape(..., true)` so the style helpers can stay pure
-                // string concat (the literal-key path is already safe).
-                name = t.binaryExpression(
-                  "+",
-                  t.callExpression(registerImportMethod(path, "escape"), [
-                    p.key as babelTypes.Expression,
-                    t.booleanLiteral(true)
-                  ]),
-                  t.stringLiteral(":")
-                );
-              } else {
-                name = t.stringLiteral(
-                  (t.isIdentifier(p.key)
-                    ? p.key.name
-                    : (p.key as babelTypes.StringLiteral | babelTypes.NumericLiteral).value) + ":"
-                );
-              }
-              return [
-                name,
-                escapeExpression(
-                  path,
-                  p.value as babelTypes.Expression,
-                  true,
-                  true
-                ) as babelTypes.Expression
-              ];
-            });
-            value.expression = t.callExpression(helper, args);
-          } else {
-            value.expression = t.callExpression(registerImportMethod(path, "ssrStyle"), [
-              value.expression
-            ]);
+          const object = value.expression as babelTypes.ObjectExpression;
+          if (object.properties.length === 0) {
+            return;
           }
+          const entries = object.properties.filter((p): p is babelTypes.ObjectProperty =>
+            t.isObjectProperty(p)
+          );
+          // One entry is `ssrStyleProperty(name, value)`; several go to
+          // `ssrStyleProperties`, which writes the `;` only between the
+          // entries it writes, so a nullish one leaves no separator behind.
+          const helper = registerImportMethod(
+            path,
+            entries.length === 1 ? "ssrStyleProperty" : "ssrStyleProperties"
+          );
+          const args = entries.flatMap(p => {
+            let name: babelTypes.Expression;
+            if (p.computed) {
+              // Computed keys are user-controlled at runtime; wrap with
+              // `_$escape(..., true)` so the style helpers can stay pure
+              // string concat (the literal-key path is already safe).
+              name = t.binaryExpression(
+                "+",
+                t.callExpression(registerImportMethod(path, "escape"), [
+                  p.key as babelTypes.Expression,
+                  t.booleanLiteral(true)
+                ]),
+                t.stringLiteral(":")
+              );
+            } else {
+              name = t.stringLiteral(
+                (t.isIdentifier(p.key)
+                  ? p.key.name
+                  : (p.key as babelTypes.StringLiteral | babelTypes.NumericLiteral).value) + ":"
+              );
+            }
+            return [
+              name,
+              escapeExpression(
+                path,
+                p.value as babelTypes.Expression,
+                true,
+                true
+              ) as babelTypes.Expression
+            ];
+          });
+          value.expression = t.callExpression(helper, args);
           doEscape = false;
         }
         if (key === "class") {
-          if (
-            t.isObjectExpression(value.expression) &&
-            !value.expression.properties.some(p => t.isSpreadElement(p))
-          ) {
-            const values: babelTypes.Expression[] = [],
-              quasis = [t.templateElement({ raw: "" })];
-            transformClasslistObject(path, value.expression, values, quasis);
-            if (!values.length) value.expression = t.stringLiteral(quasis[0].value.raw);
-            else if (values.length === 1 && !quasis[0].value.raw && !quasis[1].value.raw) {
-              value.expression = values[0];
-            } else value.expression = t.templateLiteral(quasis, values);
-          } else {
-            value.expression = t.callExpression(registerImportMethod(path, "ssrClassName"), [
-              value.expression
-            ]);
-          }
-          key = "class";
+          const values: babelTypes.Expression[] = [],
+            quasis = [t.templateElement({ raw: "" })];
+          transformClasslistObject(
+            path,
+            value.expression as babelTypes.ObjectExpression,
+            values,
+            quasis
+          );
+          if (!values.length) value.expression = t.stringLiteral(quasis[0].value.raw);
+          else if (values.length === 1 && !quasis[0].value.raw && !quasis[1].value.raw) {
+            value.expression = values[0];
+          } else value.expression = t.templateLiteral(quasis, values);
           doEscape = false;
         }
         if (doEscape)

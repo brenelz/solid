@@ -3,7 +3,7 @@ import { ssrGroup as _$ssrGroup } from "r-server";
 import { ssrStyleProperties as _$ssrStyleProperties } from "r-server";
 import { ssrAttribute as _$ssrAttribute } from "r-server";
 import { escape as _$escape } from "r-server";
-import { ssrClassName as _$ssrClassName } from "r-server";
+import { ssrElementAttribute as _$ssrElementAttribute } from "r-server";
 import { ssr as _$ssr } from "r-server";
 import { ssrHydrationKey as _$ssrHydrationKey } from "r-server";
 var _v$1, _v$10;
@@ -13,8 +13,8 @@ var _tmpl$ = [
   ],
   _tmpl$2 = [
     "<svg",
-    ' width="400" height="180"><rect class="',
-    '"',
+    ' width="400" height="180"><rect',
+    "",
     "",
     "",
     ' rx="20" ry="20" width="150" height="150" style="',
@@ -37,7 +37,7 @@ const template = _$ssr(_tmpl$, _v$);
 var _v$2 = _$ssrHydrationKey(),
   _g$ = _$ssrGroup(
     () => [
-      _$ssrClassName(state.name),
+      _$ssrElementAttribute("class", state.name),
       _$ssrAttribute("stroke-width", _$escape(state.width, true)),
       _$ssrAttribute("x", _$escape(state.x, true)),
       _$ssrAttribute("y", _$escape(state.y, true)),

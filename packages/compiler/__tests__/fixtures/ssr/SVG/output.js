@@ -1,14 +1,14 @@
 import { escape as _$escape } from "r-server";
 import { ssr as _$ssr } from "r-server";
 import { ssrAttribute as _$ssrAttribute } from "r-server";
-import { ssrClassName as _$ssrClassName } from "r-server";
 import { ssrStyleProperties as _$ssrStyleProperties } from "r-server";
 import { ssrGroup as _$ssrGroup } from "r-server";
 import { ssrElement as _$ssrElement } from "r-server";
+import { ssrElementAttribute as _$ssrElementAttribute } from "r-server";
 var _tmpl$ = "<svg width=\"400\" height=\"180\"><rect stroke-width=\"2\" x=\"50\" y=\"20\" rx=\"20\" ry=\"20\" width=\"150\" height=\"150\" style=\"fill:red;stroke:black;stroke-width:5;opacity:0.5\"></rect><linearGradient gradientTransform=\"rotate(25)\"><stop offset=\"0%\"></stop></linearGradient></svg>";
 var _tmpl$2 = [
-	"<svg width=\"400\" height=\"180\"><rect class=\"",
-	"\"",
+	"<svg width=\"400\" height=\"180\"><rect",
+	"",
 	"",
 	"",
 	" rx=\"20\" ry=\"20\" width=\"150\" height=\"150\" style=\"",
@@ -21,7 +21,7 @@ var _tmpl$6 = ["<svg viewBox=\"0 0 160 40\" xmlns=\"http://www.w3.org/2000/svg\"
 const template = _$ssr(_tmpl$);
 var _g$ = _$ssrGroup(() => {
 	return [
-		_$ssrClassName(state.name),
+		_$ssrElementAttribute("class", state.name),
 		_$ssrAttribute("stroke-width", _$escape(state.width, true)),
 		_$ssrAttribute("x", _$escape(state.x, true)),
 		_$ssrAttribute("y", _$escape(state.y, true)),

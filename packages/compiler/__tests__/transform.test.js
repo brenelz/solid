@@ -830,6 +830,25 @@ describe("@solidjs/compiler transform", () => {
     expect(result.code).not.toContain('url("${');
   });
 
+  it("compiles a dynamic SSR class/style to a whole-attribute hole, object literals inline", () => {
+    const options = { filename: "input.jsx", moduleName: "r-server", generate: "ssr" };
+    const dynamic = transform("<div style={p.style} class={p.class} title={p.title} />", options);
+
+    expect(dynamic.code).toContain('_$ssrElementAttribute("style", p.style)');
+    expect(dynamic.code).toContain('_$ssrElementAttribute("class", p.class)');
+    expect(dynamic.code).not.toMatch(/ (style|class)=/);
+    expect(dynamic.code).not.toContain("ssrClassName");
+    expect(dynamic.code).not.toContain("ssrStyle(");
+
+    const objects = transform("<div style={{ color: p.color }} class={{ on: p.on }} />", options);
+
+    expect(objects.code).toContain('_$ssrStyleProperty("color:", _$escape(p.color, true))');
+    expect(objects.code).toContain('p.on ? "on" : ""');
+    expect(objects.code).toContain('style=\\"');
+    expect(objects.code).toContain('class=\\"');
+    expect(objects.code).not.toContain("ssrElementAttribute");
+  });
+
   it("lowers DOM spread attributes through spread with a sources array", () => {
     const result = transform('<div id="main" {...props} title={title()} />', {
       filename: "input.jsx",

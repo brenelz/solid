@@ -1,5 +1,13 @@
-@@ -20,7 +20,7 @@
- var _g11$ = ["<button class=\"", "\" type=\"button\">Write</button>"];
+@@ -1,7 +1,6 @@
+ import { escape as _$escape__r_server } from "r-server";
+ import { ssr as _$ssr__r_server } from "r-server";
+ import { ssrAttribute as _$ssrAttribute__r_server } from "r-server";
+-import { ssrClassName as _$ssrClassName__r_server } from "r-server";
+ import { ssrElement as _$ssrElement__r_server } from "r-server";
+ import { ssrElementAttribute as _$ssrElementAttribute__r_server } from "r-server";
+ import { ssrGroup as _$ssrGroup__r_server } from "r-server";
+@@ -19,7 +18,7 @@
+ var _g11$ = ["<button", " type=\"button\">Write</button>"];
  var _g12$ = ["<button class=\"", "\">Hi</button>"];
  var _g13$ = k => {
 -  return k === "disabled" || k === "readonly" || k === "title" || k === "style";
@@ -7,7 +15,7 @@
  };
  var _g14$ = k => {
    return k === "style";
-@@ -33,17 +33,15 @@
+@@ -32,17 +31,15 @@
  const template = _$ssrElement__r_server("div", [{
    id: "main"
  }, results], _$ssrElement__r_server("h1", [{
