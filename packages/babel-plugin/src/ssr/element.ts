@@ -629,12 +629,7 @@ function transformAttributes(
           checkMember: true,
           checkTags: true
         });
-        // A dynamic `class`/`style` is a whole-attribute hole,
-        // `ssrElementAttribute("class", x)`, so a nullish value omits the
-        // attribute; only a spread-free object literal inlines into template
-        // quotes. Server components (principles §9.2.3) send the object
-        // through the hole too, so an attribute-slot value read as a name's
-        // condition binds its position instead of stringifying.
+        // Server components send object literals through the hole too so slots bind, not stringify.
         const isPlainObject =
           t.isObjectExpression(value.expression) &&
           !value.expression.properties.some(p => t.isSpreadElement(p));
