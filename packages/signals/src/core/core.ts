@@ -509,8 +509,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     if (GlobalQueue._laneStage!(el, lane, create, errored)) setPassLane(lane);
     else lane = null;
   }
-  // L2: a first pass is born held (A29) when the flush has joined a
-  // transaction and either the pass read a held node or a pass created it.
+  // Born held (A29): a first pass that read a held node or that a held pass created.
   const bornTx = create ? (flushTransaction ?? passTx) : null;
   const bornHeld =
     bornTx !== null && (joined || (creatorPass(oldcontext)?._flags ?? 0) & REACTIVE_JOINED);
@@ -689,7 +688,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     if (wasPendingSource && !(el._statusFlags & (STATUS_PENDING | STATUS_UNINITIALIZED)))
       settlePendingSource(el);
   } else if (bornHeld && !isEffect && lane === null && el._statusFlags & STATUS_PENDING) {
-    // A pending first pass is born held too: its landing stages into the transaction, not beside it.
+    // A pending first pass's landing must stage into the transaction too.
     holdNode(el, bornTx!);
   }
   // Dependencies are the committed frame's until it is replaced (A30, #3410):
