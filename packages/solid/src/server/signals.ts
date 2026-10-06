@@ -1694,6 +1694,20 @@ function processResult<T>(
     if (!slot) {
       recordSlot(0, undefined, deferred);
       if (serializes) ctx.serialize(id, deferred.promise, deferStream);
+    } else {
+      // The NotReady below names the shared deferred, so this node settles with it too.
+      const adopt = () => {
+        if (!slot.s || !(comp.error instanceof NotReadyError)) return;
+        if (slot.s === 1) {
+          comp.value = slot.v;
+          comp.error = undefined;
+          comp.errored = false;
+        } else {
+          comp.error = slot.v;
+          comp.errored = true;
+        }
+      };
+      deferred.promise.then(adopt, adopt);
     }
     // Flatten one async level, mirroring the client core's handleAsync: a
     // thenable that RESOLVES to an AsyncIterable — the shape an async stub
