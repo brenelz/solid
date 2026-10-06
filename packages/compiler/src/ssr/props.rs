@@ -468,6 +468,9 @@ impl<'a> Visit<'a> for BodyScan<'_, '_, 'a> {
             .semantic
             .scoping()
             .get_reference(it.reference_id());
+        if !reference.flags().is_value() {
+            return;
+        }
         match reference.symbol_id() {
             // A global, or a template id postprocess declares at module level
             // after this: visible from module level as from here.
