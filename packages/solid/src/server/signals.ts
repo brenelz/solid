@@ -1049,6 +1049,17 @@ const SLOTS = /* @__PURE__ */ Symbol("settledSlots");
 // fresh one per pass. Same lifetime and keying rationale as SLOTS above.
 const PROJECTION_SLOTS = /* @__PURE__ */ Symbol("projectionSlots");
 
+function adoptAnswer<T>(comp: ServerComputation<T>, s: 1 | 2, v: any) {
+  if (s === 1) {
+    comp.value = v;
+    comp.error = undefined;
+    comp.errored = false;
+  } else {
+    comp.error = v;
+    comp.errored = true;
+  }
+}
+
 function settleServerAsync<T, U>(
   initial: T | PromiseLike<T>,
   rerun: () => T | PromiseLike<T>,
@@ -1628,17 +1639,20 @@ function processResult<T>(
   // Async-iterable takes precedence over thenable, mirroring the client
   // runtime's detection order (`handleAsync` in @solidjs/signals core/async.ts).
   if (typeof (result as any)?.[Symbol.asyncIterator] !== "function" && isThenable<T>(result)) {
-    if ((result as any).s === 1) {
+    const serializes = !!(ctx?.async && ctx.serialize && id && !noHydrate);
+    // Another flight's answer lands here too, under the same first-value lock.
+    const join = (rec: { s: number; v: any; d?: DeferredPromise<any> }) => {
+      const adopt = () => {
+        if (rec.s !== 1 || !(loadingState?.served && serializes))
+          adoptAnswer(comp, rec.s as 1 | 2, rec.v);
+        ctx?.commit?.();
+      };
+      rec.d!.promise.then(adopt, adopt);
+    };
+    if ((result as any).s === 1 || (result as any).s === 2) {
       // Sync-resolved: the window (if any) closes at birth — no loading value
       // ever becomes visible, so normal semantics apply.
-      comp.value = (result as any).v;
-      comp.error = undefined;
-      comp.errored = false;
-      return;
-    }
-    if ((result as any).s === 2) {
-      comp.error = (result as any).v;
-      comp.errored = true;
+      adoptAnswer(comp, (result as any).s, (result as any).v);
       return;
     }
     if ((result as any).s === 3) {
@@ -1647,6 +1661,7 @@ function processResult<T>(
       // through settleServerAsync would open a SECOND iterator on the same
       // iterable — the stream must have exactly one consumer.
       const d: DeferredPromise<T> = (result as any).d;
+      join(result);
       if (loadingState) {
         loadingState.served = true;
         comp.value = loadingState.value;
@@ -1679,35 +1694,14 @@ function processResult<T>(
       // Observe its rejection so a rejecting duplicate doesn't surface as an
       // unhandled rejection (fatal under --unhandled-rejections=strict).
       (result as any).then(undefined, () => {});
-      if (slot.s === 1) {
-        comp.value = slot.v;
-        comp.error = undefined;
-        comp.errored = false;
-      } else {
-        comp.error = slot.v;
-        comp.errored = true;
-      }
+      adoptAnswer(comp, slot.s, slot.v);
       return;
     }
     const deferred: DeferredPromise<T> = slot ? slot.d! : createDeferredPromise<T>();
-    const serializes = !!(ctx?.async && ctx.serialize && id && !noHydrate);
-    if (!slot) {
+    if (slot) join(slot);
+    else {
       recordSlot(0, undefined, deferred);
       if (serializes) ctx.serialize(id, deferred.promise, deferStream);
-    } else {
-      // The NotReady below names the shared deferred, so this node settles with it too.
-      const adopt = () => {
-        if (!slot.s || !(comp.error instanceof NotReadyError)) return;
-        if (slot.s === 1) {
-          comp.value = slot.v;
-          comp.error = undefined;
-          comp.errored = false;
-        } else {
-          comp.error = slot.v;
-          comp.errored = true;
-        }
-      };
-      deferred.promise.then(adopt, adopt);
     }
     // Flatten one async level, mirroring the client core's handleAsync: a
     // thenable that RESOLVES to an AsyncIterable — the shape an async stub
@@ -1873,21 +1867,12 @@ function processResult<T>(
     const slotted = !!(id && ctx) && (serializes || !pumpsInScope(ctx, scopeOwner));
     const slot: SlotRecord | undefined = slotted ? (ctx as any)[SLOTS]?.[id!] : undefined;
     if (slot) {
-      const adopt = () => {
-        if (slot.s === 1) {
-          comp.value = slot.v;
-          comp.error = undefined;
-          comp.errored = false;
-        } else {
-          comp.error = slot.v;
-          comp.errored = true;
-        }
-      };
-      if (slot.s) return adopt();
+      if (slot.s) return adoptAnswer(comp, slot.s, slot.v);
       // A known answer lands in this node too; under a served loading value
       // the markup stays at commit #0 (the first-value lock).
       const settle = () => {
-        if (slot.s !== 1 || !(loadingState?.served && serializes)) adopt();
+        if (slot.s !== 1 || !(loadingState?.served && serializes))
+          adoptAnswer(comp, slot.s as 1 | 2, slot.v);
       };
       slot.d!.promise.then(settle, settle);
       if (loadingState) {
