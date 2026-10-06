@@ -463,14 +463,8 @@ impl<'a> Visit<'a> for BodyScan<'_, '_, 'a> {
         if self.fallback {
             return;
         }
-        let reference = self
-            .planner
-            .semantic
-            .scoping()
-            .get_reference(it.reference_id());
-        if !reference.flags().is_value() {
-            return;
-        }
+        let scoping = self.planner.semantic.scoping();
+        let reference = scoping.get_reference(it.reference_id());
         match reference.symbol_id() {
             // A global, or a template id postprocess declares at module level
             // after this: visible from module level as from here.
@@ -479,7 +473,17 @@ impl<'a> Visit<'a> for BodyScan<'_, '_, 'a> {
                     self.receiver_use(it.node_id.get());
                 }
             }
-            Some(symbol) => self.reference(symbol, &it.name, it.span, reference.is_write()),
+            Some(symbol) => {
+                // Type-only uses are erased; a runtime binding (`typeof x`) is captured as Babel does.
+                if !reference.flags().is_value()
+                    && !scoping.symbol_flags(symbol).intersects(
+                        SymbolFlags::Variable | SymbolFlags::Function | SymbolFlags::Class,
+                    )
+                {
+                    return;
+                }
+                self.reference(symbol, &it.name, it.span, reference.is_write());
+            }
         }
     }
 
