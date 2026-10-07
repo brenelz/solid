@@ -1716,9 +1716,9 @@ function serveDataKey(
       } else v = nv;
     }
   }
-  if (target.s) return serveShallow(target, key, v);
   if (target.ch && !chained && v !== null && typeof v === "object" && v[$TARGET]?.px !== v)
     v = resolveChainedRaw(target, key, v);
+  if (target.s) return serveShallow(target, key, v);
   if (node !== undefined) {
     if ((node as any).pxv === v && v !== undefined) return draftServe(target, (node as any).px);
     if (!isWrappable(v)) return v;
@@ -2429,7 +2429,7 @@ export function deep<T>(value: T): T {
       }
       let child = desc.value;
       if (child === null || typeof child !== "object") continue;
-      if (t.ch && (child as any)[$TARGET] === undefined) child = resolveChainedRaw(t, key, child);
+      if (t.ch && (child as any)[$TARGET]?.px !== child) child = resolveChainedRaw(t, key, child);
       const ct = childTarget(t, child, key);
       if (ct === undefined) continue; // raw-marked: leaf by contract
       walkT(ct);
@@ -2444,22 +2444,29 @@ export function deep<T>(value: T): T {
  * source). Sees the pending backing (R27). */
 export function snapshot<T>(value: T): T {
   const t: StoreTarget | undefined = (value as any)?.[$TARGET];
-  return snapshotWalk(value, new Map(), t?.fam ?? null);
+  return snapshotWalk(value, new Map(), t?.fam ?? null, null);
 }
 
-function snapshotWalk(value: any, seen: Map<object, any>, fam: StoreFamily | null): any {
+function snapshotWalk(
+  value: any,
+  seen: Map<object, any>,
+  fam: StoreFamily | null,
+  via: StoreFamily | null
+): any {
   if (value === null || typeof value !== "object") return value;
   let src = value;
   for (let entry = true; ; entry = false) {
-    const viaProxy = src?.[$TARGET]?.v !== undefined;
+    const viaProxy = src?.[$TARGET]?.px === src;
     let t: StoreTarget | undefined = viaProxy ? src[$TARGET] : undefined;
     if (t === undefined && fam !== null) t = lookupTarget(src, fam);
     if (t === undefined) t = lookupTarget(src, null);
     if (t === undefined) break;
-    if (entry && !viaProxy && fam !== null && t.fam !== fam) {
-      const outer = fam.map.get(t.px);
+    const outerFam = via ?? fam;
+    if (entry && !viaProxy && outerFam !== null && t.fam !== outerFam) {
+      const outer = outerFam.map.get(t.px);
       if (outer !== undefined) t = outer;
     }
+    if (t.ch && via === null) via = t.fam;
     if (t.fam !== null) fam = t.fam;
     // R27: a snapshot sees the batch's pending backing — a held one (another
     // transaction's future) only from its own draft.
@@ -2491,7 +2498,7 @@ function snapshotWalk(value: any, seen: Map<object, any>, fam: StoreFamily | nul
         continue;
       }
       const cv = desc.value;
-      const walked = cv !== null && typeof cv === "object" ? snapshotWalk(cv, seen, fam) : cv;
+      const walked = cv !== null && typeof cv === "object" ? snapshotWalk(cv, seen, fam, via) : cv;
       if (desc.enumerable && desc.writable && desc.configurable) copy[key] = walked;
       else Object.defineProperty(copy, key, { ...desc, value: walked });
     }
@@ -2505,7 +2512,7 @@ function snapshotWalk(value: any, seen: Map<object, any>, fam: StoreFamily | nul
     if (!desc || desc.get || desc.set) continue;
     const cv = desc.value;
     if (cv === null || typeof cv !== "object") continue;
-    const walked = snapshotWalk(cv, seen, fam);
+    const walked = snapshotWalk(cv, seen, fam, via);
     if (walked !== cv) {
       if (copy === null) {
         copy = Array.isArray(src)
