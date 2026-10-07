@@ -1717,7 +1717,7 @@ function serveDataKey(
     }
   }
   if (target.s) return serveShallow(target, key, v);
-  if (target.ch && !chained && v !== null && typeof v === "object" && v[$TARGET] === undefined)
+  if (target.ch && !chained && v !== null && typeof v === "object" && v[$TARGET]?.px !== v)
     v = resolveChainedRaw(target, key, v);
   if (node !== undefined) {
     if ((node as any).pxv === v && v !== undefined) return draftServe(target, (node as any).px);
