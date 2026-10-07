@@ -50,6 +50,7 @@ import {
   REACTIVE_LANE_DIRTY,
   REACTIVE_LANE_READ,
   REACTIVE_PROBE_UNANSWERED,
+  REACTIVE_STAGED_READ,
   REACTIVE_SCREEN_READ,
   STATUS_PENDING,
   STATUS_UNINITIALIZED
@@ -229,7 +230,7 @@ export function enterLane(l: Transaction, c: Computed<any>): void {
     // frame's future as mainline would): lane work sees the screen — the
     // seam re-derives it on the committed world next round (`stagedReaders`,
     // the park's repair), as it does a lane pass that read a staging.
-    if (c._flags & REACTIVE_JOINED) stagedRead(c);
+    if (c._flags & (REACTIVE_JOINED | REACTIVE_STAGED_READ)) stagedRead(c);
     return;
   }
   if (sameLane(p, l)) return setPassLane(l);

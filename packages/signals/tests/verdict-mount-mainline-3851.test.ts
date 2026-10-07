@@ -18,7 +18,10 @@ const settle = async () => {
   }
 };
 
-function mount(content: (x: () => number) => () => unknown, open: () => boolean = () => true) {
+function mount(
+  content: (x: () => number, when: () => boolean) => () => unknown,
+  open: () => boolean = () => true
+) {
   const [x, setX] = createSignal(0);
   let screenX: unknown;
   let slot: unknown;
@@ -28,7 +31,7 @@ function mount(content: (x: () => number) => () => unknown, open: () => boolean 
     });
     const when = createMemo(() => latest(x) > 0 && open());
     const children = createMemo(() =>
-      when() ? untrack(() => createLoadingBoundary(content(x), () => "fallback")) : "closed"
+      when() ? untrack(() => createLoadingBoundary(content(x, when), () => "fallback")) : "closed"
     );
     createRenderEffect(
       () => {
@@ -102,5 +105,44 @@ describe("a mount a verdict lane triggers stays mainline (#3851)", () => {
     await done;
     await settle();
     expect(screen()).toEqual([1, "content 1"]);
+  });
+
+  it("the same with a memo created inside the content", async () => {
+    const { setX, screen } = mount(x => () => {
+      const m = createMemo(() => `content ${x()}`);
+      return m();
+    });
+    expect(screen()).toEqual([0, "closed"]);
+
+    let release!: () => void;
+    const done = action(function* () {
+      setX(1);
+      yield new Promise<void>(r => (release = r));
+    })();
+    await settle();
+    expect(screen()).toEqual([0, "fallback"]);
+
+    release();
+    await done;
+    await settle();
+    expect(screen()).toEqual([1, "content 1"]);
+  });
+
+  it("content that reads the staging before the verdict lane is repaired at the park", async () => {
+    const { setX, screen } = mount((x, when) => () => `content ${x()} ${when()}`);
+    expect(screen()).toEqual([0, "closed"]);
+
+    let release!: () => void;
+    const done = action(function* () {
+      setX(1);
+      yield new Promise<void>(r => (release = r));
+    })();
+    await settle();
+    expect(screen()).toEqual([0, "content 0 true"]);
+
+    release();
+    await done;
+    await settle();
+    expect(screen()).toEqual([1, "content 1 true"]);
   });
 });

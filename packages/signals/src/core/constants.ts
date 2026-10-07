@@ -68,6 +68,9 @@ export const REACTIVE_SCREEN_READ = 1 << 18;
  * later read of the same pass routed it into a verdict lane — that was not
  * the probe's answer (lanes.ts). Per pass. */
 export const REACTIVE_PROBE_UNANSWERED = 1 << 19;
+/** A first pass a verdict lane's pass created, or a descendant of one: its
+ * own mount, not the lane's. Its children inherit it. Per pass. */
+export const REACTIVE_VERDICT_MOUNT = 1 << 20;
 
 // Static configuration bits packed into Owner/Computed/Signal _config.
 export const CONFIG_OWNED_WRITE = 1 << 0;
