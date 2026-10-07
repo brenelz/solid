@@ -493,15 +493,15 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   }
   // The lane this pass is work of, if any: its seat (the node's, or the one
   // a lane read moved it into), or — a first pass — its creator's (ruling A:
-  // a lane pass's children are the lane's frame). A pass in a lane's seat
-  // that read none of the lane's world has left it: its result is the
-  // frame's (a derivation whose branch no longer reaches the guess). A
-  // guess is written, not derived — it never leaves this way.
-  let lane =
-    passLane ??
-    (create && (creatorPass(oldcontext)?._flags ?? 0) & REACTIVE_RECOMPUTING_DEPS
-      ? prevLane
-      : null);
+  // a lane pass's children are the lane's frame). Not a verdict lane's: its
+  // mounts are the screen's (#3851). A pass in a lane's seat that read none
+  // of the lane's world has left it: its result is the frame's (a
+  // derivation whose branch no longer reaches the guess). A guess is
+  // written, not derived — it never leaves this way.
+  const creatorFlags = create ? (creatorPass(oldcontext)?._flags ?? 0) : 0;
+  const inherited = creatorFlags & REACTIVE_RECOMPUTING_DEPS ? prevLane : null;
+  const verdictMount = inherited !== null && inherited._parent!._verdict === inherited;
+  let lane = passLane ?? (verdictMount ? null : inherited);
   // Listed before its staging, a pending pass included (the lane's own
   // flight is the lane's); false: the pass left the lane (lanes.ts).
   const errored = !!el._x?._error;
@@ -617,6 +617,8 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       // pass that runs before anything joins: the pass's input, not a verdict
       // after it. An effect still carrying an uncommitted staged value
       // re-stages: the commit applies the latest pass, not the born-held one.
+      // A verdict lane's mount that read the frame's staging is born held
+      // too: its creator shows ahead of the frame (#3851).
       if (lane !== null) {
         // Lane work: the lane's value — into the slot while the lane has not
         // revealed (its reveal shows it), as its staging once it has (the
@@ -631,7 +633,9 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
         create
           ? !(
               (flushTransaction !== null || passTx !== null) &&
-              (joined || (creatorPass(oldcontext)?._flags ?? 0) & REACTIVE_JOINED)
+              (joined ||
+                creatorFlags & REACTIVE_JOINED ||
+                (verdictMount && el._flags & REACTIVE_STAGED_READ))
             )
           : isEffect && el._pendingValue === NOT_PENDING
       ) {
@@ -1823,11 +1827,16 @@ export function serve(el: Signal<any> | Computed<any>, c: Computed<any> | null):
  * the frame commits — one pass, the common case — and a held write if it
  * parks, which the seam repairs (`stagedReaders`): the pass re-derives on
  * the committed world and its lane's runs wait that round, so the held
- * write never shows through the lane. A verdict lane's work reads the
- * frame's proposal like a frame reader (verdict.ts). */
+ * write never shows through the lane. A verdict reader reads the frame's
+ * proposal like a frame reader (verdict.ts); the rest of its lane's work
+ * sees the screen (#3851). */
 export function stagedRead(c: Computed<any>): void {
   c._flags |= REACTIVE_STAGED_READ;
-  if (passLane !== null && passLane._parent?._verdict !== passLane) stagedReaders.push(c);
+  if (
+    passLane !== null &&
+    (passLane._parent?._verdict !== passLane || !(c._config & CONFIG_VERDICT))
+  )
+    stagedReaders.push(c);
 }
 
 /** A10 for a staged node: a verdict reader (the pass entered a window) that

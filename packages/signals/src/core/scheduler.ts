@@ -835,7 +835,7 @@ export class GlobalQueue implements IQueue {
     // The passes that read this frame's stagings as the screen read held
     // writes if it parked: the lane seam re-derives them on the committed
     // world (a lane's runs wait this round).
-    GlobalQueue._laneSeams?.(t !== null ? stagedReaders : null);
+    GlobalQueue._laneSeams?.(t !== null && blocked(t) ? stagedReaders : null);
     if (stagedReaders.length) stagedReaders.length = 0;
     this._queues = [[], []];
     for (let k = transactions.length - 1; k >= 0; k--) {

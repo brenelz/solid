@@ -38,6 +38,7 @@ import {
   CONFIG_OVERRIDE,
   CONFIG_SLOT_NODE,
   CONFIG_STAGED,
+  CONFIG_VERDICT,
   EFFECT_RENDER,
   NOT_PENDING,
   REACTIVE_CHECK,
@@ -776,7 +777,10 @@ GlobalQueue._laneSeams = leaks => {
       // now (one run — #3322, #3540).
       if (
         r._flags & REACTIVE_DISPOSED ||
-        (l != null && l._parent?._verdict === l && !(r._flags & REACTIVE_PROBE_UNANSWERED))
+        (l != null &&
+          l._parent?._verdict === l &&
+          r._config & CONFIG_VERDICT &&
+          !(r._flags & REACTIVE_PROBE_UNANSWERED))
       )
         continue;
       enqueueSub(r);
