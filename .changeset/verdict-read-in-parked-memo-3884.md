@@ -1,0 +1,5 @@
+---
+"@solidjs/signals": patch
+---
+
+A `latest()` or `isPending()` read inside the async memo a transition is parked on no longer changes what other readers see of a superseding write (#3884). A pass that enters a verdict window is a frame reader: its plain reads of held or staged nodes serve the committed screen, so `[isPending(x), x()]` never pairs the fresh value with pending. That rule also applied to a memo the transaction itself holds when the transaction re-ran it over a newer write: the memo read the committed value instead of the write it was parked on, settled synchronously, and the transaction landed with the write still unread by it. An outside `isPending(source)` then answered `false` while the write was still in flight, and a render effect showing `latest(source)` did not move to the newer write. A memo the transaction holds is now its pass whichever flush re-runs it, tracked or untracked verdict reads included: its plain reads see the proposal, it re-parks on the newer write, and the verdicts answer as they do when the memo reads nothing but its source.

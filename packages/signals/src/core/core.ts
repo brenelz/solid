@@ -1033,9 +1033,13 @@ function frameRead(c: Computed<any>, el: Signal<any> | Computed<any>): boolean {
   const t = txOf(el);
   // Lane work and verdict readers are never the transaction's pass, whichever
   // flush runs it: a node T holds re-enters T when it re-runs (`recompute`'s
-  // head), and the pass may then read a guess and become the lane's.
+  // head), and the pass may then read a guess and become the lane's. Except
+  // a verdict reader T itself holds (parked pending, or a member of a held
+  // frame): its mainline re-pass is T's, like any held derivation's (#3884).
   if (
-    (t === flushTransaction && passLane === null && !verdict) ||
+    (passLane === null &&
+      ((t === flushTransaction && !verdict) ||
+        (c._config & CONFIG_HELD && (c as any)._type !== EFFECT_RENDER && txOf(c) === t))) ||
     (c._statusFlags & STATUS_UNINITIALIZED && c._config & CONFIG_HELD && txOf(c) === t)
   )
     return false;
@@ -1668,7 +1672,12 @@ export function read<T>(el: Signal<T> | Computed<T>): T {
     if (!c || el._pendingValue === NOT_PENDING || c._config & CONFIG_CHILDREN_FORBIDDEN)
       return el._value as T;
     // (A plain signal is never uninitialized — the carve-out is `serve`'s.)
-    if (c._config & CONFIG_VERDICT && stagedScreen(c as Computed<any>)) return el._value as T;
+    if (
+      c._config & CONFIG_VERDICT &&
+      !((c as Computed<any>)._flags & REACTIVE_JOINED) &&
+      stagedScreen(c as Computed<any>)
+    )
+      return el._value as T;
     stagedRead(c as Computed<any>);
     return el._pendingValue as T;
   }
@@ -1854,6 +1863,7 @@ export function serve(el: Signal<any> | Computed<any>, c: Computed<any> | null):
   if (readerSeesCommitted(el, c)) return el._value;
   if (
     c!._config & CONFIG_VERDICT &&
+    !(c!._flags & REACTIVE_JOINED) &&
     !((el as Computed<any>)._statusFlags & STATUS_UNINITIALIZED) &&
     stagedScreen(c!)
   )
