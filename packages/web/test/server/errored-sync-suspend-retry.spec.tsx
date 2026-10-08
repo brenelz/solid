@@ -4,7 +4,7 @@
 import { describe, expect, test } from "vitest";
 import { renderToStream, Errored, Loading } from "@solidjs/web";
 import type { JSX } from "@solidjs/web";
-import { createMemo, lazy, NotReadyError } from "solid-js";
+import { createMemo, createUniqueId, getOwner, lazy, NotReadyError, onCleanup } from "solid-js";
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -181,4 +181,43 @@ describe("a lazy route under <Errored> with no <Loading>", () => {
       expect(html).toContain('class="route">route body</p>');
       expect(counts).toEqual({ layout: 1 });
     });
+});
+
+describe("an <Errored> re-pulled by its slot beside a later async sibling", () => {
+  function ThrowsSync(): never {
+    throw new Error("sync render failure");
+  }
+  function AsyncAfter() {
+    const value = createMemo(() => delay(5).then(() => "async content"));
+    return <p>{value()}</p>;
+  }
+  function Layout(props: { children?: JSX.Element }) {
+    return <main>{props.children}</main>;
+  }
+  test("a fallback cleanup runs under no owner and takes no sibling id", async () => {
+    const owners: unknown[] = [];
+    let allocate = false;
+    function Fallback() {
+      onCleanup(() => {
+        owners.push(getOwner());
+        if (allocate && getOwner()) createUniqueId();
+      });
+      return <section>fallback</section>;
+    }
+    const App = () => (
+      <Layout>
+        <Errored fallback={() => <Fallback />}>
+          <ThrowsSync />
+        </Errored>
+        <AsyncAfter />
+        {() => <em>{createUniqueId()}</em>}
+      </Layout>
+    );
+    const quiet = await settle(() => <App />);
+    expect(owners.length).toBeGreaterThan(1);
+    expect(owners.every(o => o === null)).toBe(true);
+    allocate = true;
+    const allocating = await settle(() => <App />);
+    expect(allocating).toBe(quiet);
+  });
 });

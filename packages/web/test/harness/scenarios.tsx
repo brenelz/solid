@@ -1575,15 +1575,17 @@ function ShowThunkFallbackUnderErrored() {
 }
 
 // ---------------------------------------------------------------------------
-// #3920: a server-caught <Errored> sharing a `{props.children}` slot with an
-// async sibling after it, so the slot's walk pulls the boundary twice.
-let setErroredBesideAsyncCount!: (v: number) => void;
+// A server-caught <Errored> in a children slot whose later sibling suspends.
+let clickErroredBesideAsync!: () => void;
 function ErroredBesideAsyncFallback() {
   const [count, set] = createSignal(0);
-  setErroredBesideAsyncCount = set;
+  let b!: HTMLButtonElement;
+  clickErroredBesideAsync = () => b.click();
   return (
     <section>
-      <button onClick={() => set(count() + 1)}>clicked {count()} times</button>
+      <button ref={b} onClick={() => set(count() + 1)}>
+        clicked {count()} times
+      </button>
     </section>
   );
 }
@@ -2848,7 +2850,7 @@ export const scenarios: Scenario[] = [
     async: true,
     adoptAll: true,
     expectedText: "clicked 0 timesasync content",
-    update: () => setErroredBesideAsyncCount(1),
+    update: () => clickErroredBesideAsync(),
     expectedTextAfterUpdate: "clicked 1 timesasync content",
     stableSelector: "main, section, button, p"
   },

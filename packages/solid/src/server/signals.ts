@@ -3629,7 +3629,8 @@ export function createErrorBoundary<T, U>(
   const renderFallback = (err: any) =>
     ctx
       ? runWithOwner(parent!, () => {
-          disposeOwner(outputOwner!, false);
+          // Under no owner, as on the client: a cleanup must not take ids from `parent`.
+          runWithOwner(null, () => disposeOwner(outputOwner!, false));
           return runWithOwner(outputOwner!, () =>
             fallback(
               () => err,
