@@ -927,7 +927,7 @@ export function refresh<T>(
             rej(err);
             dispose(waiter!);
           },
-          CONFIG_FRESH_READ,
+          CONFIG_FRESH_READ | CONFIG_AUTHORITATIVE,
           undefined,
           own
         );

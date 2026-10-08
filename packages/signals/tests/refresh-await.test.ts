@@ -30,6 +30,7 @@ import {
   flush,
   isPending,
   refresh,
+  resolve,
   type SourceAccessor
 } from "../src/index.js";
 
@@ -312,6 +313,26 @@ test("yield refresh in an action: staged landing delivers, the override does not
   // Settlement reveals the committed truth.
   expect(opt()).toBe("v2");
   expect(views.at(-1)).toBe("v2");
+  dispose();
+});
+
+test("yield refresh of the optimistic itself in an action delivers the source value, not the guess (#3895)", async () => {
+  let value!: SourceAccessor<number>;
+  let setValue!: (v: number) => void;
+  let dispose!: () => void;
+  createRoot(d => {
+    dispose = d;
+    [value, setValue] = createOptimistic(() => Promise.resolve(2) as unknown as number);
+  });
+  await resolve(value);
+  expect(value()).toBe(2);
+
+  const save = action(function* () {
+    setValue(99);
+    return yield refresh(value);
+  });
+  await expect(save()).resolves.toBe(2);
+  expect(value()).toBe(2);
   dispose();
 });
 
