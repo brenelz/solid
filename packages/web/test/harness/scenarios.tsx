@@ -1575,6 +1575,40 @@ function ShowThunkFallbackUnderErrored() {
 }
 
 // ---------------------------------------------------------------------------
+// #3920: a server-caught <Errored> sharing a `{props.children}` slot with an
+// async sibling after it, so the slot's walk pulls the boundary twice.
+let setErroredBesideAsyncCount!: (v: number) => void;
+function ErroredBesideAsyncFallback() {
+  const [count, set] = createSignal(0);
+  setErroredBesideAsyncCount = set;
+  return (
+    <section>
+      <button onClick={() => set(count() + 1)}>clicked {count()} times</button>
+    </section>
+  );
+}
+function AsyncAfterErrored() {
+  const value = createMemo(async () => {
+    await sleep(5);
+    return "async content";
+  });
+  return <p>{value()}</p>;
+}
+function ChildrenSlotLayout(props: { children?: JSX.Element }) {
+  return <main>{props.children}</main>;
+}
+function ErroredFallbackBesideAsyncSlot() {
+  return (
+    <ChildrenSlotLayout>
+      <Errored fallback={() => <ErroredBesideAsyncFallback />}>
+        <ThrowsSync />
+      </Errored>
+      <AsyncAfterErrored />
+    </ChildrenSlotLayout>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // #3013: SSR resolves <select value> into `selected` on the matching option
 // and strips the invalid attribute at flush. Hydration must claim the select
 // cleanly (the stripped attribute and injected `selected` are invisible to
@@ -2807,6 +2841,16 @@ export const scenarios: Scenario[] = [
     expectedText: "fellCount: 0",
     update: () => setShowThunkOn(true),
     expectedTextAfterUpdate: "shown"
+  },
+  {
+    name: "errored-fallback-beside-async-slot",
+    App: ErroredFallbackBesideAsyncSlot,
+    async: true,
+    adoptAll: true,
+    expectedText: "clicked 0 timesasync content",
+    update: () => setErroredBesideAsyncCount(1),
+    expectedTextAfterUpdate: "clicked 1 timesasync content",
+    stableSelector: "main, section, button, p"
   },
   {
     name: "client-only-before-suspending-fragment",

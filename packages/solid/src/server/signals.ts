@@ -3629,6 +3629,7 @@ export function createErrorBoundary<T, U>(
   const renderFallback = (err: any) =>
     ctx
       ? runWithOwner(parent!, () => {
+          disposeOwner(outputOwner!, false);
           return runWithOwner(outputOwner!, () =>
             fallback(
               () => err,
