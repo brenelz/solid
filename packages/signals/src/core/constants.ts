@@ -135,10 +135,11 @@ export const CONFIG_VERDICT = 1 << 14;
  * promise over an expression (`resolve`/`until`, signals.ts: the pass reads
  * the error and rejects, or re-asks a pending source). */
 export const CONFIG_REDERIVE = 1 << 15;
-/** The reader wants the truth, not the lane's guess (`until`, signals.ts):
- * a read of displayed optimism serves the base the guess covers, makes the
- * pass no lane's, and the truth landing wakes it even when it confirms the
- * guess (the one case ordinary subscribers are not told — A17's silence). */
+/** The reader wants the truth, not the lane's guess (`until` and `refresh`'s
+ * waiter, signals.ts): a read of displayed optimism serves the base the guess
+ * covers, makes the pass no lane's, and the truth landing wakes it even when
+ * it confirms the guess (the one case ordinary subscribers are not told —
+ * A17's silence). */
 export const CONFIG_AUTHORITATIVE = 1 << 17;
 // Presence bits (stage-3 hot-path monomorphism, DESIGN-PATCH-CHANNEL §11b):
 // optional per-node slots (_overrideValue, _pendingSignal/_latestValueComputed,

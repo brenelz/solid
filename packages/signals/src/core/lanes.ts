@@ -32,6 +32,7 @@
 import {
   CONFIG_AUTHORITATIVE,
   CONFIG_CHILDREN_FORBIDDEN,
+  CONFIG_FRESH_READ,
   CONFIG_GUESS,
   CONFIG_HELD,
   CONFIG_INPUTS_PUBLISHED,
@@ -521,6 +522,7 @@ function dissolveLane(l: Transaction, into: Transaction | null, except?: Signal<
 
 /** Lanes. A lane's node is read by its reader's kind: an authoritative
  * reader (`until`) sees the truth — staged beneath a guess, else committed
+ * (`refresh`'s fresh-pull waiter parks on the guess's own flight instead)
  * — and is no lane's; an untracked read sees the lane's latest value (A17:
  * "direct read shows optimistic"; A28); a children-forbidden reader sees
  * the frame (A32). A render effect in the frame's seat reading a lane the
@@ -536,8 +538,16 @@ function dissolveLane(l: Transaction, into: Transaction | null, except?: Signal<
  * member throws like any. */
 export function laneRead(c: Computed<any> | null, el: Signal<any> | Computed<any>): unknown {
   const guess = el._config & CONFIG_GUESS;
-  if (c !== null && c._config & CONFIG_AUTHORITATIVE)
-    return guess && el._pendingValue !== NOT_PENDING ? el._pendingValue : el._value;
+  if (c !== null && c._config & CONFIG_AUTHORITATIVE) {
+    if (guess && el._pendingValue !== NOT_PENDING) return el._pendingValue;
+    if (
+      guess &&
+      c._config & CONFIG_FRESH_READ &&
+      (el as Computed<any>)._statusFlags & STATUS_PENDING
+    )
+      return NOT_PENDING;
+    return el._value;
+  }
   if (c === null) return laneValueOf(el);
   const l = txOf(el);
   const status = (el as Computed<any>)._statusFlags;

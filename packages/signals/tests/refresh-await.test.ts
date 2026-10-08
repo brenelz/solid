@@ -316,23 +316,27 @@ test("yield refresh in an action: staged landing delivers, the override does not
   dispose();
 });
 
-test("yield refresh of the optimistic itself in an action delivers the source value, not the guess (#3895)", async () => {
+test("yield refresh of the optimistic itself in an action delivers the re-asked source value, not the guess (#3895)", async () => {
+  let server = 2;
   let value!: SourceAccessor<number>;
   let setValue!: (v: number) => void;
   let dispose!: () => void;
   createRoot(d => {
     dispose = d;
-    [value, setValue] = createOptimistic(() => Promise.resolve(2) as unknown as number);
+    [value, setValue] = createOptimistic(
+      () => new Promise<number>(r => setTimeout(() => r(server), 5)) as unknown as number
+    );
   });
   await resolve(value);
   expect(value()).toBe(2);
 
+  server = 3;
   const save = action(function* () {
     setValue(99);
     return yield refresh(value);
   });
-  await expect(save()).resolves.toBe(2);
-  expect(value()).toBe(2);
+  await expect(save()).resolves.toBe(3);
+  expect(value()).toBe(3);
   dispose();
 });
 
