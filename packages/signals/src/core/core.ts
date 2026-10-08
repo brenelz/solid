@@ -1031,11 +1031,10 @@ function frameRead(c: Computed<any>, el: Signal<any> | Computed<any>): boolean {
   )
     return false;
   const t = txOf(el);
-  // Lane work and verdict readers are never the transaction's pass, whichever
-  // flush runs it: a node T holds re-enters T when it re-runs (`recompute`'s
-  // head), and the pass may then read a guess and become the lane's. Except
-  // a verdict reader T itself holds (parked pending, or a member of a held
-  // frame): its mainline re-pass is T's, like any held derivation's (#3884).
+  // Lane work and verdict readers T does not hold are never the transaction's
+  // pass, whichever flush runs it: a node T holds re-enters T when it re-runs
+  // (`recompute`'s head), and the pass may then read a guess and become the
+  // lane's.
   if (
     (passLane === null &&
       ((t === flushTransaction && !verdict) ||
@@ -1672,12 +1671,7 @@ export function read<T>(el: Signal<T> | Computed<T>): T {
     if (!c || el._pendingValue === NOT_PENDING || c._config & CONFIG_CHILDREN_FORBIDDEN)
       return el._value as T;
     // (A plain signal is never uninitialized — the carve-out is `serve`'s.)
-    if (
-      c._config & CONFIG_VERDICT &&
-      !((c as Computed<any>)._flags & REACTIVE_JOINED) &&
-      stagedScreen(c as Computed<any>)
-    )
-      return el._value as T;
+    if (c._config & CONFIG_VERDICT && stagedScreen(c as Computed<any>)) return el._value as T;
     stagedRead(c as Computed<any>);
     return el._pendingValue as T;
   }
@@ -1741,7 +1735,7 @@ export function read<T>(el: Signal<T> | Computed<T>): T {
     // boundary a lane mounts shows its fallback (A29's boundary exemption).
     if (passLane !== null && !((c as Computed<any> | null)?._statusFlags! & STATUS_UNINITIALIZED))
       committed = true;
-    else if (c !== null && c._config & CONFIG_VERDICT)
+    else if (c !== null && c._config & CONFIG_VERDICT && !ownPass(c as Computed<any>))
       committed = GlobalQueue._observeFlight!(c as Computed<any>, owner);
   }
   if (owner._statusFlags & STATUS_PENDING && !committed) {
@@ -1863,7 +1857,6 @@ export function serve(el: Signal<any> | Computed<any>, c: Computed<any> | null):
   if (readerSeesCommitted(el, c)) return el._value;
   if (
     c!._config & CONFIG_VERDICT &&
-    !(c!._flags & REACTIVE_JOINED) &&
     !((el as Computed<any>)._statusFlags & STATUS_UNINITIALIZED) &&
     stagedScreen(c!)
   )
@@ -1901,9 +1894,20 @@ export function stagedRead(c: Computed<any>, el?: Signal<any> | Computed<any>): 
  * (verdict.ts). A node born into the future has no screen: its staging is
  * its only value (A29). */
 export function stagedScreen(c: Computed<any>): boolean {
-  if (flushTransaction === null) return false;
+  if (flushTransaction === null || ownPass(c)) return false;
   staleReader(c, flushTransaction);
   return true;
+}
+
+/** A verdict reader the flush's transaction holds, re-run as its pass (`frameRead`). */
+function ownPass(c: Computed<any>): boolean {
+  return !!(
+    passLane === null &&
+    c._flags & REACTIVE_JOINED &&
+    c._config & CONFIG_HELD &&
+    (c as any)._type !== EFFECT_RENDER &&
+    txOf(c) === flushTransaction
+  );
 }
 
 export function ownedScopeWriteMessage(owner: Owner): string {
