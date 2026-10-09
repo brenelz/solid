@@ -390,22 +390,27 @@ function sameContents(a: unknown, b: unknown): boolean {
   }
 }
 
-export function supersede(n: Signal<any> | Computed<any>, value: unknown, changed: boolean): void {
+/** The truth landing on a guess confirms it: by the node's comparator, or a
+ * different object with the same plain contents — the guess's echo, not a
+ * correction (#3898). Reference inequality dissolved the lane and held the
+ * echo under the open action, so a mainline `until` (after `await`) dropped
+ * a source that already contained the acknowledgement. Confirming stages the
+ * truth beneath the guess: the screen keeps the guess, and an authoritative
+ * reader sees the echo without the pass joining the hold. A real content
+ * change still corrects. A held broadcast of a different row (#3482) is not
+ * this landing. */
+function confirms(n: Signal<any> | Computed<any>, truth: unknown): boolean {
+  const guess = n._x!._lane;
+  return (n._equals !== false && n._equals(guess, truth)) || sameContents(guess, truth);
+}
+
+export function supersede(n: Signal<any> | Computed<any>, value: unknown): void {
   const l = txOf(n);
   // Resolved: the parent may have merged into another transaction since the
   // lane opened (two actions guessing one slot entangle, A34 (1)) — the
   // truth is held by the transaction that lands, not the merged-away one.
   const parent = resolveTx(l._parent ?? l);
-  // A different object with the same plain contents is the guess's echo, not
-  // a correction (#3898). Reference inequality dissolved the lane and held
-  // the echo under the open action, so a mainline `until` (after `await`)
-  // dropped a source that already contained the acknowledgement. Confirming
-  // stages the truth beneath the guess: the screen keeps the guess, and an
-  // authoritative reader sees the echo without the pass joining the hold.
-  // A real content change still corrects. A held broadcast of a different row
-  // (#3482) is not this landing.
-  if (changed && sameContents(n._x!._lane, value)) changed = false;
-  if (changed) {
+  if (!confirms(n, value)) {
     // Observe: a displayed guess is being replaced by a differing truth — a
     // landing's (superseded), or the value it covered (reverted: the body
     // ended with nothing coming true).
@@ -425,9 +430,35 @@ export function supersede(n: Signal<any> | Computed<any>, value: unknown, change
     n._pendingValue = value;
     n._config |= CONFIG_HELD;
     joinFuture(parent);
-    for (let s = n._subs; s !== null; s = s._nextSub)
-      if (s._sub._config & CONFIG_AUTHORITATIVE) enqueueSub(s._sub);
+    wakeAuthoritative(n);
   }
+}
+
+/** A confirmed guess's authoritative readers, direct or through the lane's
+ * derivations of it. */
+function wakeAuthoritative(n: Signal<any> | Computed<any>): void {
+  for (let s = n._subs; s !== null; s = s._nextSub) {
+    const sub = s._sub;
+    if (sub._config & CONFIG_AUTHORITATIVE) enqueueSub(sub);
+    else if ((sub._config & (CONFIG_OVERRIDE | CONFIG_GUESS)) === CONFIG_OVERRIDE)
+      wakeAuthoritative(sub);
+  }
+}
+
+/** Every guess beneath a lane derivation is confirmed: its lane value is
+ * the truth's. */
+function derivedFromTruth(el: Computed<any>): boolean {
+  for (let d = el._deps; d !== null; d = d._nextDep) {
+    const dep = d._dep;
+    if (!(dep._config & CONFIG_OVERRIDE)) continue;
+    if (
+      dep._config & CONFIG_GUESS
+        ? dep._pendingValue === NOT_PENDING || !confirms(dep, dep._pendingValue)
+        : !derivedFromTruth(dep as Computed<any>)
+    )
+      return false;
+  }
+  return true;
 }
 
 /** A lane's end, two ways. `into === null`: the parent landed — the lane's
@@ -564,8 +595,10 @@ function dissolveLane(l: Transaction, into: Transaction | null, except?: Signal<
  * member throws like any. */
 export function laneRead(c: Computed<any> | null, el: Signal<any> | Computed<any>): unknown {
   const guess = el._config & CONFIG_GUESS;
-  if (c !== null && c._config & CONFIG_AUTHORITATIVE)
-    return guess && el._pendingValue !== NOT_PENDING ? el._pendingValue : el._value;
+  if (c !== null && c._config & CONFIG_AUTHORITATIVE) {
+    if (guess) return el._pendingValue !== NOT_PENDING ? el._pendingValue : el._value;
+    return derivedFromTruth(el as Computed<any>) ? laneValueOf(el) : el._value;
+  }
   if (c === null) return laneValueOf(el);
   const l = txOf(el);
   const status = (el as Computed<any>)._statusFlags;
@@ -661,7 +694,7 @@ function laneCorrections(): boolean {
       if (n._config & CONFIG_GUESS && n._x!._transaction === l) {
         const truth = n._pendingValue !== NOT_PENDING ? n._pendingValue : covered(n);
         if (__OBSERVE__) reverting = n._pendingValue === NOT_PENDING;
-        supersede(n, truth, !n._equals || !n._equals(n._x!._lane, truth));
+        supersede(n, truth);
         if (__OBSERVE__) reverting = false;
       }
     }
@@ -750,7 +783,7 @@ function laneWrite<T>(el: Signal<T> | Computed<T>, v: T): T {
       schedule();
       return v;
     }
-    supersede(el, v, !el._equals || !el._equals(el._x!._lane as T, v));
+    supersede(el, v);
   } else {
     const l = txOf(el);
     if (el._equals && el._equals(laneValueOf(el) as T, v)) return v;
@@ -783,7 +816,7 @@ function laneOutcome(el: Computed<any>, value: unknown, errored: boolean): boole
     el._config |= CONFIG_HELD;
     return true;
   }
-  supersede(el, value, !el._equals || !el._equals(el._x!._lane, value));
+  supersede(el, value);
   return true;
 }
 
