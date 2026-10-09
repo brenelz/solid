@@ -52,6 +52,7 @@ import {
   REACTIVE_PROBE_UNANSWERED,
   REACTIVE_RECOMPUTING_DEPS,
   REACTIVE_SCREEN_READ,
+  STATUS_ERROR,
   STATUS_PENDING,
   STATUS_UNINITIALIZED
 } from "./constants.js";
@@ -445,20 +446,23 @@ function wakeAuthoritative(n: Signal<any> | Computed<any>): void {
   }
 }
 
-/** Every guess beneath a lane derivation is confirmed: its lane value is
- * the truth's. */
-function derivedFromTruth(el: Computed<any>): boolean {
+/** 1: every guess beneath is confirmed with the truth's own value; 0: none
+ * beneath; -1: one is not, or a held write is beneath. */
+function truthBeneath(el: Computed<any>): number {
+  let r = 0;
   for (let d = el._deps; d !== null; d = d._nextDep) {
     const dep = d._dep;
-    if (!(dep._config & CONFIG_OVERRIDE)) continue;
-    if (
-      dep._config & CONFIG_GUESS
-        ? dep._pendingValue === NOT_PENDING || !confirms(dep, dep._pendingValue)
-        : !derivedFromTruth(dep as Computed<any>)
-    )
-      return false;
+    let k: number;
+    if (!(dep._config & CONFIG_OVERRIDE)) k = dep._pendingValue === NOT_PENDING ? 0 : -1;
+    else if (dep._config & CONFIG_GUESS) {
+      const truth = dep._pendingValue;
+      const guess = dep._x!._lane;
+      k = truth !== NOT_PENDING && (guess === truth || sameContents(guess, truth)) ? 1 : -1;
+    } else k = truthBeneath(dep as Computed<any>);
+    if (k === -1) return -1;
+    r |= k;
   }
-  return true;
+  return r;
 }
 
 /** A lane's end, two ways. `into === null`: the parent landed — the lane's
@@ -597,7 +601,10 @@ export function laneRead(c: Computed<any> | null, el: Signal<any> | Computed<any
   const guess = el._config & CONFIG_GUESS;
   if (c !== null && c._config & CONFIG_AUTHORITATIVE) {
     if (guess) return el._pendingValue !== NOT_PENDING ? el._pendingValue : el._value;
-    return derivedFromTruth(el as Computed<any>) ? laneValueOf(el) : el._value;
+    return (el as Computed<any>)._statusFlags & (STATUS_PENDING | STATUS_ERROR) ||
+      truthBeneath(el as Computed<any>) !== 1
+      ? el._value
+      : laneValueOf(el);
   }
   if (c === null) return laneValueOf(el);
   const l = txOf(el);
