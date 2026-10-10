@@ -41,6 +41,7 @@ import {
   CONFIG_VERDICT,
   EFFECT_RENDER,
   NOT_PENDING,
+  REACTIVE_BORN_READ,
   REACTIVE_CHECK,
   REACTIVE_DIRTY,
   REACTIVE_DISPOSED,
@@ -49,6 +50,7 @@ import {
   REACTIVE_JOINED,
   REACTIVE_LANE_DIRTY,
   REACTIVE_LANE_READ,
+  REACTIVE_LEFT_SHOWN,
   REACTIVE_PROBE_UNANSWERED,
   REACTIVE_RECOMPUTING_DEPS,
   REACTIVE_SCREEN_READ,
@@ -90,8 +92,6 @@ import type { Computed, Signal } from "./types.js";
 
 /** Live lanes (parented). Scanned at every seam while non-empty. */
 const lanes: Transaction[] = [];
-/** A pass left a shown slot the equality gate can no longer see (#3892). */
-const LEFT_SHOWN = 1 << 20;
 function newLane(parent: Transaction): Transaction {
   const l = newTransaction(true, parent);
   lanes.push(l);
@@ -320,7 +320,7 @@ export function laneStage(
       const tx = x._transaction;
       // Cleared before equality, so a return to the committed value notifies
       // nobody. The seam wakes it unless the frame is still held (#3892).
-      if (tx?._shown && !blocked(resolveTx(tx!._parent!))) el._flags |= LEFT_SHOWN;
+      if (tx?._shown && !blocked(resolveTx(tx!._parent!))) el._flags |= REACTIVE_LEFT_SHOWN;
       if (tx?._lane) x._transaction = null;
       x._lane = NOT_PENDING;
     }
@@ -681,8 +681,8 @@ function laneSeam(l: Transaction, leaked: boolean): void {
   reruns(l);
   for (let i = 0; i < l._nodes.length; i++) {
     const n = l._nodes[i] as Computed<any>;
-    if (n._flags & LEFT_SHOWN) {
-      n._flags ^= LEFT_SHOWN;
+    if (n._flags & REACTIVE_LEFT_SHOWN) {
+      n._flags ^= REACTIVE_LEFT_SHOWN;
       insertSubs(n);
     }
     const x = n._x!;
@@ -836,7 +836,7 @@ GlobalQueue._laneSeams = leaks => {
       // if the frame stays parked: a transaction landing at this seam makes
       // what it read the screen (one run).
       if (
-        r._flags & REACTIVE_DISPOSED ||
+        r._flags & (REACTIVE_DISPOSED | REACTIVE_BORN_READ) ||
         (l != null &&
           l._parent?._verdict === l &&
           (r._config & CONFIG_VERDICT

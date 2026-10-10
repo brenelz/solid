@@ -483,7 +483,8 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
           REACTIVE_STAGED_READ |
           REACTIVE_LANE_READ |
           REACTIVE_SCREEN_READ |
-          REACTIVE_PROBE_UNANSWERED)) |
+          REACTIVE_PROBE_UNANSWERED |
+          REACTIVE_BORN_READ)) |
       (create ? el._flags & REACTIVE_SNAPSHOT_STALE : 0);
     context = oldcontext;
     // A19 exc. 2: a pass that went pending on a `refresh()` re-asks the
@@ -829,7 +830,8 @@ function updateIfNecessary(el: Computed<unknown>): void {
       REACTIVE_STAGED_READ |
       REACTIVE_LANE_READ |
       REACTIVE_SCREEN_READ |
-      REACTIVE_PROBE_UNANSWERED);
+      REACTIVE_PROBE_UNANSWERED |
+      REACTIVE_BORN_READ);
 }
 
 export function computed<T>(fn: (prev?: T) => T | PromiseLike<T> | AsyncIterable<T>): Computed<T>;
@@ -1676,7 +1678,7 @@ export function read<T>(el: Signal<T> | Computed<T>): T {
       return el._value as T;
     // (A plain signal is never uninitialized — the carve-out is `serve`'s.)
     if (c._config & CONFIG_VERDICT && stagedScreen(c as Computed<any>)) return el._value as T;
-    stagedRead(c as Computed<any>);
+    stagedRead(c as Computed<any>, el);
     return el._pendingValue as T;
   }
 
@@ -1878,15 +1880,14 @@ export function serve(el: Signal<any> | Computed<any>, c: Computed<any> | null):
  * write never shows through the lane. A verdict lane's work likewise: the
  * lane holds verdicts, not the frame's other stagings (#3851) — except a
  * verdict reader, which answered for itself (the lane seam, lanes.ts). Not
- * a read of a node born staged: it has no committed value to re-derive on,
- * and a re-run would read the same staging and re-queue every round — nor
- * any later read of the same pass (`enterLane`'s, #3969), for the same
- * reason. */
+ * a pass that read a node born staged (REACTIVE_BORN_READ, the seam skips
+ * it): it has no committed value to re-derive on, and a re-run would read
+ * the same staging and re-queue every round. */
 export function stagedRead(c: Computed<any>, el?: Signal<any> | Computed<any>): void {
   c._flags |= REACTIVE_STAGED_READ;
   if ((el as Computed<any> | undefined)?._statusFlags! & STATUS_UNINITIALIZED)
     c._flags |= REACTIVE_BORN_READ;
-  if (passLane !== null && !(c._flags & REACTIVE_BORN_READ)) stagedReaders.push(c);
+  if (passLane !== null) stagedReaders.push(c);
 }
 
 /** A10 for a staged node: a verdict reader (the pass entered a window) that

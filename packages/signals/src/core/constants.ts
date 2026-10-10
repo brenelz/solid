@@ -68,8 +68,10 @@ export const REACTIVE_SCREEN_READ = 1 << 18;
  * later read of the same pass routed it into a verdict lane — that was not
  * the probe's answer (lanes.ts). Per pass. */
 export const REACTIVE_PROBE_UNANSWERED = 1 << 19;
-/** The pass read the staging of a node born staged (no committed value to
- * re-derive on, `stagedRead`). Per pass. */
+/** A pass left a shown slot the equality gate can no longer see (#3892). */
+export const REACTIVE_LEFT_SHOWN = 1 << 20;
+/** The pass read the staging of a node born staged: no committed value to
+ * re-derive on, so the lane seam skips it (`stagedRead`, lanes.ts). Per pass. */
 export const REACTIVE_BORN_READ = 1 << 21;
 
 // Static configuration bits packed into Owner/Computed/Signal _config.

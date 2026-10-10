@@ -1,14 +1,5 @@
-/**
- * #3969: a `Show` switches to a fallback that mounts a component whose own
- * `Show` reads `isPending(project)` in the same tick a `refresh` signal
- * refetches every async memo. Under `solid-js/refresh` the component's body
- * runs inside a transparent memo, born into the frame the flush parks. The
- * render effect that resolves the fallback reads that memo (joining the
- * future: it has no committed value) and then the inner `Show`'s value, a
- * verdict lane's; `enterLane` listed the pass to re-derive on the committed
- * world. Re-run, it read the same staging, so the seam held the lane and
- * re-ran the pass at the reveal, every round, until flush hit the loop guard.
- */
+/** A `Show` fallback mounts a component that reads `isPending(project)` in
+ * the tick a `refresh` signal refetches every async memo. */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createLoadingBoundary,
@@ -72,7 +63,9 @@ function Show(when: () => unknown, children: () => unknown, fallback?: () => unk
 /** A component under `solid-js/refresh`: its body runs in a transparent memo. */
 const component = (body: () => unknown) => createMemo(() => untrack(body), { transparent: true });
 
-function mount() {
+type Scope = { spinner: () => unknown; label: () => string };
+
+function mount(fallback: (scope: Scope) => unknown) {
   const [refresh, setRefresh] = createSignal(0);
   const fetchAfter = <T>(value: T) => (refresh(), sleep(20).then(() => value));
   const [selected, setSelected] = createSignal(false);
@@ -83,6 +76,7 @@ function mount() {
     const project = createMemo(() => fetchAfter({ id: "a" }));
     const rows = createMemo(() => fetchAfter([{ id: project().id }]));
     const tags = createMemo(() => fetchAfter(["A", "B"]));
+    const label = createMemo(() => (selected() ? "on" : "off"));
     const Spinner = (props: { on: () => boolean }) =>
       Show(
         () => props.on(),
@@ -94,7 +88,7 @@ function mount() {
           const show = Show(
             () => createMemo(() => tags().length > 0)() && selected(),
             () => "selected",
-            () => component(() => Spinner({ on: () => isPending(project) }))
+            () => fallback({ spinner: Spinner({ on: () => isPending(project) }), label })
           );
           insert(show, slot);
           insert(() => rows()[0].id, row);
@@ -119,7 +113,7 @@ describe("a pending indicator component mounted by a Show fallback during a refe
     process.on("unhandledRejection", onError);
     process.on("uncaughtException", onError);
     try {
-      const m = mount();
+      const m = mount(({ spinner }) => component(() => spinner));
       await vi.advanceTimersByTimeAsync(60);
       expect(m.screen.value).toBe("div");
       expect(m.row.value).toBe("a");
@@ -142,5 +136,27 @@ describe("a pending indicator component mounted by a Show fallback during a refe
       process.off("unhandledRejection", onError);
       process.off("uncaughtException", onError);
     }
+  });
+
+  test("a fallback that reads a held memo and the lane before the born memo shows the staged label, once", async () => {
+    let runs = 0;
+    const m = mount(({ spinner, label }) => {
+      const body = component(() => "body");
+      return () => (runs++, [label(), spinner(), body()].filter(Boolean).join(" "));
+    });
+    await vi.advanceTimersByTimeAsync(60);
+    m.setSelected(true);
+    flush();
+    expect(m.slot.value).toBe("selected");
+
+    runs = 0;
+    m.save();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(m.slot.value).toBe("off updating body");
+    expect(runs).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(40);
+    expect(m.slot.value).toBe("off body");
+    expect(m.row.value).toBe("a");
   });
 });
