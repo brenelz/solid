@@ -68,6 +68,9 @@ export const REACTIVE_SCREEN_READ = 1 << 18;
  * later read of the same pass routed it into a verdict lane — that was not
  * the probe's answer (lanes.ts). Per pass. */
 export const REACTIVE_PROBE_UNANSWERED = 1 << 19;
+/** The pass read the staging of a node born staged (no committed value to
+ * re-derive on, `stagedRead`). Per pass. */
+export const REACTIVE_BORN_READ = 1 << 21;
 
 // Static configuration bits packed into Owner/Computed/Signal _config.
 export const CONFIG_OWNED_WRITE = 1 << 0;

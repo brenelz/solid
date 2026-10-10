@@ -45,6 +45,7 @@ import {
   REACTIVE_PROBE_UNANSWERED,
   REACTIVE_SCREEN_READ,
   REACTIVE_IN_HEAP_HEIGHT,
+  REACTIVE_BORN_READ,
   REACTIVE_LAZY,
   REACTIVE_MANUAL_WRITE,
   REACTIVE_MISSED_WAKE,
@@ -1878,14 +1879,14 @@ export function serve(el: Signal<any> | Computed<any>, c: Computed<any> | null):
  * lane holds verdicts, not the frame's other stagings (#3851) — except a
  * verdict reader, which answered for itself (the lane seam, lanes.ts). Not
  * a read of a node born staged: it has no committed value to re-derive on,
- * and a re-run would read the same staging and re-queue every round. */
+ * and a re-run would read the same staging and re-queue every round — nor
+ * any later read of the same pass (`enterLane`'s, #3969), for the same
+ * reason. */
 export function stagedRead(c: Computed<any>, el?: Signal<any> | Computed<any>): void {
   c._flags |= REACTIVE_STAGED_READ;
-  if (
-    passLane !== null &&
-    !((el as Computed<any> | undefined)?._statusFlags! & STATUS_UNINITIALIZED)
-  )
-    stagedReaders.push(c);
+  if ((el as Computed<any> | undefined)?._statusFlags! & STATUS_UNINITIALIZED)
+    c._flags |= REACTIVE_BORN_READ;
+  if (passLane !== null && !(c._flags & REACTIVE_BORN_READ)) stagedReaders.push(c);
 }
 
 /** A10 for a staged node: a verdict reader (the pass entered a window) that
