@@ -1,11 +1,5 @@
 /**
  * @jsxImportSource @solidjs/web
- *
- * #3973 — an async read that rejects under `<Errored>` is contained (the
- * fallback renders), but when the boundary shares a `{props.children}` slot
- * with an async sibling the rejection also escapes as an
- * `unhandledRejection`, which exits Node. Each test owns the process's
- * `unhandledRejection` listeners for its duration so a leak fails THIS test.
  */
 import { describe, expect, test } from "vitest";
 import { renderToStream, Errored, Loading } from "@solidjs/web";
