@@ -3621,6 +3621,8 @@ export function createErrorBoundary<T, U>(
       // the outer Loading boundary must see the tag to hand off instead of
       // awaiting it (see CLIENT_HOLE).
       const all: any = Promise.all(pending.p);
+      // A pull whose result is discarded leaves this aggregate no other subscriber.
+      all.then(undefined, () => {});
       if (pending.p.some(p => (p as any).$clientHole)) all.$clientHole = true;
       throw new NotReadyError(all);
     }
