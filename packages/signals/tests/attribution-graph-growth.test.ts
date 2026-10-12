@@ -123,11 +123,7 @@ async function until(cond: () => boolean, what: string, timeout = 5000) {
   }
 }
 
-/**
- * A location and an outlet whose matched page owns its computations. Each
- * `/rows-N` page is N memos over `shared`; `/small` fetches its data on every
- * visit, so arriving there is held until the flight lands.
- */
+/** `/rows-N` is N memos over `shared`; `/small` fetches on every visit, so arriving there is held. */
 function heldApp() {
   const [location, setLocation] = createSignal("/", { name: "location" });
   const [shared] = createSignal(0, { name: "shared" });
@@ -384,7 +380,6 @@ describe("GRAPH_GROWTH", () => {
     }
     const small = graphs.filter(g => g.route === "/small");
     expect(small.map(g => g.navigation.outcome)).toEqual(["held", "held", "held"]);
-    // The settled graph is the same after every visit: the small page alone.
     expect(small[2].computations).toBe(graphSize().computations);
     expect(small[2].edges).toBe(graphSize().edges);
     expect(new Set(small.map(g => g.computations)).size).toBe(1);

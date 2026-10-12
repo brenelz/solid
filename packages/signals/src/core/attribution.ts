@@ -340,7 +340,7 @@ export interface FallbackEvent {
  * made only when something listens or `graphGrowth` is on.
  */
 export interface GraphEvent extends GraphSize {
-  /** When the navigation settled (`performance.now()` clock). */
+  /** When the walk was made: the settle, or the end of the drain that landed it (`performance.now()` clock). */
   at: number;
   /** The route pattern the navigation matched (`name`), else its `to`. */
   route?: string;
@@ -3477,7 +3477,7 @@ interface NavState {
 const navStates = new WeakMap<ChangeOrigin, NavState>();
 /** Opened, not yet settled. */
 const openNavs = new Set<NavState>();
-/** Settled in a landing, whose commits have yet to dispose the frame left behind: counted at flushEnd. */
+/** Settled in a landing; walked at flushEnd, once its commits have run. */
 const landedNavigations: NavigationEvent[] = [];
 let navigationLog: NavigationEvent[] = [];
 /** Drains completed since enable() — the clock `writeDrain` reads. */
@@ -3777,7 +3777,8 @@ function trackFlushEnd(): void {
   drainSeq++;
   // The swaps this drain committed have rendered.
   displayFallbacks();
-  for (const event of landedNavigations.splice(0)) trackGraph(event);
+  if (landedNavigations.length > 0)
+    for (const event of landedNavigations.splice(0)) trackGraph(event);
   for (const state of openNavs)
     if (state.open === 0 && !state.held) settleNavigation(state, "committed");
   for (const state of openInteractions) maybeSettleInteraction(state);
