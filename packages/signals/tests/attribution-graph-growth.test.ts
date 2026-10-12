@@ -14,6 +14,7 @@ import type { GraphEvent, NavigationEvent } from "../src/attribution.js";
 import {
   createEffect,
   createMemo,
+  createRenderEffect,
   createRoot,
   createSignal,
   flush,
@@ -109,6 +110,58 @@ function app(leak: false | "root" | "ownerless") {
 function navigate(setLocation: (v: string) => void, to: string, name = to) {
   OBSERVE!.attribution.withOrigin({ kind: "navigation", name, to }, () => setLocation(to));
   flush();
+}
+
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+async function until(cond: () => boolean, what: string, timeout = 5000) {
+  const start = Date.now();
+  for (;;) {
+    flush();
+    if (cond()) return;
+    if (Date.now() - start > timeout) throw new Error(`timed out waiting for ${what}`);
+    await wait(5);
+  }
+}
+
+/**
+ * A location and an outlet whose matched page owns its computations. Each
+ * `/rows-N` page is N memos over `shared`; `/small` fetches its data on every
+ * visit, so arriving there is held until the flight lands.
+ */
+function heldApp() {
+  const [location, setLocation] = createSignal("/", { name: "location" });
+  const [shared] = createSignal(0, { name: "shared" });
+  const rows = (n: number) => () => {
+    const list = Array.from({ length: n }, () => createMemo(() => shared()));
+    return () => list.reduce((sum, row) => sum + row(), 0);
+  };
+  const small = () => {
+    const data = createMemo(async () => (await wait(2), 1), { name: "data" });
+    return () => data() + shared();
+  };
+  const pages: Record<string, () => () => unknown> = {
+    "/rows-50": rows(50),
+    "/rows-100": rows(100),
+    "/rows-200": rows(200),
+    "/small": small
+  };
+  const dispose = createRoot(dispose => {
+    const page = createMemo(
+      () => {
+        const mount = pages[location()];
+        return mount ? untrack(mount) : () => null;
+      },
+      { name: "page" }
+    );
+    createRenderEffect(
+      () => page()(),
+      () => {},
+      { name: "view" }
+    );
+    return dispose;
+  });
+  flush();
+  return { setLocation, dispose };
 }
 
 describe("graphSize()", () => {
@@ -313,6 +366,28 @@ describe("GRAPH_GROWTH", () => {
     }
     const orders = graphs.filter(g => g.route === "/orders").map(g => g.owners);
     expect(new Set(orders).size).toBe(1);
+    expect(findings).toHaveLength(0);
+    dispose();
+  });
+
+  it("counts a held arrival after the landing has disposed the route it left", async () => {
+    const { graphs, navigations, findings } = arm({ visits: 3, ratio: 1.25 });
+    const { setLocation, dispose } = heldApp();
+    const go = async (to: string) => {
+      const settled = navigations.length;
+      navigate(setLocation, to);
+      await until(() => navigations.length > settled, `${to} to settle`);
+    };
+    for (const n of [50, 100, 200]) {
+      await go(`/rows-${n}`);
+      await go("/small");
+    }
+    const small = graphs.filter(g => g.route === "/small");
+    expect(small.map(g => g.navigation.outcome)).toEqual(["held", "held", "held"]);
+    // The settled graph is the same after every visit: the small page alone.
+    expect(small[2].computations).toBe(graphSize().computations);
+    expect(small[2].edges).toBe(graphSize().edges);
+    expect(new Set(small.map(g => g.computations)).size).toBe(1);
     expect(findings).toHaveLength(0);
     dispose();
   });

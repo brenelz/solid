@@ -3477,6 +3477,8 @@ interface NavState {
 const navStates = new WeakMap<ChangeOrigin, NavState>();
 /** Opened, not yet settled. */
 const openNavs = new Set<NavState>();
+/** Settled in a landing, whose commits have yet to dispose the frame left behind: counted at flushEnd. */
+const landedNavigations: NavigationEvent[] = [];
 let navigationLog: NavigationEvent[] = [];
 /** Drains completed since enable() — the clock `writeDrain` reads. */
 let drainSeq = 0;
@@ -3597,7 +3599,7 @@ function settleNavigations(t: Transition, hold: HoldEvent | undefined): void {
     if (state === undefined || !openNavs.has(state)) continue;
     // A navigation whose frame is still open when its transition commits
     // (`until()` inside the frame) settles here too: its writes are through.
-    settleNavigation(state, state.held ? "held" : "committed", hold);
+    settleNavigation(state, state.held ? "held" : "committed", hold, true);
   }
 }
 
@@ -3775,6 +3777,7 @@ function trackFlushEnd(): void {
   drainSeq++;
   // The swaps this drain committed have rendered.
   displayFallbacks();
+  for (const event of landedNavigations.splice(0)) trackGraph(event);
   for (const state of openNavs)
     if (state.open === 0 && !state.held) settleNavigation(state, "committed");
   for (const state of openInteractions) maybeSettleInteraction(state);
@@ -3783,7 +3786,8 @@ function trackFlushEnd(): void {
 function settleNavigation(
   state: NavState,
   outcome: NonNullable<NavigationEvent["outcome"]>,
-  hold?: HoldEvent
+  hold?: HoldEvent,
+  landing = false
 ): void {
   if (!openNavs.has(state)) return;
   openNavs.delete(state);
@@ -3797,7 +3801,8 @@ function settleNavigation(
   // route's responsiveness in the feedback tables. Consumers get the record.
   if (event.initial !== true) for (const f of folds) f.navigation?.(event);
   records.emit("navigation", event, undefined);
-  trackGraph(event);
+  if (landing) landedNavigations.push(event);
+  else trackGraph(event);
   // The interaction that performed it may have been waiting only on this.
   const under = openInteractionOf(event.interaction);
   if (under !== undefined) maybeSettleInteraction(under);
@@ -4427,6 +4432,7 @@ function resetTracking(): void {
   stagedFallbacks.delete(DRAIN);
   trackingGen++;
   openNavs.clear();
+  landedNavigations.length = 0;
   openInteractions.clear();
   routeCounts.clear();
   drainSeq = 0;
