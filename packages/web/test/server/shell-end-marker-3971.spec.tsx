@@ -49,13 +49,13 @@ describe("shell-end marker (#3971)", () => {
     ).toContain("s:{},fe(){}");
   });
 
-  test("renderToString ends with the marker, after the records", () => {
+  test("renderToString ends its shell with the marker, after the records", () => {
     const html = renderToString(() => (
       <Doc>
         <button>edit</button>
       </Doc>
     ));
-    expect(html.endsWith(MARKER)).toBe(true);
+    expect(html.endsWith(`${MARKER}</body></html>`)).toBe(true);
     expect(html.indexOf("_$HY")).toBeLessThan(html.indexOf(MARKER));
   });
 
@@ -73,7 +73,9 @@ describe("shell-end marker (#3971)", () => {
       { renderId: "isl", nonce: "n0" }
     );
     expect(
-      html.endsWith(`<script nonce="n0">_$HY.s["isl"]=1,_$HY.sw&&_$HY.sw("isl")</script>`)
+      html.endsWith(
+        `<script nonce="n0">_$HY.s["isl"]=1,_$HY.sw&&_$HY.sw("isl")</script></body></html>`
+      )
     ).toBe(true);
   });
 
@@ -103,7 +105,7 @@ describe("shell-end marker (#3971)", () => {
         </main>
       </Doc>
     ));
-    expect(chunks[0].endsWith(MARKER)).toBe(true);
+    expect(chunks[0].endsWith(`${MARKER}</body></html>`)).toBe(true);
     expect(html.split(MARKER).length - 1).toBe(1);
     expect(html.indexOf(MARKER)).toBeLessThan(html.indexOf(">late<"));
   });

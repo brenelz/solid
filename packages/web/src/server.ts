@@ -1889,7 +1889,7 @@ export function renderToString(code, options = {}) {
       noScripts,
       traceMetaMarkup(context.trace)
     );
-    const document =
+    const document = withShellEndMarker(
       assembleDocument(
         resolveSSRSelectValues(html),
         tracking.emittedAssets,
@@ -1899,7 +1899,12 @@ export function renderToString(code, options = {}) {
         nonce,
         head,
         onHead
-      ) + shellEndMarker(context, renderId, nonce, noScripts);
+      ),
+      context,
+      renderId,
+      nonce,
+      noScripts
+    );
     // Head-freeze point: the request's response head commits right before
     // the render's final dispose — the same order as an awaited
     // `renderToStream`'s completion — so the `httpStatus`/`httpHeader`
@@ -2427,16 +2432,22 @@ export function renderToStream(code, options = {}) {
     // its head content before any body output it could flush.
     shell(shellHtml, meta) {
       buffer.write(
-        assembleDocument(
-          shellHtml,
-          meta.preloads,
-          meta.preloadLinks,
-          meta.inlineStyles,
-          meta.tasks.length ? meta.tasks : "",
+        withShellEndMarker(
+          assembleDocument(
+            shellHtml,
+            meta.preloads,
+            meta.preloadLinks,
+            meta.inlineStyles,
+            meta.tasks.length ? meta.tasks : "",
+            nonce,
+            meta.head,
+            onHead
+          ),
+          context,
+          renderId,
           nonce,
-          meta.head,
-          onHead
-        ) + shellEndMarker(context, renderId, nonce, noScripts)
+          noScripts
+        )
       );
     },
     ...options.sink
@@ -5934,17 +5945,24 @@ function allSettled(promises) {
   });
 }
 
-// The shell-end marker (#3971): the last bytes of a render's shell, after
+// The shell-end marker (#3971): the last script of a render's shell, after
 // its records script. Scripts run in parse order, so once it has run every
 // node of the shell is in the DOM, and a `hydrate()` that started mid-parse
 // (an `async` entry) and parked on it may claim. Written only by a render
 // that emitted `<HydrationScript />`: that is the document whose entry may
 // be `async` (a hand-built document's entry must be deferred, see
 // 12-ssr-http.md), and it keeps every other render's bytes unchanged.
-function shellEndMarker(context, renderId, nonce, noScripts) {
-  if (noScripts || !context || !context.bootstrap) return "";
+// Before `</body>` when the shell has one, so the document still ends with `</html>`.
+function withShellEndMarker(html, context, renderId, nonce, noScripts) {
+  if (noScripts || !context || !context.bootstrap) return html;
   const id = JSON.stringify(renderId).replace(/</g, "\\u003C");
-  return `<script${nonceAttr(nonce, "script")}>_$HY.s[${id}]=1,_$HY.sw&&_$HY.sw(${id})</script>`;
+  let at = html.lastIndexOf("</body>");
+  if (at < 0) at = html.length;
+  return (
+    html.slice(0, at) +
+    `<script${nonceAttr(nonce, "script")}>_$HY.s[${id}]=1,_$HY.sw&&_$HY.sw(${id})</script>` +
+    html.slice(at)
+  );
 }
 
 // Single-pass document assembly. This replaced four sequential inject passes
