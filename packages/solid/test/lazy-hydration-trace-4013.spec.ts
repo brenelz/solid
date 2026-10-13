@@ -37,3 +37,21 @@ test("lazyModule() after a hydration trace returns a real promise that settles",
   expect(await real).toEqual({ routes: ["admin"] });
   expect(admin.peek()).toEqual({ routes: ["admin"] });
 });
+
+test("lazy() caches again after a traced compute throws", async () => {
+  const calls = { n: 0 };
+  const Lazy = lazy(loader({ default: () => "ok" }, calls));
+
+  expect(() =>
+    subFetch(() => {
+      Lazy.preload();
+      throw new Error("boom");
+    })
+  ).toThrow("boom");
+
+  const real = Lazy.preload();
+  expect(real).toBeInstanceOf(Promise);
+  expect(Lazy.preload()).toBe(real);
+  expect(calls.n).toBe(1);
+  expect((await real).default()).toBe("ok");
+});
