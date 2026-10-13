@@ -264,11 +264,13 @@ export function devPeekNextChildId(): string | undefined {
 
 // Monotonic count of owner creations in this process — the reactive-scope
 // creation stamp. The live-hole engine (`@solidjs/web` server runtime)
-// diffs it around a hole evaluation to detect render-once work: memos,
+// diffs it around a hole evaluation to detect render-once work: async memos,
 // boundaries, and stateful components all allocate owners, so a hole whose
 // evaluation moves this stamp is not safely re-runnable and latches instead
 // of opening a live binding. Process-global is sufficient: the diff spans
-// one synchronous evaluation, which nothing interleaves.
+// one synchronous evaluation, which nothing interleaves. Sync memos are not
+// counted: their compute never takes an async source, so a hole that
+// re-creates one per sweep is still re-runnable (#4023).
 let ownerCreations = 0;
 
 /** The reactive-scope creation stamp (see `ownerCreations`). */
@@ -1455,8 +1457,9 @@ function createSyncMemo<T>(
   // epoch there, for-the-render everywhere else. Captured at creation like
   // the async memo's ctx — async continuations may outlive request swaps.
   const ctx = sharedConfig.context;
-  // Forward the id plumbing (`id`, `transparent`) like the async path (#3012).
-  const owner = createOwner(options);
+  // Forward the id plumbing (`id`, `transparent`) like the async path (#3012);
+  // not a creation for `creationStamp()` (see `ownerCreations`).
+  const owner = allocateOwner(options?.id, options?.transparent ?? false) as unknown as Owner;
   let value: T | undefined;
   let error: unknown;
   // Presence flag for `error` — a falsy thrown value is still an error (#2857).

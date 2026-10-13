@@ -3759,6 +3759,7 @@ export function createLiveHoles(sink, scoped) {
   // sweep re-evaluations are mint-suppressed and produce neither — the
   // equality gate must not read that as a change.
   const stripMarkers = html => html.replace(/<!--lh:\/?\d+-->| data-lha="\d+"/g, "");
+  const sweepScope = { transparent: true };
   // Sweeps re-evaluate under the mint-time render CONTEXT as well as the
   // owner. `runWithOwner` restores only the owner; everything a compiled
   // template reads off `sharedConfig.context` (the behavior-claims arming
@@ -3769,11 +3770,24 @@ export function createLiveHoles(sink, scoped) {
   // re-emissions there lost every context-derived byte: handler-position
   // slot markers (`_s:on:click`) vanished from late holes (a copy button
   // that compiled, streamed its markup, and never bound).
+  // A throwaway transparent scope per sweep: the condition memos a
+  // re-evaluation creates are released with it, and ids still come from the
+  // hole's own scope (#4023).
   const swept = (owner, ctx, fn) => {
     const prev = sharedConfig.context;
     sharedConfig.context = ctx;
     try {
-      return owner ? runWithOwner(owner, fn) : fn();
+      return runWithOwner(owner, () =>
+        root(dispose => {
+          const before = stamp();
+          try {
+            return fn();
+          } finally {
+            if (stamp() !== before) engine.gateHit = true;
+            dispose();
+          }
+        }, sweepScope)
+      );
     } finally {
       sharedConfig.context = prev;
     }
@@ -3891,7 +3905,6 @@ export function createLiveHoles(sink, scoped) {
           const prevSweeping = engine.sweeping;
           engine.sweeping = true;
           engine.gateHit = false;
-          const sweepOwnersBefore = stamp();
           let res;
           try {
             res = swept(owner, holeCtx, () => resolveHoleValue(hole));
@@ -3909,7 +3922,7 @@ export function createLiveHoles(sink, scoped) {
           // creation — reachable only when the first render escalated
           // before its impure part ran): the hole is not re-runnable.
           // Close and latch what the retry path shipped.
-          if (engine.gateHit || stamp() !== sweepOwnersBefore) {
+          if (engine.gateHit) {
             b.closed = true;
             sink.closeBinding(b.key);
             return;
@@ -4067,7 +4080,6 @@ export function createLiveHoles(sink, scoped) {
           const prevSweeping = engine.sweeping;
           engine.sweeping = true;
           engine.gateHit = false;
-          const sweepOwnersBefore = stamp();
           let html = "";
           try {
             let group = null;
@@ -4104,7 +4116,7 @@ export function createLiveHoles(sink, scoped) {
           } finally {
             engine.sweeping = prevSweeping;
           }
-          if (engine.gateHit || stamp() !== sweepOwnersBefore) {
+          if (engine.gateHit) {
             b.closed = true;
             sink.closeBinding(b.key);
             return;

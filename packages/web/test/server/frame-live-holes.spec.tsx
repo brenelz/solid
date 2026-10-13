@@ -110,4 +110,47 @@ describe("live markup holes over async-iterable memos (the chat shape)", () => {
     // iterable ended (the ctx.hold release).
     expect(chunks[chunks.length - 1].type).toBe("complete");
   }, 8000);
+
+  it("re-emits a hole whose markup has a conditional on a property (#4023)", async () => {
+    type Message = { id: number; text: string; usage?: { tokens: number } };
+    const ch = channel<{ messages: Message[] }>();
+    const ServerComp = () => {
+      const view = createMemo(() => ch.iterable);
+      return (
+        <Loading fallback={<p>typing</p>}>
+          <ol>
+            {view().messages.map(m => (
+              <li data-id={m.id}>
+                {m.text.length} {m.usage && <b>done</b>}
+              </li>
+            ))}
+          </ol>
+        </Loading>
+      );
+    };
+    const { chunks, until, done } = consume(
+      renderServerComponent(ServerComp, { frame: { id: "f" } })
+    );
+    await tick();
+    ch.push({ messages: [{ id: 1, text: "one" }] });
+    await until(c => c.type === "fragment");
+    ch.push({ messages: [{ id: 1, text: "one two" }] });
+    await until(c => c.type === "hole" && /7/.test(c.html));
+    ch.push({ messages: [{ id: 1, text: "one two", usage: { tokens: 2 } }] });
+    await until(c => c.type === "hole" && /<b>done<\/b>/.test(c.html));
+    ch.end();
+    await done;
+
+    const text = (html: string) => html.replace(/<!--[$/]-->/g, "");
+    const fragment = chunks.find(c => c.type === "fragment");
+    expect(text(fragment.html)).toMatch(
+      /^<ol><!--lh:(\d+)--><li data-id="1">3 <\/li><!--lh:\/\1--><\/ol>$/
+    );
+    const holes = chunks.filter(c => c.type === "hole");
+    expect(holes.map(h => text(h.html))).toEqual([
+      '<li data-id="1">7 </li>',
+      '<li data-id="1">7 <b>done</b></li>'
+    ]);
+    expect(chunks[chunks.length - 1].type).toBe("complete");
+  }, 8000);
 });
