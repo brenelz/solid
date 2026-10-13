@@ -5,7 +5,7 @@
 // so a fully assembled document still ends with `</html>`. A shell without a
 // `</body>` keeps the marker appended.
 import { describe, expect, test } from "vitest";
-import { HydrationScript, renderToStream, renderToString } from "@solidjs/web";
+import { getHydrationWriter, HydrationScript, renderToStream, renderToString } from "@solidjs/web";
 import { createMemo, Loading } from "solid-js";
 
 function collect(code: () => any, options?: any): Promise<{ chunks: string[]; html: string }> {
@@ -67,6 +67,27 @@ describe("shell-end marker placement (#4030)", () => {
     expect(chunks[0].endsWith(`</main>${MARKER}</body></html>`)).toBe(true);
     expect(html.split(MARKER).length - 1).toBe(1);
     expect(html.indexOf(MARKER)).toBeLessThan(html.indexOf(">late<"));
+  });
+
+  test("a <HydrationScript /> after the body keeps the marker after the bootstrap and the records", () => {
+    const Rec = () => {
+      getHydrationWriter()!.write("k", 1);
+      return <p>x</p>;
+    };
+    const html = renderToString(() => (
+      <html>
+        <head></head>
+        <body>
+          <Rec />
+        </body>
+        <HydrationScript />
+      </html>
+    ));
+    expect(html.endsWith(`</html>${MARKER}`)).toBe(true);
+    expect(html.split(MARKER).length - 1).toBe(1);
+    const records = html.indexOf(`_$HY.r["k"]=1;</script><!--xs-->`);
+    expect(records).toBeGreaterThan(-1);
+    expect(records).toBeLessThan(html.indexOf(MARKER));
   });
 
   test("a shell without </body> keeps the marker appended", () => {

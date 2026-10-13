@@ -5952,12 +5952,12 @@ function allSettled(promises) {
 // that emitted `<HydrationScript />`: that is the document whose entry may
 // be `async` (a hand-built document's entry must be deferred, see
 // 12-ssr-http.md), and it keeps every other render's bytes unchanged.
-// Before `</body>` when the shell has one, so the document still ends with `</html>`.
+// Before `</body>` when that follows the bootstrap's `<!--xs-->`, else appended.
 function withShellEndMarker(html, context, renderId, nonce, noScripts) {
   if (noScripts || !context || !context.bootstrap) return html;
   const id = JSON.stringify(renderId).replace(/</g, "\\u003C");
   let at = html.lastIndexOf("</body>");
-  if (at < 0) at = html.length;
+  if (at <= html.lastIndexOf("<!--xs-->")) at = html.length;
   return (
     html.slice(0, at) +
     `<script${nonceAttr(nonce, "script")}>_$HY.s[${id}]=1,_$HY.sw&&_$HY.sw(${id})</script>` +

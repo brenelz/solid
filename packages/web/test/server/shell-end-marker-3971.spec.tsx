@@ -8,6 +8,7 @@
 import { describe, expect, test } from "vitest";
 import {
   generateHydrationScript,
+  getHydrationWriter,
   HydrationScript,
   renderToStream,
   renderToString
@@ -50,13 +51,19 @@ describe("shell-end marker (#3971)", () => {
   });
 
   test("renderToString ends its shell with the marker, after the records", () => {
+    const Rec = () => {
+      getHydrationWriter()!.write("k", 1);
+      return <button>edit</button>;
+    };
     const html = renderToString(() => (
       <Doc>
-        <button>edit</button>
+        <Rec />
       </Doc>
     ));
     expect(html.endsWith(`${MARKER}</body></html>`)).toBe(true);
-    expect(html.indexOf("_$HY")).toBeLessThan(html.indexOf(MARKER));
+    const records = html.indexOf(`_$HY.r["k"]=1;</script><!--xs-->`);
+    expect(records).toBeGreaterThan(-1);
+    expect(records).toBeLessThan(html.indexOf(MARKER));
   });
 
   test("a render without <HydrationScript /> is unchanged", () => {
