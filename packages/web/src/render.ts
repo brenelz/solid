@@ -18,7 +18,7 @@ export let spreadName: string | undefined;
 export function setSpreadName(name: string | undefined): void {
   spreadName = name;
 }
-const syncOptions = { sync: true };
+const syncOptions = { sync: true, rerunnable: true };
 
 // Dev: the binding effect whose callback is currently writing the DOM. The
 // DOM helpers (setAttribute, insertExpression, …) tag it with the element they

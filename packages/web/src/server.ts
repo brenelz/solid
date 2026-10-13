@@ -3770,24 +3770,22 @@ export function createLiveHoles(sink, scoped) {
   // re-emissions there lost every context-derived byte: handler-position
   // slot markers (`_s:on:click`) vanished from late holes (a copy button
   // that compiled, streamed its markup, and never bound).
-  // A throwaway transparent scope per sweep: the condition memos a
-  // re-evaluation creates are released with it, and ids still come from the
-  // hole's own scope (#4023).
+  // A throwaway scope per sweep releases the memos the re-evaluation creates.
   const swept = (owner, ctx, fn) => {
     const prev = sharedConfig.context;
     sharedConfig.context = ctx;
+    const run = () =>
+      root(dispose => {
+        const before = stamp();
+        try {
+          return fn();
+        } finally {
+          if (stamp() !== before) engine.gateHit = true;
+          dispose();
+        }
+      }, sweepScope);
     try {
-      return runWithOwner(owner, () =>
-        root(dispose => {
-          const before = stamp();
-          try {
-            return fn();
-          } finally {
-            if (stamp() !== before) engine.gateHit = true;
-            dispose();
-          }
-        }, sweepScope)
-      );
+      return owner ? runWithOwner(owner, run) : run();
     } finally {
       sharedConfig.context = prev;
     }
@@ -3828,13 +3826,13 @@ export function createLiveHoles(sink, scoped) {
     sweeping: false,
     parent: null,
     // The impurity gates. Slot/region records are emit-once (occurrence
-    // identity is positional), and reactive scopes are render-once (a memo
-    // re-created per sweep re-subscribes its sources — for an async
-    // iterable that is a fresh consumer and a fresh commit pump EVERY
+    // identity is positional), and reactive scopes are render-once (an
+    // async memo re-created per sweep re-subscribes its sources — for an
+    // async iterable that is a fresh consumer and a fresh commit pump EVERY
     // sweep, a multiplying feedback loop): an evaluation that does either
-    // is not re-runnable. First renders diff `recordStamp` / the
-    // creation stamp and latch the hole; sweep evaluations diff them and
-    // close the binding.
+    // is not re-runnable. The compiler's condition memos are uncounted.
+    // First renders diff `recordStamp` / the creation stamp and latch the
+    // hole; sweep evaluations diff them and close the binding.
     recordStamp: 0,
     gateHit: false,
     /**

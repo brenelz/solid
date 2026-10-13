@@ -8,7 +8,7 @@
  * markdown memo), pinned at the integration layer.
  */
 import { describe, expect, it } from "vitest";
-import { createMemo } from "solid-js";
+import { createMemo, createSignal, lazy } from "solid-js";
 import { Loading } from "@solidjs/web";
 import { renderServerComponent } from "../../frames/src/frame-sink.js";
 
@@ -151,6 +151,79 @@ describe("live markup holes over async-iterable memos (the chat shape)", () => {
       '<li data-id="1">7 </li>',
       '<li data-id="1">7 <b>done</b></li>'
     ]);
+    expect(chunks[chunks.length - 1].type).toBe("complete");
+  }, 8000);
+
+  it("re-emits an attribute whose value has a conditional on a property", async () => {
+    type Message = { text: string; usage?: { tokens: number } };
+    const ch = channel<Message>();
+    const ServerComp = () => {
+      const view = createMemo(() => ch.iterable);
+      return (
+        <Loading fallback={<p>typing</p>}>
+          <p class={view().usage ? "done" : "busy"}>{view().text}</p>
+        </Loading>
+      );
+    };
+    const { chunks, until, done } = consume(
+      renderServerComponent(ServerComp, { frame: { id: "f" } })
+    );
+    await tick();
+    ch.push({ text: "one" });
+    await until(c => c.type === "fragment");
+    ch.push({ text: "one two" });
+    await until(c => c.type === "hole" && c.html === "one two");
+    ch.push({ text: "one two", usage: { tokens: 2 } });
+    await until(c => c.type === "attr");
+    ch.end();
+    await done;
+
+    const fragment = chunks.find(c => c.type === "fragment");
+    expect(fragment.html).toMatch(/<p data-lha="\d+"[^>]* class="busy">/);
+    const attrs = chunks
+      .flatMap(c => (c.type === "ops" ? c.ops : [c]))
+      .filter(c => c.type === "attr");
+    expect(attrs.map(a => a.attrs.replace(/ data-lha="\d+"/g, ""))).toEqual([' class="done"']);
+    expect(chunks[chunks.length - 1].type).toBe("complete");
+  }, 8000);
+
+  it("latches a hole that renders a lazy component", async () => {
+    const ch = channel<string>();
+    let renders = 0;
+    const Panel = (props: { text: string }) => {
+      renders++;
+      return <p>{props.text}</p>;
+    };
+    const LazyPanel = lazy(() => Promise.resolve({ default: Panel }), undefined, "./Panel.tsx");
+    await LazyPanel.preload();
+    const ServerComp = () => {
+      const [open] = createSignal(true);
+      const text = createMemo(() => ch.iterable);
+      return (
+        <Loading fallback={<p>typing</p>}>
+          <div>{open() ? <LazyPanel text={text()} /> : null}</div>
+        </Loading>
+      );
+    };
+    const { chunks, until, done } = consume(
+      renderServerComponent(ServerComp, {
+        frame: { id: "f" },
+        manifest: { "./Panel.tsx": { file: "assets/panel.js" } }
+      })
+    );
+    await tick();
+    ch.push("one");
+    await until(c => c.type === "fragment");
+    ch.push("one two");
+    await until(c => c.type === "hole" && c.html === "one two");
+    ch.end();
+    await done;
+
+    expect(renders).toBe(1);
+    const fragment = chunks.find(c => c.type === "fragment");
+    expect(fragment.html).toMatch(/^<div><p><!--lh:(\d+)-->one<!--lh:\/\1--><\/p><\/div>$/);
+    const holes = chunks.filter(c => c.type === "hole");
+    expect(holes.map(h => h.html)).toEqual(["one two"]);
     expect(chunks[chunks.length - 1].type).toBe("complete");
   }, 8000);
 });
