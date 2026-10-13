@@ -1,6 +1,6 @@
 import { untrack, createMemo } from "@solidjs/signals";
 import { IS_DEV, IS_OBSERVE, observedComponent } from "../client/core.js";
-import { _lazyHydrationLookup, sharedConfig } from "./hydration.js";
+import { _lazyHydrationLookup, sharedConfig, tracing } from "./hydration.js";
 import type { Element as SolidElement } from "../types.js";
 
 /**
@@ -149,7 +149,7 @@ export function lazy<T extends Component<any>>(
   let p: Promise<any> | undefined;
   const load = () => {
     if (p) return p;
-    const cur = (p = fn());
+    const cur = fn();
     cur.then(
       (mod: any) => {
         comp = () => (exportName ? mod[exportName] : mod.default) as T;
@@ -164,7 +164,8 @@ export function lazy<T extends Component<any>>(
         if (p === cur) p = undefined;
       }
     );
-    return cur;
+    // Under the hydration trace's Promise swap the loader yields a stub that never settles.
+    return tracing ? cur : (p = cur);
   };
   const wrap: T & { preload?: () => void; moduleUrl?: string } = ((props: any) => {
     // `hydrating` can only be true once enableHydration() installed the slot.
@@ -229,7 +230,7 @@ export function lazyModule<T extends Record<string, any>>(
   let mod: T | undefined;
   const load = () => {
     if (p) return p;
-    const cur = (p = fn());
+    const cur = fn();
     cur.then(
       m => {
         mod = m;
@@ -238,7 +239,7 @@ export function lazyModule<T extends Record<string, any>>(
         if (p === cur) p = undefined;
       }
     );
-    return cur;
+    return tracing ? cur : (p = cur);
   };
   const read = load as typeof load & {
     preload: typeof load;

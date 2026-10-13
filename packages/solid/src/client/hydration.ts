@@ -458,6 +458,7 @@ export let _lazyHydrationLookup:
       exportName?: string
     ) => (() => T) | undefined)
   | undefined;
+export let tracing = 0;
 
 // --- Hydration helpers ---
 
@@ -494,6 +495,7 @@ export function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
   try {
     window.fetch = () => new MockPromise() as any;
     Promise = MockPromise as any;
+    tracing++;
     const result = fn(prev);
     // An async GENERATOR's body has not run yet — its reads before the
     // first suspension are part of the compute, so pull once under the
@@ -521,6 +523,7 @@ export function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
   } finally {
     window.fetch = ogFetch;
     Promise = ogPromise;
+    tracing--;
   }
 }
 
