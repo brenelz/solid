@@ -401,4 +401,64 @@ describe("document face — live holes against the real core", () => {
     expect(attrs.map(op => op.key)).toEqual([addr]);
     expect(attrs[0].attrs).toBe(' data-l="r:1"');
   });
+
+  test("dropping a latched tag's address leaves an equal string earlier in the segment alone", async () => {
+    const ServerComp = () => {
+      const ready = createMemo(async () => {
+        await wait(5);
+        return "r";
+      });
+      const tick = createMemo(async function* () {
+        yield 0;
+        await wait(20);
+        yield 1;
+      });
+      const label = createMemo(() => ready() + ":" + tick());
+      const text = createMemo(() => "t");
+      return (
+        <Loading fallback={<span>FB</span>}>
+          <div>
+            <p>
+              {' data-lha="1"'}
+              {text()}
+            </p>
+            <ul data-l={label()}>
+              <li>x</li>
+            </ul>
+          </div>
+        </Loading>
+      );
+    };
+    const Inline = frameTransformDirectResult(ServerComp, { id: "dlh/attr-drop" }) as any;
+    const html = await collect(() => Inline({}));
+
+    expect(html).toContain('<p> data-lha="1"<!--$--><!--lh:0-->t<!--lh:/0--><!--/--></p>');
+    expect(html.match(/<ul[^>]*>/g)).toEqual(['<ul data-lha="2" data-l="r:0">']);
+  });
+
+  test("a grouped attribute set that escalates inside a Loading boundary is addressed once", async () => {
+    const ServerComp = () => {
+      const ready = createMemo(async () => {
+        await wait(5);
+        return "r";
+      });
+      const tick = createMemo(async function* () {
+        yield 0;
+        await wait(20);
+        yield 1;
+      });
+      const label = createMemo(() => ready() + ":" + tick());
+      return (
+        <Loading fallback={<span>FB</span>}>
+          <ul data-a={tick()} data-l={label()}>
+            <li>x</li>
+          </ul>
+        </Loading>
+      );
+    };
+    const Inline = frameTransformDirectResult(ServerComp, { id: "dlh/attr-group" }) as any;
+    const html = await collect(() => Inline({}));
+
+    expect(html.match(/<ul[^>]*>/g)).toEqual(['<ul data-lha="1" data-a="0" data-l="r:0">']);
+  });
 });

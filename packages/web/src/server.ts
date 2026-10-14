@@ -4212,23 +4212,29 @@ export function ssr(t) {
     }
     const id = live.mint();
     const inject = ` data-lha="${id}"`;
+    const { seg, off } = lastOpen;
     let prefix;
     if (result === null) {
-      s = s.slice(0, lastOpen.off) + inject + s.slice(lastOpen.off);
-      prefix = s.slice(lastOpen.off + inject.length);
+      s = s.slice(0, off) + inject + s.slice(off);
+      prefix = s.slice(off + inject.length);
     } else {
-      const seg = result.t[lastOpen.seg];
-      result.t[lastOpen.seg] = seg.slice(0, lastOpen.off) + inject + seg.slice(lastOpen.off);
-      prefix = result.t[lastOpen.seg].slice(lastOpen.off + inject.length);
+      const sg = result.t[seg];
+      result.t[seg] = sg.slice(0, off) + inject + sg.slice(off);
+      prefix = result.t[seg].slice(off + inject.length);
     }
-    cap = { id, parts: [prefix], base: prefix, inject };
+    cap = { id, parts: [prefix], base: prefix, seg, off, n: inject.length };
     return true;
   };
   // The spliced address leaves with its capture, or a resume mints a second one.
-  const captureDrop = li => {
-    if (li < 0) s = s.replace(cap.inject, "");
-    else result.t[li] = result.t[li].replace(cap.inject, "");
+  const captureDrop = () => {
+    const { seg, off, n } = cap;
     cap = null;
+    if (result === null) s = s.slice(0, off) + s.slice(off + n);
+    else {
+      const k = seg < 0 ? 0 : seg;
+      const sg = result.t[k];
+      result.t[k] = sg.slice(0, off) + sg.slice(off + n);
+    }
   };
   for (let i = 1; i < len; i++) {
     const hole = arguments[i];
@@ -4280,7 +4286,7 @@ export function ssr(t) {
         } else {
           // Group escalation: the tag (if one is being captured) went
           // async mid-attrs — it latches.
-          if (cap) captureDrop(result.t.length - 1);
+          if (cap) captureDrop();
           result.h.push(ssrGroupSlot(lastGroupVal.fn, lastGroupIdx++));
           result.p.push(lastGroupVal.p);
           result.t.push("");
@@ -4350,7 +4356,7 @@ export function ssr(t) {
             cap.parts.push({ f: hole });
           } else {
             // The hole escalated mid-attrs: the tag latches.
-            captureDrop(li);
+            captureDrop();
           }
         }
       } else {
@@ -4366,7 +4372,7 @@ export function ssr(t) {
           }
         } else {
           // The hole escalated mid-attrs: the tag latches.
-          if (capturing) captureDrop(-1);
+          if (capturing) captureDrop();
           result = { t: [s], h: [], p: [] };
           s = "";
           appendResolvedNode(result, r);
