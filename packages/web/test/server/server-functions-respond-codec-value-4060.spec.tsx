@@ -1,12 +1,12 @@
 /**
  * `respond(value, init)` accepts every value a plain return accepts (#4060).
  *
- * The envelope used to build its passthrough JSON body eagerly, so a value
- * JSON cannot carry (a `bigint`) threw inside the function body and failed
- * the direct leg and the scripted HTTP leg, which never read that body: the
- * direct leg unwraps `value` and the scripted leg re-encodes it through the
- * same negotiation as a plain return. Only a caller without the client
- * runtime reads the body, so it is encoded when read.
+ * The envelope used to build its passthrough JSON body with a bare
+ * `JSON.stringify`, so a value JSON cannot carry (a `bigint`) threw inside
+ * the function body and failed every leg. The envelope now carries the JSON
+ * body only when JSON can encode the value; otherwise it carries the
+ * metadata bodiless and the handler encodes the value the way it encodes a
+ * plain return, through the codec, for scripted and unscripted callers alike.
  *
  * Runs against the built bundles (server-functions/dist/*, wired up in
  * vite.config.server.mjs).
@@ -85,5 +85,25 @@ describe("respond() carries a value JSON cannot encode (#4060)", () => {
     expect(response.headers.get("content-type")).toBe("application/json");
     expect(response.headers.get("cache-control")).toBe("public, s-maxage=60");
     expect(await response.json()).toEqual({ id: 7 });
+  });
+
+  it("a caller without the client runtime gets the codec encoding, plus the metadata", async () => {
+    declareGET("respond-4060-unscripted-codec", async () => respond({ n: 1n }, cacheHeaders));
+    const response = await get("respond-4060-unscripted-codec", { scripted: false });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/plain");
+    expect(response.headers.get("cache-control")).toBe("public, s-maxage=60");
+    expect(await decodeResponse(response)).toEqual({ n: 1n });
+  });
+
+  it("respond(undefined) stays bodiless for a caller without the client runtime", async () => {
+    declareGET("respond-4060-unscripted-redirect", async () =>
+      respond(undefined, { status: 302, headers: { Location: "/elsewhere" } })
+    );
+    const response = await get("respond-4060-unscripted-redirect", { scripted: false });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/elsewhere");
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(response.body).toBeNull();
   });
 });
