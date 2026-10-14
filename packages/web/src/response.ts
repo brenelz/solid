@@ -334,8 +334,18 @@ export function respond<T>(value: T, init: ResponseHelperInit = {}): T {
     ) as unknown as T;
   }
   headers.set("Content-Type", "application/json");
+  // Encoded on read: JSON cannot carry every value the codec can (#4060).
+  const body = new ReadableStream(
+    {
+      pull(controller) {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(value)));
+        controller.close();
+      }
+    },
+    { highWaterMark: 0 }
+  );
   return new ResponseEnvelope(
-    new Response(JSON.stringify(value), { ...responseInit, headers }),
+    new Response(body, { ...responseInit, headers }),
     value
   ) as unknown as T;
 }
