@@ -166,6 +166,41 @@ import {
   void refresh(store);
 }
 
+// ── derived stores — nested nodes are refresh targets ─────────────────
+
+{
+  const [store] = createStore(() => ({ row: { n: 1 } }), { row: { n: 0 } });
+  store satisfies { row: { n: number } };
+  store.row.n satisfies number;
+  void refresh(store);
+  void refresh(store.row);
+}
+
+{
+  type Todo = { id: number; tags: string[]; meta: { done: boolean } | null };
+  const todos = createProjection(() => [] as Todo[], [] as Todo[]);
+  todos satisfies Todo[];
+  todos[0].tags satisfies string[];
+  todos[0].meta satisfies { done: boolean } | null;
+  void refresh(todos);
+  void refresh(todos[0]);
+  void refresh(todos[0].tags);
+  if (todos[0].meta) void refresh(todos[0].meta);
+}
+
+{
+  const [store] = createOptimisticStore(() => ({ user: { name: "a" } }), {});
+  void refresh(store.user);
+}
+
+{
+  const [store] = createStore({ row: { n: 1 } });
+  // @ts-expect-error Plain stores have no derive function to re-run.
+  void refresh(store);
+  // @ts-expect-error Plain stores have no derive function to re-run.
+  void refresh(store.row);
+}
+
 // ── createOptimisticStore (plain) — options preserve inference ───────
 
 {

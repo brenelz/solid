@@ -56,6 +56,7 @@ export type {
   ExternalSource,
   ExternalSourceConfig,
   Refreshable,
+  RefreshBrand,
   AttributionSlot,
   ClientErrorContext,
   ClientErrorHook,

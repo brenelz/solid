@@ -27,8 +27,13 @@ export type Store<T> = T;
 export type StoreSetter<T> = (fn: (state: T) => T | void) => void;
 /** Tuple returned by the plain `createStore(initialValue, options?)` form. */
 export type StoreReturn<T> = [get: Store<T>, set: StoreSetter<T>];
+/** A derived store's read side: every wrapped node, nested ones included, is a `refresh()` target. */
+export type RefreshableStore<T> = Refreshable<
+  unknown extends T ? T : { [K in keyof T]: RefreshableNode<T[K]> }
+>;
+type RefreshableNode<T> = T extends NotWrappable ? T : RefreshableStore<T>;
 /** Tuple returned by the derived `createStore(fn, seed, options?)` form. */
-export type ProjectionStoreReturn<T> = [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+export type ProjectionStoreReturn<T> = [get: RefreshableStore<T>, set: StoreSetter<T>];
 
 /** Options shared by all store primitives. */
 export interface StoreOptions {

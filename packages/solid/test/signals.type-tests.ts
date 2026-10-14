@@ -7,6 +7,8 @@ import {
   refresh,
   createSignal,
   createOptimistic,
+  createStore,
+  createProjection,
   Signal,
   Setter
 } from "../src/index.js";
@@ -358,6 +360,23 @@ createRenderEffect<number>(
   (prev: number) => count(),
   () => {}
 );
+
+//////////////////////////////////////////////////////////////////////////
+// refresh ////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+const [derivedStore] = createStore(() => ({ row: { n: 1 } }), { row: { n: 0 } });
+const derivedRow: { n: number } = derivedStore.row;
+refresh(derivedStore);
+refresh(derivedStore.row);
+const derivedList = createProjection(() => [{ id: 1 }], [] as { id: number }[]);
+refresh(derivedList);
+refresh(derivedList[0]);
+const [plainStore] = createStore({ row: { n: 1 } });
+// @ts-expect-error plain stores have no derive function to re-run
+refresh(plainStore);
+// @ts-expect-error plain stores have no derive function to re-run
+refresh(plainStore.row);
 
 //////////////////////////////////////////////////////////////////////////
 // test setter invariance /////////////////////////////////////////////////

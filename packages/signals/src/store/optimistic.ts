@@ -42,7 +42,6 @@ import {
   txOf
 } from "../core/scheduler.js";
 import type { Computed, Signal } from "../core/types.js";
-import type { Refreshable } from "../core/index.js";
 import { runProjectionComputed } from "./projection.js";
 import {
   cloneRaw,
@@ -68,6 +67,7 @@ import {
   markRawIngest,
   type NoFn,
   type ProjectionOptions,
+  type RefreshableStore,
   type Store,
   type StoreOptions,
   type StoreSetter
@@ -618,7 +618,7 @@ export function createOptimisticStore<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ProjectionOptions
-): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+): [get: RefreshableStore<T>, set: StoreSetter<T>];
 export function createOptimisticStore<T extends object = {}>(
   first: T | ((store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>),
   second?: Partial<T> | NoFn<T> | Store<NoFn<T>> | StoreOptions,

@@ -61,6 +61,8 @@ export type {
   Owner,
   ProjectionOptions,
   Refreshable,
+  RefreshableStore,
+  RefreshBrand,
   Signal,
   SignalOptions,
   SourceAccessor,

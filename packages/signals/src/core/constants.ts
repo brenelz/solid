@@ -230,4 +230,9 @@ export const $REFRESH = Symbol("refresh");
  * types inferred without leaking the internal `$REFRESH` symbol into public type
  * signatures (TS4058).
  */
-export type Refreshable<T> = T & { readonly [$REFRESH]: any };
+export type Refreshable<T> = T & RefreshBrand;
+
+// A class accessor rather than a property: object spread and rest leave it behind.
+export declare class RefreshBrand {
+  get [$REFRESH](): any;
+}

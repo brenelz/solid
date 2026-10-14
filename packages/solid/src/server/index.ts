@@ -71,6 +71,8 @@ export type {
   Omit,
   Owner,
   Refreshable,
+  RefreshableStore,
+  RefreshBrand,
   Signal,
   SignalOptions,
   Setter,

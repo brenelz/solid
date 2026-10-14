@@ -29,7 +29,7 @@ import {
   type NoInfer,
   type Owner,
   type ProjectionOptions,
-  type Refreshable,
+  type RefreshableStore,
   type Signal,
   type SignalOptions,
   type SourceAccessor,
@@ -1808,7 +1808,7 @@ export const createProjection: <T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: HydrationProjectionOptions
-) => Refreshable<Store<T>> = ((...args: any[]) => {
+) => RefreshableStore<T> = ((...args: any[]) => {
   // `hydrating` can only be true once enableHydration() installed the
   // adapter slot (see createOptimistic above for the retention story).
   return sharedConfig.hydrating
@@ -1887,7 +1887,7 @@ export const createStore: {
     fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
     seed: Partial<T> | Store<NoFn<T>>,
     options?: HydrationProjectionOptions
-  ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+  ): [get: RefreshableStore<T>, set: StoreSetter<T>];
 } = ((...args: any[]) => {
   // `hydrating` can only be true once enableHydration() installed the
   // adapter slot (see createOptimistic above for the retention story).
@@ -1951,7 +1951,7 @@ export const createOptimisticStore: {
     fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
     seed: Partial<T> | Store<NoFn<T>>,
     options?: HydrationProjectionOptions
-  ): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+  ): [get: RefreshableStore<T>, set: StoreSetter<T>];
 } = ((...args: any[]) => {
   // `hydrating` can only be true once enableHydration() installed the
   // adapter slot (see createOptimistic above for the retention story).

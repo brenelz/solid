@@ -31,7 +31,6 @@ import { enqueueSub } from "../core/heap.js";
 import { getOwner, isDisposed } from "../core/owner.js";
 import { question, schedule, setQuestion } from "../core/scheduler.js";
 import type { Computed, Signal } from "../core/types.js";
-import type { Refreshable } from "../core/index.js";
 import { reconcileState } from "./reconcile.js";
 import { nameStore, runDirect, storeSetter, wrap } from "./store.js";
 import { setLookup, storeOwners, type StoreFamily, type StoreTarget } from "./target.js";
@@ -42,6 +41,7 @@ import {
   setWriteOverride,
   type NoFn,
   type ProjectionOptions,
+  type RefreshableStore,
   type Store
 } from "./types.js";
 
@@ -341,7 +341,7 @@ function createProjectionInternal<T extends object = {}>(
   }, nodeOptions);
   node._config &= ~CONFIG_AUTO_DISPOSE;
   fam.node = node;
-  return { store, node } as { store: Refreshable<Store<T>>; node: Computed<void | T> };
+  return { store, node } as { store: RefreshableStore<T>; node: Computed<void | T> };
 }
 
 /**
@@ -354,7 +354,7 @@ export function createProjection<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ProjectionOptions
-): Refreshable<Store<T>> {
+): RefreshableStore<T> {
   return createProjectionInternal(fn, seed, options).store;
 }
 
@@ -363,7 +363,7 @@ export function createStoreDerived<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ProjectionOptions
-): [Refreshable<Store<T>>, (f: (draft: T) => T | void) => void] {
+): [RefreshableStore<T>, (f: (draft: T) => T | void) => void] {
   const { store } = createProjectionInternal(fn, seed, options);
-  return [store, (f: (draft: T) => T | void): void => storeSetter(store, f)];
+  return [store, (f: (draft: T) => T | void): void => storeSetter(store as Store<T>, f)];
 }

@@ -8,6 +8,7 @@ export type {
   NotWrappable,
   ProjectionOptions,
   ProjectionStoreReturn,
+  RefreshableStore,
   SolidStore,
   Store,
   StoreOptions,

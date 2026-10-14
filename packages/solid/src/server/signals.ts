@@ -35,6 +35,7 @@ import type {
   Accessor as SignalAccessor,
   ProjectionOptions,
   Refreshable,
+  RefreshableStore,
   StoreOptions
 } from "@solidjs/signals";
 
@@ -56,6 +57,8 @@ export type {
   Signal,
   Owner,
   Refreshable,
+  RefreshableStore,
+  RefreshBrand,
   Maybe,
   Store,
   StoreSetter,
@@ -2402,7 +2405,7 @@ export function createStore<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ServerProjectionOptions
-): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+): [get: RefreshableStore<T>, set: StoreSetter<T>];
 export function createStore<T extends object = {}>(
   first: T | Store<T> | ((store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>),
   second?: T | Store<T>,
@@ -2447,7 +2450,7 @@ export function createOptimisticStore<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ServerProjectionOptions
-): [get: Refreshable<Store<T>>, set: StoreSetter<T>];
+): [get: RefreshableStore<T>, set: StoreSetter<T>];
 export function createOptimisticStore<T extends object = {}>(
   first: T | Store<T> | ((store: T) => void | T | Promise<void | T> | AsyncIterable<void | T>),
   second?: T | Store<T>,
@@ -2606,7 +2609,7 @@ export function createProjection<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
   options?: ServerProjectionOptions
-): Refreshable<Store<T>>;
+): RefreshableStore<T>;
 export function createProjection<T extends object = {}>(
   fn: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
   seed: Partial<T> | Store<NoFn<T>>,
