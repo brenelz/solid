@@ -29,9 +29,21 @@ export type StoreSetter<T> = (fn: (state: T) => T | void) => void;
 export type StoreReturn<T> = [get: Store<T>, set: StoreSetter<T>];
 /** A derived store's read side: every wrapped node, nested ones included, is a `refresh()` target. */
 export type RefreshableStore<T> = Refreshable<
-  unknown extends T ? T : { [K in keyof T]: RefreshableNode<T[K]> }
+  unknown extends T ? T : T & { [K in keyof T]: RefreshableNode<T[K]> }
 >;
-type RefreshableNode<T> = T extends NotWrappable ? T : RefreshableStore<T>;
+type RefreshableNode<T> = unknown extends T
+  ? T
+  : T extends NotWrappable | NotWrappableBuiltin
+    ? T
+    : RefreshableStore<T>;
+type NotWrappableBuiltin =
+  | Date
+  | RegExp
+  | Promise<any>
+  | Map<any, any>
+  | Set<any>
+  | WeakMap<any, any>
+  | WeakSet<any>;
 /** Tuple returned by the derived `createStore(fn, seed, options?)` form. */
 export type ProjectionStoreReturn<T> = [get: RefreshableStore<T>, set: StoreSetter<T>];
 

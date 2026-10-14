@@ -365,5 +365,5 @@ export function createStoreDerived<T extends object = {}>(
   options?: ProjectionOptions
 ): [RefreshableStore<T>, (f: (draft: T) => T | void) => void] {
   const { store } = createProjectionInternal(fn, seed, options);
-  return [store, (f: (draft: T) => T | void): void => storeSetter(store as Store<T>, f)];
+  return [store, (f: (draft: T) => T | void): void => storeSetter(store, f)];
 }

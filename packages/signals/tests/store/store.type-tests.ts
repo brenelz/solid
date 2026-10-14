@@ -194,6 +194,60 @@ import {
 }
 
 {
+  class User {
+    #secret = 1;
+    private hidden = 2;
+    name = "a";
+  }
+  const [store] = createStore(() => ({ u: new User() }), { u: new User() });
+  const user: User = store.u;
+  void user;
+  void refresh(store.u);
+}
+
+{
+  function derive<T extends object>(fn: () => T, seed: T) {
+    const projected: T = createProjection(fn, seed);
+    const [derived]: [T, unknown] = createStore(fn, seed);
+    const [optimistic]: [T, unknown] = createOptimisticStore(fn, seed);
+    return [projected, derived, optimistic];
+  }
+  void derive;
+}
+
+{
+  const seed = { x: 0 as unknown, m: {} as Record<string, unknown>, a: 0 as any };
+  const store = createProjection(() => seed, seed);
+  store.x satisfies unknown;
+  store.m.k satisfies unknown;
+  store.a satisfies any;
+  // @ts-expect-error An unknown node is not a refresh target.
+  void refresh(store.x);
+  // @ts-expect-error An unknown node is not a refresh target.
+  void refresh(store.m.k);
+}
+
+{
+  const seed = { d: new Date(), m: new Map<string, number>(), s: new Set<number>(), r: /x/ };
+  const store = createProjection(() => seed, seed);
+  store.d satisfies Date;
+  // @ts-expect-error Built-ins the store does not wrap are not refresh targets.
+  void refresh(store.d);
+  // @ts-expect-error Built-ins the store does not wrap are not refresh targets.
+  void refresh(store.m);
+  // @ts-expect-error Built-ins the store does not wrap are not refresh targets.
+  void refresh(store.s);
+  // @ts-expect-error Built-ins the store does not wrap are not refresh targets.
+  void refresh(store.r);
+}
+
+{
+  const [store] = createStore(() => ({ row: { n: 1 } }), { row: { n: 0 } });
+  // @ts-expect-error A spread copy is not a refresh target.
+  void refresh({ ...store.row });
+}
+
+{
   const [store] = createStore({ row: { n: 1 } });
   // @ts-expect-error Plain stores have no derive function to re-run.
   void refresh(store);

@@ -377,6 +377,26 @@ const [plainStore] = createStore({ row: { n: 1 } });
 refresh(plainStore);
 // @ts-expect-error plain stores have no derive function to re-run
 refresh(plainStore.row);
+class DerivedUser {
+  #secret = 1;
+  name = "a";
+}
+const [derivedUsers] = createStore(() => ({ u: new DerivedUser() }), { u: new DerivedUser() });
+const derivedUser: DerivedUser = derivedUsers.u;
+function deriveGeneric<T extends object>(fn: () => T, seed: T): T {
+  return createProjection(fn, seed);
+}
+const derivedLeaves = createProjection(
+  () => ({ x: 0 as unknown, d: new Date(), m: new Map<string, number>() }),
+  { x: 0 as unknown, d: new Date(), m: new Map<string, number>() }
+);
+derivedLeaves.x satisfies unknown;
+// @ts-expect-error an unknown node is not a refresh target
+refresh(derivedLeaves.x);
+// @ts-expect-error a Date is not wrapped by the store
+refresh(derivedLeaves.d);
+// @ts-expect-error a Map is not wrapped by the store
+refresh(derivedLeaves.m);
 
 //////////////////////////////////////////////////////////////////////////
 // test setter invariance /////////////////////////////////////////////////
