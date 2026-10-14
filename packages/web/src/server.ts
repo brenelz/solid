@@ -4221,8 +4221,14 @@ export function ssr(t) {
       result.t[lastOpen.seg] = seg.slice(0, lastOpen.off) + inject + seg.slice(lastOpen.off);
       prefix = result.t[lastOpen.seg].slice(lastOpen.off + inject.length);
     }
-    cap = { id, parts: [prefix], base: prefix };
+    cap = { id, parts: [prefix], base: prefix, inject };
     return true;
+  };
+  // The spliced address leaves with its capture, or a resume mints a second one.
+  const captureDrop = li => {
+    if (li < 0) s = s.replace(cap.inject, "");
+    else result.t[li] = result.t[li].replace(cap.inject, "");
+    cap = null;
   };
   for (let i = 1; i < len; i++) {
     const hole = arguments[i];
@@ -4274,7 +4280,7 @@ export function ssr(t) {
         } else {
           // Group escalation: the tag (if one is being captured) went
           // async mid-attrs — it latches.
-          cap = null;
+          if (cap) captureDrop(result.t.length - 1);
           result.h.push(ssrGroupSlot(lastGroupVal.fn, lastGroupIdx++));
           result.p.push(lastGroupVal.p);
           result.t.push("");
@@ -4344,7 +4350,7 @@ export function ssr(t) {
             cap.parts.push({ f: hole });
           } else {
             // The hole escalated mid-attrs: the tag latches.
-            cap = null;
+            captureDrop(li);
           }
         }
       } else {
@@ -4360,7 +4366,7 @@ export function ssr(t) {
           }
         } else {
           // The hole escalated mid-attrs: the tag latches.
-          if (capturing) cap = null;
+          if (capturing) captureDrop(-1);
           result = { t: [s], h: [], p: [] };
           s = "";
           appendResolvedNode(result, r);

@@ -348,4 +348,57 @@ describe("document face — live holes against the real core", () => {
     expect(html.split("/items/a").length).toBe(2);
     expect(html.split("/items/b").length).toBe(2);
   });
+
+  test("a pending attribute inside a Loading boundary is addressed once and its attr ops carry no address", async () => {
+    const ServerComp = () => {
+      const ready = createMemo(async () => {
+        await wait(5);
+        return "r";
+      });
+      const tick = createMemo(async function* () {
+        yield 0;
+        await wait(20);
+        yield 1;
+      });
+      const label = createMemo(() => ready() + ":" + tick());
+      return (
+        <Loading fallback={<span>FB</span>}>
+          <ul data-l={label()}>
+            <li>x</li>
+          </ul>
+        </Loading>
+      );
+    };
+    const Inline = frameTransformDirectResult(ServerComp, { id: "dlh/attr-resume" }) as any;
+    const html = await collect(() => Inline({}));
+
+    const tags = html.match(/<ul[^>]*>/g)!;
+    expect(tags).toHaveLength(1);
+    expect(tags[0].match(/ data-lha="\d+"/g)).toHaveLength(1);
+    const addr = /data-lha="(\d+)"/.exec(tags[0])![1];
+    expect(tags[0]).toContain('data-l="r:0"');
+
+    const sandbox: any = {
+      document: { getElementById: () => null, addEventListener() {} },
+      _$HY: { r: {}, fe() {} },
+      ReadableStream,
+      Promise,
+      Symbol
+    };
+    sandbox.self = sandbox;
+    vm.createContext(sandbox);
+    for (const [, src] of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) {
+      vm.runInContext(src, sandbox);
+    }
+    const reader = sandbox._$HY.r["sc:live"].getReader();
+    const ops: any[] = [];
+    for (;;) {
+      const r = await reader.read();
+      if (r.done) break;
+      ops.push(r.value);
+    }
+    const attrs = ops.filter(op => op.type === "attr");
+    expect(attrs.map(op => op.key)).toEqual([addr]);
+    expect(attrs[0].attrs).toBe(' data-l="r:1"');
+  });
 });
