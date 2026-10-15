@@ -919,6 +919,7 @@ export namespace JSX {
     slot?: FunctionMaybe<string | RemoveAttribute>;
     style?: FunctionMaybe<CSSProperties | string | RemoveAttribute>;
     tabindex?: FunctionMaybe<number | string | RemoveAttribute>;
+    [attr: `data-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
   }
   /** Global `SVGElement` interface keys only. */
   interface SVGAttributes<T> extends ElementAttributes<T> {

@@ -923,6 +923,7 @@ export namespace JSX {
     slot?: string | RemoveAttribute;
     style?: CSSProperties | string | RemoveAttribute;
     tabindex?: number | string | RemoveAttribute;
+    [attr: `data-${string}`]: string | number | boolean | undefined;
   }
   /** Global `SVGElement` interface keys only. */
   interface SVGAttributes<T> extends ElementAttributes<T> {
