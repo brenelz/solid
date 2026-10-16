@@ -2,7 +2,8 @@
  * @jsxImportSource @solidjs/web
  */
 import { describe, expect, test } from "vitest";
-import { Errored, Loading, renderToString } from "@solidjs/web";
+import { Errored, Loading, Show, renderToStream, renderToString } from "@solidjs/web";
+import { createMemo } from "solid-js";
 
 const XSS = `x <script>alert(1)</script> y & A > B "q"`;
 const ESCAPED = `x &lt;script>alert(1)&lt;/script> y &amp; A > B "q"`;
@@ -11,7 +12,11 @@ function stripKeys(html: string): string {
   return html
     .replace(/ _hk=[^\s>]+/g, "")
     .replace(/<!--\$-->|<!--\/-->/g, "")
-    .replace(/<script>[\s\S]*<\/script>$/, "");
+    .replace(/<script>\(self\.\$R=[\s\S]*<\/script>$/, "");
+}
+
+function asyncValue<T>(value: T, ms = 5): Promise<T> {
+  return new Promise(r => setTimeout(() => r(value), ms));
 }
 
 describe("#4116: <Errored> escapes its children on the server", () => {
@@ -28,6 +33,32 @@ describe("#4116: <Errored> escapes its children on the server", () => {
   test("function returning a string", () => {
     const html = renderToString(() => <Errored fallback="">{(() => XSS) as any}</Errored>);
     expect(html).toBe(ESCAPED);
+  });
+
+  test("flow-control child", () => {
+    expect(
+      renderToString(() => (
+        <Errored fallback="">
+          <Show when={true}>{XSS}</Show>
+        </Errored>
+      ))
+    ).toBe(ESCAPED);
+  });
+
+  test("async memo child resolves escaped on retry", async () => {
+    function Content() {
+      const data = createMemo(async () => asyncValue(XSS));
+      return <Errored fallback="">{(() => data()) as any}</Errored>;
+    }
+    const html = await renderToStream(() => (
+      <div>
+        <Loading fallback="loading">
+          <Content />
+        </Loading>
+      </div>
+    ));
+    expect(stripKeys(html)).toBe(`<div><!--!$-->${ESCAPED}</div>`);
+    expect(html).not.toContain("<script>alert(1)</script>");
   });
 
   test("inside an element", () => {
