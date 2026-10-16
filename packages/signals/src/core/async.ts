@@ -797,7 +797,7 @@ export function handleAsync<T>(
 
 export function clearStatus(el: Computed<any>, clearUninitialized: boolean = false): void {
   if (el._x?._pendingSources) clearPendingSources(el);
-  if (el._x?._blocked) if (el._x !== null) el._x._blocked = false;
+  if (el._x?._blocked) el._x._blocked = false;
   el._statusFlags = clearUninitialized ? 0 : el._statusFlags & STATUS_UNINITIALIZED;
   if (el._x?._error) setPendingError(el);
   const notify = statusNotifierOf(el);

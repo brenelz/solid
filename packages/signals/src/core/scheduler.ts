@@ -29,7 +29,7 @@ import {
   STATUS_UNINITIALIZED
 } from "./constants.js";
 import { attrHooks } from "./attribution-hooks.js";
-import { notifyStatus } from "./async.js";
+import { clearStatus, notifyStatus } from "./async.js";
 import { ext, markUnflushedStaged, recompute, resyncUnflushedCompanions } from "./core.js";
 import { DEV, emitDiagnostic, GRAPH_SIZE_WARN_AT, noteFanOut, reportDiagnostic } from "./dev.js";
 import { sweepDormant, trimStaleDeps } from "./graph.js";
@@ -1278,6 +1278,8 @@ export function commitPendingNode(n: Signal<any>): void {
     n._pendingValue = NOT_PENDING;
     // A node born staged (recompute) initializes at this commit.
     c._statusFlags! &= ~STATUS_UNINITIALIZED;
+    // A direct write over a failed pass is the node's answer: the error goes.
+    if (c._statusFlags! & STATUS_ERROR) clearStatus(c as Computed<unknown>);
     // A quiet re-ask's classification survives its landing and dies with
     // the landed value's commit (A19 exc. 2, #3178): verdict-quiet through
     // the reveal. (The sweep of a node still in flight is not a landing.)
