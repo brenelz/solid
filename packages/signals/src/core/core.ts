@@ -1864,20 +1864,14 @@ export function read<T>(el: Signal<T> | Computed<T>): T {
   }
   // An errored derive throws for every late reader instead of silently
   // serving node values (memo parity, #2897 ruling).
-  // A write staged over the error is served below to the readers a staging
-  // reaches; the committed view stays the error.
-  if (
-    (owner as Computed<any>)._fn &&
-    (owner as Computed<any>)._statusFlags & STATUS_ERROR &&
-    readerSeesCommitted(el, c as Computed<any> | null)
-  ) {
+  if ((owner as Computed<any>)._fn && (owner as Computed<any>)._statusFlags & STATUS_ERROR) {
     // Only a genuine reactive re-read may retry an errored async source:
     // - tracking: owned/tracked scope only (never events / `untrack` / effect side-effect phase)
     // - owner._time < clock: only on a later cycle than the one the error was found
     if (tracking && (owner as Computed<any>)._time < clock) {
       recompute(owner as Computed<unknown>);
       return read(el);
-    } else throw (owner as Computed<any>)._x!._error;
+    } else throw (owner as Computed<any>)._x?._error;
   }
 
   // Ahead of the snapshot serve below: a component body's direct read is
@@ -2072,7 +2066,7 @@ export function setSignal<T>(el: Signal<T> | Computed<T>, v: T | ((prev: T) => T
   // D-41: a write over a shown error is a change whatever the last good
   // value was — the error leaves at its commit (`commitPendingNode`).
   const valueChanged =
-    !!((el as Computed<T>)._statusFlags & (STATUS_UNINITIALIZED | STATUS_ERROR)) ||
+    !!((el as Computed<T>)._statusFlags & STATUS_UNINITIALIZED) ||
     !!el._x?._shownError ||
     !el._equals ||
     !el._equals(currentValue, v);
@@ -2143,6 +2137,11 @@ export function setMemo<T>(el: Computed<T>, v: T | ((prev: T) => T)): T {
     txOf(el) !== flushTransaction;
   // The writer read the committed frame; its updater composes on it.
   if (held && typeof v === "function") v = (v as (prev: T) => T)(el._value);
+  // D-41: the error stays the display until the write commits (`_shownError`).
+  if (el._statusFlags & STATUS_ERROR) {
+    el._x!._shownError = el._x!._error;
+    el._statusFlags = 0;
+  }
   const result = setSignal(el, v);
   if (held) {
     // The one write that re-runs: the staging it replaced was derived from

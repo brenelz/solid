@@ -1278,13 +1278,11 @@ export function commitPendingNode(n: Signal<any>): void {
     n._pendingValue = NOT_PENDING;
     // A node born staged (recompute) initializes at this commit.
     c._statusFlags! &= ~STATUS_UNINITIALIZED;
-    // A direct write over a failed pass is the node's answer: the error goes.
-    if (c._statusFlags! & STATUS_ERROR) clearStatus(c as Computed<unknown>);
     // A quiet re-ask's classification survives its landing and dies with
     // the landed value's commit (A19 exc. 2, #3178): verdict-quiet through
     // the reveal. (The sweep of a node still in flight is not a landing.)
     // The A28 stash goes with it.
-    if (c._x != null) ((c._x._reask = false), (c._x._flushed = NOT_PENDING));
+    if (c._x) ((c._x._reask = false), (c._x._flushed = NOT_PENDING));
     // An effect with a staged value was born held (L2): its first run is
     // this commit's, not its creation's (A29) — queue it now.
     if ((n as any)._type && (n as any)._type !== EFFECT_TRACKED) {
@@ -1306,7 +1304,9 @@ export function commitPendingNode(n: Signal<any>): void {
   // pass or by the node's own landing (whose pass was clean), so a set
   // `_error` means the last pass threw, kept its full list, and `_depsTail`
   // marks where it stopped.
-  if (c._x?._error == null) trimStaleDeps(c as Computed<unknown>);
+  if (!c._x?._error) trimStaleDeps(c as Computed<unknown>);
+  // A write over an error kept the error for the test above; it goes now.
+  else if (!c._statusFlags) clearStatus(c as Computed<unknown>);
   if (!(c._statusFlags! & STATUS_PENDING)) c._statusFlags! &= ~STATUS_UNINITIALIZED;
   // L2: the children this commit publishes are the frame's now — the frame
   // they replace, parked by the pass (`recompute`), goes.
