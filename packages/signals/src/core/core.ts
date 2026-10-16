@@ -465,7 +465,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     } else {
       // D-41: a pass of a held node, or one that read a staging of this
       // flush, stages its error (`stageError`).
-      if (notReady || !(stagedErr = stageError(el, e, true))) {
+      if (notReady || !(stagedErr = stageError(el, e, !wasUninitialized))) {
         if (notReady) ext(el)._blocked = true;
         notifyStatus(el, notReady ? STATUS_PENDING : STATUS_ERROR, e);
         // The replacement source is fully propagated now. If no new flight

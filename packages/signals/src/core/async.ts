@@ -30,7 +30,6 @@ import { cleanup } from "./owner.js";
 import {
   clock,
   flush,
-  flushTransaction,
   globalQueue,
   joinFuture,
   MAINLINE_QUESTION,
@@ -180,18 +179,14 @@ export function releaseSettledDependents(el: Computed<any>): void {
  * dependents included. Not for a lane pass, nor a node with no shown value
  * (born held — its error has no frame to wait behind): those publish now,
  * as before. Returns whether the error was staged. */
-export function stageError(el: Computed<any>, error: any, inPass?: boolean): boolean {
-  // Held, or — for a pass's own throw — derived from a staging of a flush
-  // that has joined a hold (REACTIVE_STAGED_READ is this pass's; a landing
+export function stageError(el: Computed<any>, error: any, shownPass?: boolean): boolean {
+  // Held, or — for the throw of a pass with a shown value — derived from a
+  // staging of this flush (REACTIVE_STAGED_READ is this pass's; a landing
   // after the pass cannot read it, the flush it read a staging of has
-  // committed or parked since). A plain flush publishes now (S-38).
-  if (
-    !(
-      el._config & CONFIG_HELD ||
-      (inPass && el._flags & REACTIVE_STAGED_READ && flushTransaction)
-    ) ||
-    passLane
-  )
+  // committed or parked since). Whether the flush parks is the seam's call,
+  // after every pass (#4109: an async sibling later in the heap holds it):
+  // a plain flush publishes at its commit (S-38).
+  if (!(el._config & CONFIG_HELD || (shownPass && el._flags & REACTIVE_STAGED_READ)) || passLane)
     return false;
   // The node answered (an error ends the wait — no longer pending, nor
   // blocked); a shown error stays its display until the commit.
