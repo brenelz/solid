@@ -3787,7 +3787,7 @@ export function createErrorBoundary<T, U>(
       const value = runWithOwner(createOwner(), fn);
       resolveId = idOwner.id != null ? nextChildIdFor(idOwner, true) : undefined;
       resolveCount = 0;
-      resolved = resolveIn(() => ctx!.resolve(value));
+      resolved = resolveIn(() => ctx!.resolve(ctx!.escape(value)));
     }
     pending = resolved?.p?.length ? resolved : undefined;
     if (pending) {
