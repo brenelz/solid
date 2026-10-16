@@ -171,21 +171,21 @@ export function releaseSettledDependents(el: Computed<any>): void {
 // (releaseSettledDependents shape): identity holders can sit below an
 // intermediate whose own error state has since been scrubbed or replaced
 // (e.g. an error boundary's tree node).
-/** D-41: an error a pass of a held node found is an answer of
- * that frame — it ends the wait like a value and shows when a value would.
- * Staged like one: `_pendingValue` carries it (CONFIG_STAGED_ERROR), readers
- * in the hold derive from it (`serve` throws it), and the commit publishes
- * it through the ordinary error path (`commitPendingNode` → `notifyStatus`),
- * dependents included. Not for a lane pass, nor a node with no shown value
- * (born held — its error has no frame to wait behind): those publish now,
- * as before. Returns whether the error was staged. */
+/** D-41: an error a pass of a held node found, or of a shown node that
+ * read a staging of this flush, is an answer of that frame — it ends the
+ * wait like a value and shows when a value would. Staged like one:
+ * `_pendingValue` carries it (CONFIG_STAGED_ERROR), readers in the hold
+ * derive from it (`serve` throws it), and the commit publishes it through
+ * the ordinary error path (`commitPendingNode` → `notifyStatus`), dependents
+ * included. Not for a lane pass, nor a node with no shown value (born held —
+ * its error has no frame to wait behind): those publish now. Returns whether
+ * the error was staged. */
 export function stageError(el: Computed<any>, error: any, shownPass?: boolean): boolean {
   // Held, or — for the throw of a pass with a shown value — derived from a
   // staging of this flush (REACTIVE_STAGED_READ is this pass's; a landing
   // after the pass cannot read it, the flush it read a staging of has
   // committed or parked since). Whether the flush parks is the seam's call,
-  // after every pass (#4109: an async sibling later in the heap holds it):
-  // a plain flush publishes at its commit (S-38).
+  // after every pass: a plain flush publishes at its commit (S-38).
   if (!(el._config & CONFIG_HELD || (shownPass && el._flags & REACTIVE_STAGED_READ)) || passLane)
     return false;
   // The node answered (an error ends the wait — no longer pending, nor
@@ -792,7 +792,7 @@ export function handleAsync<T>(
 
 export function clearStatus(el: Computed<any>, clearUninitialized: boolean = false): void {
   if (el._x?._pendingSources) clearPendingSources(el);
-  if (el._x?._blocked) if (el._x !== null) el._x._blocked = false;
+  if (el._x?._blocked) el._x._blocked = false;
   el._statusFlags = clearUninitialized ? 0 : el._statusFlags & STATUS_UNINITIALIZED;
   if (el._x?._error) setPendingError(el);
   const notify = statusNotifierOf(el);

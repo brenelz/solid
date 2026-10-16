@@ -89,3 +89,53 @@ it.each([false, true])(
     }
   }
 );
+
+it("a write that recovers a staged error before its frame commits", async () => {
+  let sibling = deferred<number>();
+  const [count, setCount] = createSignal(1);
+  const screen = { button: undefined as unknown, slow: 0 };
+  const log: unknown[] = [];
+  const prevs: unknown[] = [];
+  let condition!: () => boolean;
+  const dispose = createRoot(d => {
+    condition = createMemo(prev => {
+      prevs.push(prev);
+      if (count() === 2) throw new Error("Condition failed");
+      return true;
+    });
+    const slow = createMemo(() => {
+      count();
+      return sibling.promise;
+    });
+    const errored = createErrorBoundary(condition, e => `Error ${(e() as Error).message}`);
+    createRenderEffect(errored, v => void (screen.button = v), { schedule: true });
+    createRenderEffect(slow, v => void (screen.slow = v), { schedule: true });
+    createEffect(condition, { effect: v => void log.push(v), error: e => void log.push(e) });
+    return d;
+  });
+  try {
+    flush();
+    sibling.resolve(1);
+    await tick();
+    sibling = deferred();
+    setCount(2);
+    flush();
+    expect(isPending(condition)).toBe(true);
+
+    setCount(3);
+    flush();
+    expect(prevs).toEqual([undefined, true, true]);
+    expect(screen).toEqual({ button: true, slow: 1 });
+    expect(condition()).toBe(true);
+    expect(latest(condition)).toBe(true);
+
+    sibling.resolve(3);
+    await tick();
+    expect(screen).toEqual({ button: true, slow: 3 });
+    expect(log).toEqual([true, true]);
+    expect(isPending(condition)).toBe(false);
+  } finally {
+    dispose();
+    flush();
+  }
+});

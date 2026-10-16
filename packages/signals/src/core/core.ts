@@ -402,10 +402,11 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // — here, the finally below, updateIfNecessary — carries it (#3543).
   el._flags = REACTIVE_RECOMPUTING_DEPS | (el._flags & (REACTIVE_ZOMBIE | REACTIVE_REASK));
   el._time = clock;
-  // The pass's previous value: its staging, else a lane node's lane value
-  // when it has one (lanes.ts), else the committed one.
+  // The pass's previous value: its staging (a staged error is none), else a
+  // lane node's lane value when it has one (lanes.ts), else the committed one.
+  const errStaged = el._config & CONFIG_STAGED_ERROR;
   let value =
-    el._pendingValue !== NOT_PENDING
+    el._pendingValue !== NOT_PENDING && !errStaged
       ? el._pendingValue
       : el._config & CONFIG_OVERRIDE && el._x!._lane !== NOT_PENDING
         ? el._x!._lane
@@ -427,7 +428,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   try {
     if (!__DEV__ && el._config & CONFIG_SYNC) {
       value = el._fn(value);
-      if (el._x !== null) el._x._inFlight = null;
+      if (el._x) el._x._inFlight = null;
       el._loading = false;
     } else {
       // A projection's body self-registers its flight through handleAsync
@@ -439,7 +440,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       const selfRegistered = el._x?._inFlight !== prevInFlight;
       value = selfRegistered || !isAsyncResult ? fnResult : handleAsync(el, fnResult);
       if (!selfRegistered && !isAsyncResult) {
-        if (el._x !== null) el._x._inFlight = null;
+        if (el._x) el._x._inFlight = null;
         // A sync (non-object) return is the first real answer; async-shaped
         // results clear inside handleAsync at their own landing points, and a
         // self-registered flight clears when its own handleAsync lands.
@@ -450,7 +451,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     // its body gates on is either _statusFlags or lives in the cold
     // extension — no extension, no status to clear. (_x from an unrelated
     // installer just makes clearStatus a cheap re-verified no-op.)
-    if (el._statusFlags !== 0 || el._x !== null) clearStatus(el, create);
+    if (el._statusFlags || el._x) clearStatus(el, create);
   } catch (e) {
     const notReady = e instanceof NotReadyError;
     if (notReady && el._loading) {
@@ -522,7 +523,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     // A19 exc. 2: a pass that went pending on a `refresh()` re-asks the
     // question already answered — quiet for the verdict; any other pending
     // pass is a new question. Settled, there is nothing to classify.
-    if (el._x !== null) el._x._reask = reask && (el._statusFlags & STATUS_PENDING) !== 0;
+    if (el._x) el._x._reask = reask && (el._statusFlags & STATUS_PENDING) !== 0;
   }
 
   // A node that died during its own pass (#3621) is dead at the end of it,
@@ -538,7 +539,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // attribution frame opened at the top is still closed.
   if (el._flags & REACTIVE_DISPOSED) {
     clearDeps(el);
-    if (el._x !== null) el._x._inFlight = null;
+    if (el._x) el._x._inFlight = null;
     if (__OBSERVE__ && attrHooks !== null)
       attrHooks.recomputeEnd(el, create, false, false, false, false);
     setPassLane(prevLane);
@@ -589,7 +590,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     try {
       valueChanged =
         (!isEffect && wasUninitialized) ||
-        !!el._x?._shownError ||
+        !!(el._x?._shownError || errStaged) ||
         !el._equals ||
         !el._equals(compareValue, value);
     } catch (e) {
@@ -656,6 +657,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       // Comparator threw: skip the commit — the node is now errored and the
       // status propagation above owns downstream notification.
     } else if (valueChanged) {
+      el._config &= ~CONFIG_STAGED_ERROR;
       // L2: a first pass is born held — staged, committed with the
       // transaction, its effect's first run the landing's (A29; `effect()`
       // skips the synchronous first run on a staged value) — when the flush
