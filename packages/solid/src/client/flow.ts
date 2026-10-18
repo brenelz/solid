@@ -1,6 +1,7 @@
 import { children, IS_DEV, IS_OBSERVE } from "../client/core.js";
 import {
   createMemo,
+  onCleanup,
   untrack,
   mapArray,
   repeat,
@@ -215,32 +216,24 @@ export function Show<T>(props: {
             }
           : { equals: (a, b) => !a === !b, sync: true }
       );
-  // Truthiness that selected the child. The accessor runs from a binding:
-  // `untrack(condition)` there serves the committed frame (undefined on the
-  // first mount of `when={latest(x)}`, #3948), and an ownerless read serves
-  // that same frame for a value staged this flush, so a live branch looks
-  // stale and halts. The flag is the selecting read, updated when selection
-  // re-runs — not a second read, and not a `latest()` import (that pulls the
-  // lane engine into every Show bundle).
-  let shown: T | undefined | null | boolean = false;
   return createMemo(
     () => {
       const c = condition();
-      shown = c;
       if (c) {
         const child = props.children;
         const fn = typeof child === "function" && child.length > 0;
         return fn
           ? keyed
             ? untrack(() => (child as any)(c), IS_DEV && "<Show>")
-            : untrack(
-                () =>
-                  (child as any)(() => {
-                    if (!shown) throw narrowedError("Show");
-                    return conditionValue();
-                  }),
-                IS_DEV && "<Show>"
-              )
+            : untrack(() => {
+                // Live until its frame is disposed: a held removal keeps the branch on screen.
+                let live = true;
+                onCleanup(() => (live = false));
+                return (child as any)(() => {
+                  if (!live) throw narrowedError("Show");
+                  return conditionValue();
+                });
+              }, IS_DEV && "<Show>")
           : child;
       }
       return props.fallback;
@@ -324,14 +317,14 @@ export function Switch(props: { fallback?: SolidElement; children: SolidElement 
       return fn
         ? mp.keyed
           ? untrack(() => (child as any)(value), IS_DEV && "<Match>")
-          : untrack(
-              () =>
-                (child as any)(() => {
-                  if (untrack(switchFunc)()?.[0] !== index) throw narrowedError("Match");
-                  return conditionValue();
-                }),
-              IS_DEV && "<Match>"
-            )
+          : untrack(() => {
+              let live = true;
+              onCleanup(() => (live = false));
+              return (child as any)(() => {
+                if (!live) throw narrowedError("Match");
+                return conditionValue();
+              });
+            }, IS_DEV && "<Match>")
         : child;
     },
     IS_OBSERVE ? { name: "eval conditions", sync: true } : { sync: true }
