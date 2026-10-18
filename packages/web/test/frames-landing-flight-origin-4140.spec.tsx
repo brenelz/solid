@@ -11,9 +11,20 @@ import type { DiagnosticEvent } from "solid-js";
 import { attribution } from "solid-js/attribution";
 import { dynamic } from "../src/index.js";
 import { installServerComponents, createFrameHost } from "../frames/src/client.js";
+import {
+  createServerComponentHandler,
+  flightCodec,
+  originFor
+} from "../frames/src/frame-transport.js";
 import { createJSONDataTable } from "../serialization/src/serializer.js";
 import { createServerReference } from "../server-functions/src/client.js";
-import { createChunk } from "../server-functions/src/shared.js";
+import {
+  ChunkReader,
+  SINGLE_FLIGHT_HEADER,
+  createChunk,
+  frameAddress,
+  serializeStream
+} from "../server-functions/src/shared.js";
 
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms));
 const getPanel = createServerReference("panel/get");
@@ -162,5 +173,88 @@ describe("a late consumer of a streaming frame response (#4140)", () => {
     // frame's landing began with the call and is not a third one.
     expect(events.map(chainNames)).toEqual([["ready", "computed"]]);
     expect(events[0].severity).toBe("info");
+  });
+});
+
+/** A frame stream the test feeds chunk by chunk. */
+function stream() {
+  let controller!: ReadableStreamDefaultController;
+  const body = new ReadableStream({ start: c => (controller = c) });
+  const send = (chunk: object) => controller.enqueue(createChunk(JSON.stringify(chunk)));
+  return {
+    body,
+    send,
+    region(id: string) {
+      send({ type: "start", id, version: 1 });
+      send({ type: "html", id, version: 1, html: "<p>region</p>" });
+      send({ type: "complete", id, version: 1 });
+    },
+    async outcome() {
+      const reader = new ChunkReader(
+        serializeStream({ value: "ok", data: { true: {} } }, flightCodec(undefined))
+      );
+      for (let node = await reader.next(); !node.done; node = await reader.next())
+        send({ type: "outcome", payload: node.value });
+    },
+    close: () => controller.close()
+  };
+}
+
+const bareHandler = () =>
+  createServerComponentHandler({ host: createFrameHost(), component: (id: string) => id as any });
+const call = (id: string, context: unknown) => ({ id, meta: undefined, args: [], context });
+
+describe("the origin recorded per address", () => {
+  test("a direct response's nested region carries the call's start", async () => {
+    const h = bareHandler();
+    const s = stream();
+    h.handle(new Response(s.body, { headers: { "X-Frame-Stream": "nest" } }), call("nest", 7));
+    expect(originFor(frameAddress("nest", []))).toBe(7);
+
+    s.send({ type: "start", id: "nest", version: 1 });
+    s.region("nest.wrap#0.children");
+    s.send({ type: "complete", id: "nest", version: 1 });
+    s.close();
+    await until(() => originFor("nest.wrap#0.children") !== undefined, "the nested region");
+    expect(originFor("nest.wrap#0.children")).toBe(7);
+  });
+
+  test("a context that is not a clock reading leaves the address unstamped", async () => {
+    const h = bareHandler();
+    const headers = { "X-Frame-Stream": "owned" };
+    const first = stream();
+    h.handle(new Response(first.body, { headers }), call("owned", 7));
+    expect(originFor(frameAddress("owned", []))).toBe(7);
+    const second = stream();
+    h.handle(new Response(second.body, { headers }), call("owned", { owner: true }));
+    expect(originFor(frameAddress("owned", []))).toBeUndefined();
+    for (const s of [first, second]) {
+      s.send({ type: "start", id: "owned", version: 1 });
+      s.send({ type: "complete", id: "owned", version: 1 });
+      s.close();
+    }
+    await tick();
+  });
+
+  test("overlapping single-flight responses stamp their regions with their own call's start", async () => {
+    const h = bareHandler();
+    const headers = { "X-Frame-Stream": "", [SINGLE_FLIGHT_HEADER]: "true" };
+    const first = stream();
+    const second = stream();
+    const a = h.handle(new Response(first.body, { headers }), call("mutate", 0));
+    const b = h.handle(new Response(second.body, { headers }), call("mutate", 50));
+
+    second.region("list");
+    await second.outcome();
+    second.close();
+    await b;
+    expect(originFor("list")).toBe(50);
+
+    first.region("view");
+    await first.outcome();
+    first.close();
+    await a;
+    expect(originFor("view")).toBe(0);
+    expect(originFor("list")).toBe(50);
   });
 });

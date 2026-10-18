@@ -450,6 +450,7 @@ export function callFor(address) {
 
 // Observe tier: the start of the call behind an address's newest response.
 const origins = new Map();
+const originOf = ctx => (typeof ctx.context === "number" ? ctx.context : undefined);
 
 /**
  * When the call behind the newest response handled for `address` started
@@ -877,7 +878,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // calls it invalidated, and the caller wants the mutation's value
       // rather than a component.
       if (response.headers.has(SINGLE_FLIGHT_HEADER)) {
-        if (IS_OBSERVE) origins.set(address, ctx.context);
+        if (IS_OBSERVE) origins.set(address, originOf(ctx));
         return applyFlightResponse(response, address, binding);
       }
       // A `live` loop's call (its wire slot rides on the ctx, see
@@ -898,7 +899,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // response's — a `live` loop owns its own reconnects.
       calls.set(address, ctx);
       const version = bump(address);
-      if (IS_OBSERVE) origins.set(address, ctx.context);
+      if (IS_OBSERVE) origins.set(address, originOf(ctx));
       // A refetch of a call a boundary is SHOWING is staged (see `stage`)
       // and settles when its whole body is buffered, not at the header. The
       // header is not an answer (#2977 said it for address switches; this
@@ -929,7 +930,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       const applied = applyFrameResponse(response, target, {
         as: address,
         version: frameId => {
-          if (IS_OBSERVE) origins.set(frameId, ctx.context);
+          if (IS_OBSERVE && frameId !== address) origins.set(frameId, originOf(ctx));
           return frameId === address ? version : bump(frameId);
         }
       }).catch(err =>
@@ -975,6 +976,9 @@ export function createServerComponentHandler({ host, component, intercept }) {
    * invalidated was markup.
    */
   async function applyFlightResponse(response, address, binding) {
+    // Read now: a later response for the same address overwrites it mid-stream.
+    let origin;
+    if (IS_OBSERVE) origin = origins.get(address);
     // The mutation's own markup (when it returned a component) belongs to
     // this call's address; every other frame in the response already
     // arrives under the address of the call it refreshes — mounts are bound
@@ -1024,8 +1028,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // is as much a new stream into a boundary as a navigation is.
       version: frameId => {
         const version = bump(frameId);
-        // The regions began with the mutation's call (see `handle`).
-        if (IS_OBSERVE) origins.set(frameId, origins.get(address));
+        if (IS_OBSERVE) origins.set(frameId, origin);
         let entry = regionOf(frameId);
         if (!entry && showing(frameId)) {
           entry = stage(frameId, frameId === as ? binding : byAddress.get(frameId), version);
