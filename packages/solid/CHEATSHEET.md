@@ -349,13 +349,13 @@ at the top of the callback freezes at the initial value (dev warns
 
 ## Context, components, lazy
 
-Context is for state that belongs to a subtree, which includes app-wide
-state in an app that renders on the server: a value created inside a
-component is created once per request, and the Provider owns and disposes
-it — that's why the default-less form requires one. **Module scope is
-shared by every request in the same process, so reserve it for constants**;
-a client-only app gets one module-scope store per tab, but it becomes
-shared server state the day SSR is turned on.
+Context is for state that belongs to a subtree — that's why the
+default-less form requires a Provider. That includes app-wide state in an
+app that renders on the server: a value created inside a component is
+created once per request, and the Provider owns and disposes it. **Module
+scope is shared by every request in the same process, so reserve it for
+constants**; a client-only app gets one module-scope store per tab, but it
+becomes shared server state the day SSR is turned on.
 
 ```tsx
 // Default-less — the canonical form. No Provider → ContextNotFoundError.
