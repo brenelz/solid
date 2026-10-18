@@ -1,6 +1,7 @@
 import { children, IS_DEV, IS_OBSERVE } from "../client/core.js";
 import {
   createMemo,
+  createOwner,
   onCleanup,
   untrack,
   mapArray,
@@ -38,6 +39,22 @@ const narrowedError = (name: string) =>
   IS_DEV
     ? `Attempting to access a stale value from <${name}> that could possibly be undefined. This may occur because you are reading the accessor returned from the component at a time where it has already been unmounted. We recommend cleaning up any stale timers or async, or reading from the initial condition.`
     : `Stale read from <${name}>.`;
+
+// Live until the branch's frame is disposed: a held removal keeps it on screen.
+function narrowed<T>(
+  name: string,
+  value: Accessor<T>,
+  child: (item: Accessor<T>) => SolidElement
+): SolidElement {
+  let live = true;
+  const result = child(() => {
+    if (!live) throw narrowedError(name);
+    return value();
+  });
+  // Created after the child so it is disposed first, ahead of the child's own cleanups.
+  runWithOwner(createOwner({ transparent: true }), () => onCleanup(() => (live = false)));
+  return result;
+}
 
 /**
  * Creates a list of elements from a list.
@@ -225,15 +242,7 @@ export function Show<T>(props: {
         return fn
           ? keyed
             ? untrack(() => (child as any)(c), IS_DEV && "<Show>")
-            : untrack(() => {
-                // Live until its frame is disposed: a held removal keeps the branch on screen.
-                let live = true;
-                onCleanup(() => (live = false));
-                return (child as any)(() => {
-                  if (!live) throw narrowedError("Show");
-                  return conditionValue();
-                });
-              }, IS_DEV && "<Show>")
+            : untrack(() => narrowed("Show", conditionValue, child as any), IS_DEV && "<Show>")
           : child;
       }
       return props.fallback;
@@ -317,14 +326,7 @@ export function Switch(props: { fallback?: SolidElement; children: SolidElement 
       return fn
         ? mp.keyed
           ? untrack(() => (child as any)(value), IS_DEV && "<Match>")
-          : untrack(() => {
-              let live = true;
-              onCleanup(() => (live = false));
-              return (child as any)(() => {
-                if (!live) throw narrowedError("Match");
-                return conditionValue();
-              });
-            }, IS_DEV && "<Match>")
+          : untrack(() => narrowed("Match", conditionValue, child as any), IS_DEV && "<Match>")
         : child;
     },
     IS_OBSERVE ? { name: "eval conditions", sync: true } : { sync: true }
