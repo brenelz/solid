@@ -448,6 +448,20 @@ export function callFor(address) {
   return calls.get(address);
 }
 
+// Observe tier: the start of the call behind an address's newest response.
+const origins = new Map();
+
+/**
+ * When the call behind the newest response handled for `address` started
+ * (`performance.now()` clock), or `undefined` outside the observe tier.
+ * @internal
+ */
+export function originFor(address: string): number | undefined;
+
+export function originFor(address) {
+  return origins.get(address);
+}
+
 // The registry bootstrap ships with the FIRST reference each script
 // serializes (see `serialize` below) — but the bootstrap text and its
 // first-use tracking are server-only weight, so the document-SSR module
@@ -594,6 +608,8 @@ export function flightCodec(codec) {
  * @experimental
  */
 export function createServerComponentHandler<C>(options: ServerComponentHandlerOptions<C>): {
+  /** Observe tier: the call's start, read back as `ctx.context` in `handle`. */
+  capture?(): number;
   /**
    * `retry` (the server-function client's thunk for the call it is
    * answering or dispatched, declared shape included) is recorded behind
@@ -815,7 +831,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
    * the response.
    */
   const begin = (address, version) => host.apply({ type: "start", id: address, version });
-  return {
+  const handler = {
     intercept:
       intercept &&
       (info => {
@@ -861,6 +877,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // calls it invalidated, and the caller wants the mutation's value
       // rather than a component.
       if (response.headers.has(SINGLE_FLIGHT_HEADER)) {
+        if (IS_OBSERVE) origins.set(address, ctx.context);
         return applyFlightResponse(response, address, binding);
       }
       // A `live` loop's call (its wire slot rides on the ctx, see
@@ -881,6 +898,7 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // response's — a `live` loop owns its own reconnects.
       calls.set(address, ctx);
       const version = bump(address);
+      if (IS_OBSERVE) origins.set(address, ctx.context);
       // A refetch of a call a boundary is SHOWING is staged (see `stage`)
       // and settles when its whole body is buffered, not at the header. The
       // header is not an answer (#2977 said it for address switches; this
@@ -910,7 +928,10 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // as a single-flight region: one bump per frame, once per response.
       const applied = applyFrameResponse(response, target, {
         as: address,
-        version: frameId => (frameId === address ? version : bump(frameId))
+        version: frameId => {
+          if (IS_OBSERVE) origins.set(frameId, ctx.context);
+          return frameId === address ? version : bump(frameId);
+        }
       }).catch(err =>
         target.apply({
           type: "error",
@@ -937,6 +958,8 @@ export function createServerComponentHandler({ host, component, intercept }) {
       bindingFor(address, functionId);
     }
   };
+  if (IS_OBSERVE) handler.capture = () => performance.now();
+  return handler;
 
   /**
    * A mutation whose payload includes markup. The regions stream to the
@@ -1001,6 +1024,8 @@ export function createServerComponentHandler({ host, component, intercept }) {
       // is as much a new stream into a boundary as a navigation is.
       version: frameId => {
         const version = bump(frameId);
+        // The regions began with the mutation's call (see `handle`).
+        if (IS_OBSERVE) origins.set(frameId, origins.get(address));
         let entry = regionOf(frameId);
         if (!entry && showing(frameId)) {
           entry = stage(frameId, frameId === as ? binding : byAddress.get(frameId), version);

@@ -22,6 +22,7 @@ import {
   createRenderEffect,
   createSignal,
   getOwner,
+  OBSERVE,
   onCleanup,
   onHydrationEnd,
   runWithOwner,
@@ -59,6 +60,7 @@ import {
   callFor,
   contentAddress,
   createServerComponentHandler,
+  originFor,
   stagedContent,
   type ServerComponentHandlerOptions
 } from "./frame-transport.js";
@@ -120,6 +122,7 @@ tierLoaders.wire = () => import("@solidjs/web/frames/wire");
 
 // Build-time literal (see diagnostics.ts): dev-only guidance folds out of prod.
 const IS_DEV = "_SOLID_DEV_" as unknown as boolean;
+const IS_OBSERVE = "_SOLID_OBSERVE_" as unknown as boolean;
 // This import must resolve to the SHARED built instance, not a bundled
 // copy: configuring the server-function client only counts if it's the same
 // module the compiled reference proxies call through
@@ -331,7 +334,10 @@ function landing<T>(host: any, address: string, value: T, failed: () => unknown)
     if (!wait) return value;
     // An errored address with no flight open (a flight's `start` clears
     // the mounts' error): this read is the re-ask.
-    return (state ? reask(address, wait) : wait).then(() => value);
+    const pending = (state ? reask(address, wait) : wait).then(() => value);
+    // Observe: the flight began with the call, whoever reads it later.
+    if (IS_OBSERVE && !state) OBSERVE!.attribution.markFlight(pending, originFor(address));
+    return pending;
   });
 }
 
