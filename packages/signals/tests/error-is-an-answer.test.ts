@@ -185,6 +185,69 @@ it.each([true, false])(
   }
 );
 
+// A recovery before the staged error commits replaces it (#4145): the pass's
+// value, or its flight's landing, is what the frame reveals. Recovering to
+// the committed value is no proposal at all (A34), as without the error.
+it.each([
+  ["pass", 7],
+  ["landing", 7],
+  ["pass", 5],
+  ["landing", 5]
+])("a held recovery before the staged error commits replaces it (%s to %i)", async (how, to) => {
+  let request = deferred<number>();
+  const answer = deferred<number>();
+  const [step, setStep] = createSignal(0);
+  let shown = 0;
+  let value!: () => number;
+  const dispose = createRoot(d => {
+    const slow = createMemo(() => {
+      step();
+      return request.promise;
+    });
+    value = createMemo(() => {
+      if (step() === 1) throw new Error("boom");
+      if (step() === 2) return how === "landing" ? answer.promise : to;
+      return 5;
+    });
+    createRenderEffect(
+      () => value() + slow(),
+      v => void (shown = v),
+      { schedule: true }
+    );
+    return d;
+  });
+  try {
+    flush();
+    request.resolve(1);
+    await tick();
+    expect(shown).toBe(6);
+
+    request = deferred<number>();
+    setStep(1);
+    flush();
+    expect(shown).toBe(6);
+    expect(isPending(value)).toBe(true);
+    expect(() => latest(value)).toThrow("boom");
+
+    setStep(2);
+    flush();
+    answer.resolve(to);
+    await tick();
+    expect(shown).toBe(6);
+    expect(isPending(value)).toBe(to !== 5);
+    expect(latest(value)).toBe(to);
+
+    request.resolve(2);
+    await tick();
+    expect(shown).toBe(to + 2);
+    expect(value()).toBe(to);
+    expect(isPending(value)).toBe(false);
+  } finally {
+    dispose();
+    flush();
+  }
+});
+
 // No hold at all: the landing equal to the last good value used to pass the
 // equality gate while the node was errored, so the effect never heard the
 // recovery (#3886).
