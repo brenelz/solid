@@ -136,6 +136,7 @@ it("a lazy memo a cleanup reawakens while its owner's held children are torn dow
   let m1!: () => number;
   let setTick!: (v: number) => void;
   let gen = 0;
+  let seen: string[] = [];
   const dispose = createRoot(d => {
     const [tick, _setTick] = createSignal(0);
     setTick = _setTick;
@@ -149,6 +150,7 @@ it("a lazy memo a cleanup reawakens while its owner's held children are torn dow
         createRenderEffect(
           () => {
             onCleanup(() => m1());
+            seen = chain(owner);
           },
           () => {},
           { name: "cleanup" + g }
@@ -169,6 +171,7 @@ it("a lazy memo a cleanup reawakens while its owner's held children are torn dow
 
   setTick(1);
   flush();
+  expect(seen).toEqual(["cleanup2", "m2", "m1"]);
   expect(chain(owner)).toEqual(["cleanup2", "m2"]);
 
   m1();

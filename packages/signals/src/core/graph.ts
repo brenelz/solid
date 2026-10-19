@@ -8,7 +8,7 @@ import {
 } from "./constants.js";
 import { deleteFromHeap } from "./heap.js";
 import { disposeChildren } from "./owner.js";
-import { bumpNotifyEpoch, dirtyQueue, schedule } from "./scheduler.js";
+import { bumpNotifyEpoch, dirtyQueue, globalQueue } from "./scheduler.js";
 import type { Computed, Link, Signal } from "./types.js";
 
 /** The store's shared slot-node release handler (store/store.ts installs it
@@ -32,27 +32,29 @@ export function unlinkSubs(link: Link): Link | null {
   if (prevSub !== null) prevSub._nextSub = nextSub;
   else {
     dep._subs = nextSub;
-    if (nextSub === null) {
-      // Store slot nodes dispatch to the ONE shared hook — no per-node
-      // unobserved closure, no NodeExtension to hold it.
-      if (dep._config & CONFIG_SLOT_NODE) slotUnobservedHook(dep as Signal<any>);
-      else dep._x?._unobserved?.();
-      // No more subscribers; only tear down if CONFIG_AUTO_DISPOSE is set.
-      // A pending node is exempt: its in-flight async work is an observer —
-      // tearing down would orphan the work and re-execute it on the next
-      // read. The settle path runs this same last-one-out check when that
-      // observer releases (the untracked-read dormancy sweep guards on
-      // pending identically).
-      // Deferred to the sweep: a re-pass drops its old frame before it reads.
-      const c = dep as Computed<any>;
-      (c as any)._fn &&
-        c._config & CONFIG_AUTO_DISPOSE &&
-        !(c._flags & REACTIVE_ZOMBIE) &&
-        !(c._statusFlags & STATUS_PENDING) &&
-        (dormantNodes.add(c), schedule());
-    }
+    // In a flush the drop waits for the sweep: a re-pass drops its frame before it reads again.
+    if (nextSub === null)
+      globalQueue._running && dep._config & CONFIG_AUTO_DISPOSE
+        ? dormantNodes.add(dep as Computed<any>)
+        : unsubscribed(dep);
   }
   return nextDep;
+}
+
+export function unsubscribed(dep: Signal<any> | Computed<any>): void {
+  // Store slot nodes dispatch to the ONE shared hook — no per-node
+  // unobserved closure, no NodeExtension to hold it.
+  if (dep._config & CONFIG_SLOT_NODE) slotUnobservedHook(dep as Signal<any>);
+  else dep._x?._unobserved?.();
+  // No more subscribers; only tear down if CONFIG_AUTO_DISPOSE is set.
+  // A pending node is exempt: its in-flight async work is an observer —
+  // tearing down would orphan the work and re-execute it on the next
+  // read. The settle path runs this same last-one-out check when that
+  // observer releases.
+  dep._config & CONFIG_AUTO_DISPOSE &&
+    !((dep as Computed<any>)._flags & REACTIVE_ZOMBIE) &&
+    !((dep as Computed<any>)._statusFlags & STATUS_PENDING) &&
+    unobserved(dep as Computed<any>);
 }
 
 export function trimStaleDeps(el: Computed<any>): void {
@@ -113,18 +115,10 @@ export function sweepDormant(): void {
   if (dormantNodes.size === 0) return;
   for (const el of dormantNodes) {
     // Re-validate at sweep time: the node may have gained a subscriber (its
-    // lifecycle is the unlinkSubs cascade now), gone pending (in-flight async
-    // is an observer; the settle path re-runs last-one-out), lost its
-    // AUTO_DISPOSE bit (owner teardown strips it, #3024), or already been
-    // torn down.
-    if (
-      !el._subs &&
-      el._config & CONFIG_AUTO_DISPOSE &&
-      !(el._statusFlags & STATUS_PENDING) &&
-      !(el._flags & (REACTIVE_DISPOSED | REACTIVE_ZOMBIE))
-    ) {
-      unobserved(el);
-    }
+    // lifecycle is the unlinkSubs cascade now) or already been torn down;
+    // unsubscribed re-checks pending and the AUTO_DISPOSE bit (owner
+    // teardown strips it, #3024).
+    !el._subs && !(el._flags & REACTIVE_DISPOSED) && unsubscribed(el);
   }
   dormantNodes.clear();
 }
