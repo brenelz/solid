@@ -8,7 +8,7 @@ import {
 } from "./constants.js";
 import { deleteFromHeap } from "./heap.js";
 import { disposeChildren } from "./owner.js";
-import { bumpNotifyEpoch, dirtyQueue } from "./scheduler.js";
+import { bumpNotifyEpoch, dirtyQueue, schedule } from "./scheduler.js";
 import type { Computed, Link, Signal } from "./types.js";
 
 /** The store's shared slot-node release handler (store/store.ts installs it
@@ -43,12 +43,13 @@ export function unlinkSubs(link: Link): Link | null {
       // read. The settle path runs this same last-one-out check when that
       // observer releases (the untracked-read dormancy sweep guards on
       // pending identically).
+      // Deferred to the sweep: a re-pass drops its old frame before it reads.
       const c = dep as Computed<any>;
       (c as any)._fn &&
         c._config & CONFIG_AUTO_DISPOSE &&
         !(c._flags & REACTIVE_ZOMBIE) &&
         !(c._statusFlags & STATUS_PENDING) &&
-        unobserved(c);
+        (dormantNodes.add(c), schedule());
     }
   }
   return nextDep;

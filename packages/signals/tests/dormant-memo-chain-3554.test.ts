@@ -169,7 +169,7 @@ it("a lazy memo a cleanup reawakens while its owner's held children are torn dow
 
   setTick(1);
   flush();
-  expect(chain(owner)).toEqual(["cleanup2", "m2", "m1"]);
+  expect(chain(owner)).toEqual(["cleanup2", "m2"]);
 
   m1();
   flush();
@@ -219,7 +219,7 @@ it("a lazy memo made dormant and reawakened while its owner's held children drai
   setTick(1);
   flush();
   expect(cleaned).toEqual(["sibling1"]);
-  expect(chain(owner)).toEqual(["reader2", "lazy2", "sibling2", "lazy1"]);
+  expect(chain(owner)).toEqual(["reader2", "lazy2", "sibling2"]);
 
   dispose();
   expect(cleaned).toEqual(["sibling1", "sibling2"]);

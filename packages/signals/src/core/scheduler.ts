@@ -806,6 +806,7 @@ export class GlobalQueue implements IQueue {
       scheduled = dirtyQueue._max >= dirtyQueue._min || pendingNodes.length !== 0;
       this.run(EFFECT_RENDER);
       this.run(EFFECT_USER);
+      sweepDormant();
       if (__OBSERVE__ && holding) {
         holding = false;
         attrHooks!.holdEnd();
