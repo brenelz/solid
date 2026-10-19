@@ -881,6 +881,7 @@ export class GlobalQueue implements IQueue {
           if (
             n._pendingValue !== NOT_PENDING &&
             !((n as Computed<any>)._statusFlags & (STATUS_PENDING | STATUS_UNINITIALIZED)) &&
+            !(n._config & CONFIG_STAGED_ERROR) &&
             n._equals &&
             n._equals(n._value, n._pendingValue) &&
             n._x?._pendingFirstChild == null &&

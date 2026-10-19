@@ -213,6 +213,7 @@ function heldNotFinal(owner: Computed<any>): boolean {
     !owner._x!._reask &&
     !(owner._statusFlags & STATUS_UNINITIALIZED) &&
     (!!owner._x!._shownError ||
+      !!(owner._config & CONFIG_STAGED_ERROR) ||
       !owner._equals ||
       !owner._equals(owner._value as any, owner._pendingValue as any))
   );

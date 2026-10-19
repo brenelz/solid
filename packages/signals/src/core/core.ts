@@ -590,6 +590,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       valueChanged =
         (!isEffect && wasUninitialized) ||
         !!el._x?._shownError ||
+        !!(el._config & CONFIG_STAGED_ERROR) ||
         !el._equals ||
         !el._equals(compareValue, value);
     } catch (e) {
@@ -2063,7 +2064,9 @@ export function setSignal<T>(el: Signal<T> | Computed<T>, v: T | ((prev: T) => T
     throw new Error(ownedScopeWriteMessage(context));
   }
 
-  const currentValue = el._pendingValue === NOT_PENDING ? el._value : (el._pendingValue as T);
+  const stagedError = el._config & CONFIG_STAGED_ERROR;
+  const currentValue =
+    el._pendingValue === NOT_PENDING || stagedError ? el._value : (el._pendingValue as T);
 
   if (typeof v === "function") v = (v as (prev: T) => T)(currentValue);
 
@@ -2082,6 +2085,7 @@ export function setSignal<T>(el: Signal<T> | Computed<T>, v: T | ((prev: T) => T
   // value was — the error leaves at its commit (`commitPendingNode`).
   const valueChanged =
     !!((el as Computed<T>)._statusFlags & STATUS_UNINITIALIZED) ||
+    !!stagedError ||
     !!el._x?._shownError ||
     !el._equals ||
     !el._equals(currentValue, v);
@@ -2103,11 +2107,13 @@ export function setSignal<T>(el: Signal<T> | Computed<T>, v: T | ((prev: T) => T
 
   const wasStaged = el._pendingValue !== NOT_PENDING;
   if (!wasStaged) queuePendingNode(el);
-  // A28: a held node rewritten outside a flush keeps its flushed staging
-  // for every reader until the flush that carries the rewrite.
-  else if (el._config & CONFIG_HELD && !globalQueue._running) stashFlushed(el);
+  else {
+    // A28: a held node rewritten outside a flush keeps its flushed staging
+    // for every reader until the flush that carries the rewrite.
+    if (el._config & CONFIG_HELD && !globalQueue._running) stashFlushed(el);
+    el._config &= ~CONFIG_STAGED_ERROR;
+  }
   el._pendingValue = v;
-  el._config &= ~CONFIG_STAGED_ERROR;
   // A28 arm, gated on the load the write already pays for (`context`); the
   // arm itself is a cold helper so setSignal stays within every setter's
   // inlining budget, ~300 B bytecode.

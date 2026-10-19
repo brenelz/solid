@@ -185,9 +185,6 @@ it.each([true, false])(
   }
 );
 
-// A recovery before the staged error commits replaces it (#4145): the pass's
-// value, or its flight's landing, is what the frame reveals. Recovering to
-// the committed value is no proposal at all (A34), as without the error.
 it.each([
   ["pass", 7],
   ["landing", 7],
@@ -242,6 +239,113 @@ it.each([
     expect(shown).toBe(to + 2);
     expect(value()).toBe(to);
     expect(isPending(value)).toBe(false);
+  } finally {
+    dispose();
+    flush();
+  }
+});
+
+it.each(["pass", "landing"])(
+  "a held recovery over a staged error never reaches the node's equals (%s)",
+  async how => {
+    let request = deferred<number>();
+    const answer = deferred<{ items: number[] }>();
+    const [step, setStep] = createSignal(0);
+    let shown = 0;
+    let value!: () => { items: number[] };
+    const dispose = createRoot(d => {
+      const slow = createMemo(() => {
+        step();
+        return request.promise;
+      });
+      value = createMemo(
+        () => {
+          if (step() === 1) throw new Error("boom");
+          if (step() === 2) return how === "landing" ? answer.promise : { items: [5] };
+          return { items: [5] };
+        },
+        { equals: (a, b) => a.items.length === b.items.length }
+      );
+      createRenderEffect(
+        () => value().items[0] + slow(),
+        v => void (shown = v),
+        { schedule: true }
+      );
+      return d;
+    });
+    try {
+      flush();
+      request.resolve(1);
+      await tick();
+      expect(shown).toBe(6);
+
+      request = deferred<number>();
+      setStep(1);
+      flush();
+      expect(isPending(value)).toBe(true);
+      expect(() => latest(value)).toThrow("boom");
+
+      setStep(2);
+      flush();
+      answer.resolve({ items: [5] });
+      await tick();
+      expect(shown).toBe(6);
+      expect(isPending(value)).toBe(false);
+      expect(latest(value).items).toEqual([5]);
+
+      request.resolve(2);
+      await tick();
+      expect(shown).toBe(7);
+      expect(value().items).toEqual([5]);
+    } finally {
+      dispose();
+      flush();
+    }
+  }
+);
+
+it("a setter's updater over a staged error composes on the committed value", async () => {
+  let request = deferred<number>();
+  const [step, setStep] = createSignal(0);
+  let shown = 0;
+  let value!: () => number;
+  let setValue!: (fn: (prev: number) => number) => void;
+  const dispose = createRoot(d => {
+    const slow = createMemo(() => {
+      step();
+      return request.promise;
+    });
+    [value, setValue] = createSignal<number>(() => {
+      if (step() === 1) throw new Error("boom");
+      return 5;
+    });
+    createRenderEffect(
+      () => value() + slow(),
+      v => void (shown = v),
+      { schedule: true }
+    );
+    return d;
+  });
+  try {
+    flush();
+    request.resolve(1);
+    await tick();
+    expect(shown).toBe(6);
+
+    request = deferred<number>();
+    setStep(1);
+    flush();
+    expect(() => latest(value)).toThrow("boom");
+
+    setStep(1);
+    setValue(prev => prev + 1);
+    flush();
+    expect(latest(value)).toBe(6);
+
+    request.resolve(2);
+    await tick();
+    expect(shown).toBe(8);
+    expect(value()).toBe(6);
   } finally {
     dispose();
     flush();
