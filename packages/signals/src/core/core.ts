@@ -230,6 +230,10 @@ export function setContextInternal(v: Owner | null): void {
 }
 export let stale = false;
 export let context: Owner | null = null;
+/** The lane whose pass made the mount the running creation pass is part of
+ * (its creator's seat, or its creator's own mount lane): a verdict lane's
+ * mount runs mainline, and its content's mounts are that mount's (#4166). */
+let mountLane: Transaction | null = null;
 
 export let snapshotCaptureActive = false;
 export let snapshotSources: Set<any> | null = null;
@@ -317,6 +321,8 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // Lanes exist only with the lane engine installed (`laneStageHook`): a
   // bundle without it seats every pass on mainline, and folds the seat away.
   const prevLane = passLane;
+  const prevMount = mountLane;
+  const creatorLane = (mountLane = create ? (prevLane ?? prevMount) : null);
   setPassLane(
     !laneStageHook
       ? null
@@ -540,6 +546,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     // bookkeeping, and those marks are correctly discarded here.
     missedWake = (el._flags & REACTIVE_MISSED_WAKE) !== 0;
     joined = (el._flags & REACTIVE_JOINED) !== 0;
+    mountLane = prevMount;
     // A verdict reader is one for as long as it probes, or reads a memo
     // that does (`read`): a pass that did neither (REACTIVE_PROBED, the same
     // bit) is an ordinary derivation again.
@@ -720,7 +727,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
           ? !(
               (flushTransaction !== null || passTx !== null) &&
               (joined ||
-                (prevLane && el._flags & REACTIVE_STAGED_READ) ||
+                (creatorLane && el._flags & REACTIVE_STAGED_READ) ||
                 (creatorPass(oldcontext)?._flags as number) & REACTIVE_JOINED)
             )
           : isEffect && el._pendingValue === NOT_PENDING
@@ -755,7 +762,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
           // #3851): the mount is part of the hold, and the boundary appears
           // at its commit, its fallback never seen (D-13, U-3) — a `<Show>`
           // mounting it over a landing included.
-          freshHook?.(el, !prevLane && flushTransaction);
+          freshHook?.(el, !creatorLane && flushTransaction);
         }
         if (__DEV__) devTrackHeldPending(el);
       }
@@ -802,7 +809,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   if (
     create &&
     lane === null &&
-    (joined || (prevLane && el._flags & REACTIVE_STAGED_READ)) &&
+    (joined || (creatorLane && el._flags & REACTIVE_STAGED_READ)) &&
     el._statusFlags & STATUS_PENDING
   ) {
     const t = flushTransaction ?? passTx;
