@@ -13,10 +13,6 @@ async function settle() {
   }
 }
 
-// #4166: `<Show when={latest(n) > 0}>` opens at once while an action holds
-// `n = 1` and mounts a `<Loading>` whose content binds `n`. The binding is
-// the content's mount, not the verdict lane's; it waits behind the fallback
-// like a direct read of `n` in the content (#3851) and lands with the action.
 test("a Loading mounted by a verdict reader shows its fallback while the action holds (#4166)", async () => {
   const root = document.createElement("div");
   const [n, setN] = createSignal(0);

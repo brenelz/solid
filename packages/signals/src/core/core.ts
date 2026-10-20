@@ -230,9 +230,7 @@ export function setContextInternal(v: Owner | null): void {
 }
 export let stale = false;
 export let context: Owner | null = null;
-/** The lane whose pass made the mount the running creation pass is part of
- * (its creator's seat, or its creator's own mount lane): a verdict lane's
- * mount runs mainline, and its content's mounts are that mount's (#4166). */
+/** The lane whose pass made the mount the running creation pass belongs to. */
 let mountLane: Transaction | null = null;
 
 export let snapshotCaptureActive = false;
@@ -322,7 +320,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // bundle without it seats every pass on mainline, and folds the seat away.
   const prevLane = passLane;
   const prevMount = mountLane;
-  const creatorLane = (mountLane = create ? (prevLane ?? prevMount) : null);
+  const creatorLane = laneStageHook && create ? (prevLane ?? prevMount) : null;
   setPassLane(
     !laneStageHook
       ? null
@@ -473,6 +471,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   const isStaleEffect = isEffect && isEffect !== EFFECT_USER;
   const prevStale = stale;
   if (isStaleEffect) stale = true;
+  mountLane = creatorLane;
   try {
     if (!__DEV__ && el._config & CONFIG_SYNC) {
       value = el._fn(value);
@@ -701,12 +700,13 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       // skips the synchronous first run on a staged value) — when the flush
       // has joined a transaction and either the pass read a held node (it
       // derives from that world — the join merged the node's transaction
-      // into the flush's), or — a verdict lane's mount, mainline — read a
-      // staging of this flush (the same world before the seam parks it; the
-      // mount is not shown ahead of it: #3851), or a pass created it (ruling
-      // A: a held pass's children are the transaction's). Any other mount
-      // that read a staging does not join by being new (2026-10-07): it
-      // publishes and re-derives if the flush parks. A node created outside any pass
+      // into the flush's), or — a verdict lane's mount, mainline, or a
+      // mount of that mount's content — read a staging of this flush (the
+      // same world before the seam parks it; the mount is not shown ahead
+      // of it: #3851), or a pass created it (ruling A: a held pass's
+      // children are the transaction's). Any other mount that read a
+      // staging does not join by being new (2026-10-07): it publishes and
+      // re-derives if the flush parks. A node created outside any pass
       // that read only the committed world (root setup, a mount, an effect
       // callback) is nobody's frame and publishes directly, as does a first
       // pass that runs before anything joins: the pass's input, not a verdict
@@ -758,10 +758,10 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
           // A boundary that has not shown content catches it: its fallback
           // waits for the commit (#3540). (The pass's own status clear above
           // dropped what the read recorded.) Not when the flush has joined
-          // the hold and the pass is its own (not a verdict lane's mount,
-          // #3851): the mount is part of the hold, and the boundary appears
-          // at its commit, its fallback never seen (D-13, U-3) — a `<Show>`
-          // mounting it over a landing included.
+          // the hold and the pass is its own (not a verdict lane's mount or
+          // its content's, #3851): the mount is part of the hold, and the
+          // boundary appears at its commit, its fallback never seen (D-13,
+          // U-3) — a `<Show>` mounting it over a landing included.
           freshHook?.(el, !creatorLane && flushTransaction);
         }
         if (__DEV__) devTrackHeldPending(el);
@@ -799,13 +799,14 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       settlePendingSource(el);
   }
   // A first pass that went pending where the born-held arm would have held
-  // its value (it read a held node, or a verdict lane's mount read a staging,
-  // #3851) is held like it: its answer is the hold's, and the hold waits
-  // for it (A29, #3800). A boundary that has not shown content catches it
-  // and it is held all the same — its answer reveals no earlier than the
-  // hold's commit (D-12) — but the hold does not wait for it: its only
-  // readers are behind the fallback (`_hidden`; F-4, #3540). A boundary
-  // re-armed by `on` owns what it collects outright (D-14): not held.
+  // its value (it read a held node, or a verdict lane's mount, or a mount of
+  // its content, read a staging, #3851) is held like it: its answer is the
+  // hold's, and the hold waits for it (A29, #3800). A boundary that has not
+  // shown content catches it and it is held all the same — its answer
+  // reveals no earlier than the hold's commit (D-12) — but the hold does not
+  // wait for it: its only readers are behind the fallback (`_hidden`; F-4,
+  // #3540). A boundary re-armed by `on` owns what it collects outright
+  // (D-14): not held.
   if (
     create &&
     lane === null &&

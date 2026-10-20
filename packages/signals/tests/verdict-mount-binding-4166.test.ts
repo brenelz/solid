@@ -1,14 +1,4 @@
-/**
- * #4166: a mount a verdict reader makes stays mainline through its content's
- * own mounts. `<Show when={latest(x) > 0}>` opens at once while an action
- * holds `x = 1` and mounts a `<Loading>` whose content does not read `x`
- * itself: a binding it creates does (`<p>{x()}</p>`), the DOM shape. The
- * binding is the content's mount, not the verdict lane's, so the #3851 arm
- * (`prevLane` set, a staged read) did not see it and it published the held
- * `x` at once — `1` beside the committed `x = 0`. It waits behind the fresh
- * boundary's fallback and appears at the action's landing, as a direct read
- * of `x` in the content does.
- */
+// A binding created by a verdict reader's mount waits behind the fallback.
 import { describe, expect, it } from "vitest";
 import {
   action,
@@ -19,6 +9,7 @@ import {
   createSignal,
   flush,
   latest,
+  onCleanup,
   untrack
 } from "../src/index.js";
 
@@ -29,7 +20,15 @@ const settle = async () => {
   }
 };
 
-async function mountUnderVerdict(contentInMemo: boolean) {
+async function mountUnderVerdict(
+  contentInMemo: boolean,
+  hooks?: {
+    setup(condition: () => boolean, children: () => unknown): void;
+    beforeAction(): Promise<void>;
+    inContent(): void;
+    release(): void;
+  }
+) {
   const [x, setX] = createSignal(0);
   let screenX: unknown;
   let slot: unknown;
@@ -45,6 +44,7 @@ async function mountUnderVerdict(contentInMemo: boolean) {
     const conditionValue = createMemo(() => latest(x) > 0);
     const condition = createMemo(conditionValue, { equals: (a, b) => !a === !b });
     const content = () => {
+      hooks?.inContent();
       createRenderEffect(x, v => {
         inner = v;
       });
@@ -60,6 +60,7 @@ async function mountUnderVerdict(contentInMemo: boolean) {
           )
         : "closed"
     );
+    hooks?.setup(condition, children);
     createRenderEffect(
       () => {
         const c = children();
@@ -72,6 +73,7 @@ async function mountUnderVerdict(contentInMemo: boolean) {
   });
   flush();
   const screens: unknown[] = [[screenX, slot, inner]];
+  await hooks?.beforeAction();
 
   let release!: () => void;
   const done = action(function* () {
@@ -82,6 +84,7 @@ async function mountUnderVerdict(contentInMemo: boolean) {
   screens.push([screenX, slot, inner]);
 
   release();
+  hooks?.release();
   await done;
   await settle();
   screens.push([screenX, slot, inner]);
@@ -99,6 +102,46 @@ describe("#4166: a verdict reader's mount stays mainline through its content's m
 
   it("same with the content in a memo", async () => {
     expect(await mountUnderVerdict(true)).toEqual([
+      [0, "closed", undefined],
+      [0, "fallback", undefined],
+      [1, "content", 1]
+    ]);
+  });
+
+  it("same after a pulled re-pass threw from a cleanup inside the content", async () => {
+    const [y, setY] = createSignal(0);
+    let probe!: () => number;
+    let releaseY!: () => void;
+    let thrown = false;
+    const screens = mountUnderVerdict(false, {
+      setup(condition, children) {
+        probe = createMemo(() => {
+          onCleanup(() => {
+            if (thrown) return;
+            thrown = true;
+            throw new Error("cleanup");
+          });
+          children();
+          condition();
+          return y();
+        });
+        createRenderEffect(probe, () => {});
+      },
+      async beforeAction() {
+        action(function* () {
+          setY(1);
+          yield new Promise<void>(r => (releaseY = r));
+        })();
+        await settle();
+      },
+      inContent() {
+        try {
+          probe();
+        } catch {}
+      },
+      release: () => releaseY()
+    });
+    expect(await screens).toEqual([
       [0, "closed", undefined],
       [0, "fallback", undefined],
       [1, "content", 1]
