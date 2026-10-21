@@ -26,7 +26,7 @@ const settle = async () => {
   }
 };
 
-async function mountUnderVerdict(contentInMemo: boolean) {
+async function mountUnderVerdict(contentInMemo: boolean | "async") {
   const [x, setX] = createSignal(0);
   let screenX: unknown;
   let inner: unknown;
@@ -40,7 +40,7 @@ async function mountUnderVerdict(contentInMemo: boolean) {
     //   <Loading fallback="pending"><p>{x()}</p></Loading>
     // </Show>
     const p = () => {
-      createRenderEffect(x, v => {
+      createRenderEffect(contentInMemo === "async" ? createMemo(async () => x()) : x, v => {
         inner = v;
       });
       return "p";
@@ -92,6 +92,14 @@ describe("#4166: a verdict-mounted boundary holds a nested render effect's first
 
   it("same with the render effect inside a memo the content creates", async () => {
     expect(await mountUnderVerdict(true)).toEqual([
+      [0, "closed", undefined],
+      [0, "pending", undefined],
+      [1, "p", 1]
+    ]);
+  });
+
+  it("same with the render effect reading an async memo the content creates", async () => {
+    expect(await mountUnderVerdict("async")).toEqual([
       [0, "closed", undefined],
       [0, "pending", undefined],
       [1, "p", 1]

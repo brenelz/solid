@@ -802,17 +802,17 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       settlePendingSource(el);
   }
   // A first pass that went pending where the born-held arm would have held
-  // its value (it read a held node, or a verdict lane's mount read a staging,
-  // #3851) is held like it: its answer is the hold's, and the hold waits
-  // for it (A29, #3800). A boundary that has not shown content catches it
-  // and it is held all the same — its answer reveals no earlier than the
-  // hold's commit (D-12) — but the hold does not wait for it: its only
-  // readers are behind the fallback (`_hidden`; F-4, #3540). A boundary
-  // re-armed by `on` owns what it collects outright (D-14): not held.
+  // its value (it read a held node, or is a verdict lane's mount's own pass
+  // and read a staging, #3851) is held like it: its answer is the hold's,
+  // and the hold waits for it (A29, #3800). A boundary that has not shown
+  // content catches it and it is held all the same — its answer reveals no
+  // earlier than the hold's commit (D-12) — but the hold does not wait for
+  // it: its only readers are behind the fallback (`_hidden`; F-4, #3540). A
+  // boundary re-armed by `on` owns what it collects outright (D-14): not held.
   if (
     create &&
     lane === null &&
-    (joined || (prevLane && el._flags & REACTIVE_STAGED_READ)) &&
+    (joined || (mount && prevLane && el._flags & REACTIVE_STAGED_READ)) &&
     el._statusFlags & STATUS_PENDING
   ) {
     const t = flushTransaction ?? passTx;
