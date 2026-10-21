@@ -2128,27 +2128,10 @@ export function renderToStream(code, options = {}) {
     const sink = writable;
     buffer = { write() {} };
     writable = { end() {} };
-    // Contained (#4029): an `onCleanup` that throws here must not escape the
-    // teardown. On the `signal` path this runs inside an `abort` listener,
-    // where a throw becomes an uncaught exception that takes the process down;
-    // on the `failRender` path it would cut the wind-down short. It is the
-    // render's failure, so it goes to the hook as one (`handling: "failed"`),
-    // and with no hook anywhere it is never silent.
     if (dispose) {
       const d = dispose;
       dispose = () => {};
-      try {
-        d();
-      } catch (err) {
-        reportServerError(
-          err,
-          { kind: "render", handling: "failed" },
-          null,
-          options.onError,
-          errorScope
-        );
-        if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
-      }
+      d();
     }
     // Close the serializer AFTER `dead` is set: seroval's `close()` runs
     // each pending write's cleanup — a serialized async iterator gets its
@@ -2511,7 +2494,16 @@ export function renderToStream(code, options = {}) {
     plugins: options.plugins,
     onData: payload => sink.data(payload),
     onDone,
-    onError: serializerErrorHook(options.onError)
+    onError: err => {
+      reportServerError(
+        err,
+        { kind: "render", handling: "serialize" },
+        null,
+        options.onError,
+        errorScope
+      );
+      if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
+    }
   });
   let rootAssetsSerialized = false;
   const serializeRootAssets = () => {
@@ -3127,7 +3119,23 @@ export function renderToStream(code, options = {}) {
           context.trace = undefined;
           if (onAbort) signal.removeEventListener("abort", onAbort);
           if (endEdges) endEdges();
-          d();
+          // Contained (#4029): an `onCleanup` that throws must not escape the
+          // teardown — from an `abort` listener it is an uncaught exception,
+          // from a completion microtask an unhandled rejection. It is the
+          // render's failure, so it goes to the hook as one (`handling:
+          // "failed"`), and with no hook anywhere it is never silent.
+          try {
+            d();
+          } catch (err) {
+            reportServerError(
+              err,
+              { kind: "render", handling: "failed" },
+              null,
+              options.onError,
+              errorScope
+            );
+            if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
+          }
         };
         rootOwner = claimRenderRoot(context);
         if (requestEvent) claimEventRender(requestEvent, context);
