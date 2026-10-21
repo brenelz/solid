@@ -464,8 +464,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
         : el._value;
   let oldHeight = el._height;
   let missedWake = false;
-  // L2: did this pass read the future (REACTIVE_JOINED, set by read) — or,
-  // a lane's mount, a staging of this flush (#3851, #4166)?
+  // L2: did this pass read the future (REACTIVE_JOINED, set by read)?
   let joined = false;
   let prevTracking = tracking;
   let prevStrictRead: string | false = false;
@@ -550,7 +549,7 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
     // (markNode(c) in read()) marks the running node as part of ordinary
     // bookkeeping, and those marks are correctly discarded here.
     missedWake = (el._flags & REACTIVE_MISSED_WAKE) !== 0;
-    joined = !!(el._flags & (mount ? REACTIVE_JOINED | REACTIVE_STAGED_READ : REACTIVE_JOINED));
+    joined = (el._flags & REACTIVE_JOINED) !== 0;
     // A verdict reader is one for as long as it probes, or reads a memo
     // that does (`read`): a pass that did neither (REACTIVE_PROBED, the same
     // bit) is an ordinary derivation again.
@@ -730,7 +729,9 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
         create
           ? !(
               (flushTransaction !== null || passTx !== null) &&
-              (joined || (creatorPass(oldcontext)?._flags as number) & REACTIVE_JOINED)
+              (joined ||
+                (mount && el._flags & REACTIVE_STAGED_READ) ||
+                (creatorPass(oldcontext)?._flags as number) & REACTIVE_JOINED)
             )
           : isEffect && el._pendingValue === NOT_PENDING
       ) {
@@ -808,7 +809,12 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
   // hold's commit (D-12) — but the hold does not wait for it: its only
   // readers are behind the fallback (`_hidden`; F-4, #3540). A boundary
   // re-armed by `on` owns what it collects outright (D-14): not held.
-  if (create && lane === null && joined && el._statusFlags & STATUS_PENDING) {
+  if (
+    create &&
+    lane === null &&
+    (joined || (prevLane && el._flags & REACTIVE_STAGED_READ)) &&
+    el._statusFlags & STATUS_PENDING
+  ) {
     const t = flushTransaction ?? passTx;
     if (t && !t._lane && freshHook?.(el) !== CAUGHT_REARMED) holdNode(el, t);
   }
