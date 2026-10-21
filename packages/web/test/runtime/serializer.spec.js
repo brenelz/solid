@@ -3,6 +3,7 @@ import {
   DEFAULT_WEB_PLUGINS,
   createHydrationSerializer,
   createJSONDeserializer,
+  createJSONSerializer,
   createSerializer,
   getLocalHeaderScript,
   resolveSerializerPlugins,
@@ -121,6 +122,27 @@ describe("createHydrationSerializer", () => {
     serializer.close();
     expect(scripts.join(";")).toContain("__shadowed_url__");
   });
+
+  it.each([
+    ["createHydrationSerializer", createHydrationSerializer],
+    ["createJSONSerializer", createJSONSerializer]
+  ])(
+    "%s: a write that will not serialize reports through onError and still settles",
+    (_, create) => {
+      const errors = [];
+      let done = 0;
+      const serializer = create({
+        onData() {},
+        onError: err => errors.push(err),
+        onDone: () => done++
+      });
+      serializer.write("a", new WeakMap());
+      serializer.write("b", 1);
+      serializer.flush();
+      expect(errors).toHaveLength(1);
+      expect(done).toBe(1);
+    }
+  );
 
   it("keeps plugin sets isolated between instances", () => {
     const withPoint = collect(createHydrationSerializer, { plugins: [PointPlugin] });

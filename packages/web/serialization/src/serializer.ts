@@ -3,6 +3,7 @@
 import {
   Feature,
   Serializer,
+  crossSerializeStream,
   getCrossReferenceHeader,
   toCrossJSONStream,
   createPlugin as createPluginImpl,
@@ -195,7 +196,11 @@ export function createSerializer(options) {
  * `createSerializer` or the JSON codec.
  * @internal
  */
-export function createHydrationSerializer(options: HydrationSerializerOptions): Serializer;
+export function createHydrationSerializer(options: HydrationSerializerOptions): {
+  write(key: string, value: unknown): void;
+  flush(): void;
+  close(): void;
+};
 
 /**
  * Serializer for SSR hydration output. Pins the hydration global (`_$HY.r`)
@@ -203,14 +208,83 @@ export function createHydrationSerializer(options: HydrationSerializerOptions): 
  * plugins) are configurable.
  */
 export function createHydrationSerializer({ onData, onDone, scopeId, onError, plugins }) {
-  return createSerializer({
-    scopeId,
-    plugins,
-    globalIdentifier: HYDRATION_GLOBAL,
-    onData,
-    onDone,
-    onError
-  });
+  const resolvedPlugins = resolveSerializerPlugins(plugins);
+  const disabledFeatures = defaultDisabledFeatures() | serializeOnlyDisabledFeatures();
+  const refs = new Map();
+  return createKeyedSerializer({ onData, onDone, onError }, (key, value, hooks) =>
+    crossSerializeStream(value, {
+      plugins: resolvedPlugins,
+      scopeId,
+      refs,
+      disabledFeatures,
+      onSerialize(data, initial) {
+        hooks.data(initial ? HYDRATION_GLOBAL + "[" + serializeKey(key) + "]=" + data : data);
+      },
+      onError: hooks.error,
+      onDone: hooks.done
+    })
+  );
+}
+
+// A JS string literal for a hydration key inside a <script>.
+const serializeKey = key => JSON.stringify(key).replace(/</g, "\\x3C");
+
+// Seroval reports a top-level value it cannot parse through `onError` and never reaches `onDone`.
+function createKeyedSerializer({ onData, onDone, onError }, start) {
+  const cancels = new Set();
+  let pendingWrites = 0;
+  let flushed = false;
+  let done = false;
+  const maybeDone = () => {
+    if (flushed && pendingWrites === 0 && !done) {
+      done = true;
+      onDone && onDone();
+    }
+  };
+  return {
+    write(key, value) {
+      if (flushed) return;
+      pendingWrites++;
+      let settled = false;
+      let emitted = false;
+      let failed = false;
+      let cancel = null;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        if (cancel) cancels.delete(cancel);
+        pendingWrites--;
+        maybeDone();
+      };
+      const stream = start(key, value, {
+        data(payload) {
+          emitted = true;
+          onData(payload);
+        },
+        error:
+          onError &&
+          (err => {
+            failed = true;
+            onError(err);
+          }),
+        done: settle
+      });
+      if (failed && !emitted) settle();
+      if (!settled) {
+        cancel = stream;
+        cancels.add(cancel);
+      }
+    },
+    flush() {
+      flushed = true;
+      maybeDone();
+    },
+    close() {
+      flushed = true;
+      for (const cancel of cancels) cancel();
+      cancels.clear();
+    }
+  };
 } /**
  * Renderer primitive — returns the cross-reference bootstrap script SSR
  * emits ahead of hydration data for a render scope. Not meant for
@@ -299,53 +373,17 @@ export function createJSONSerializer({
     serializeErrorStacks
   });
   const refs = new Map();
-  const cancels = new Set();
-  let pendingWrites = 0;
-  let flushed = false;
-  let done = false;
-  const maybeDone = () => {
-    if (flushed && pendingWrites === 0 && !done) {
-      done = true;
-      onDone && onDone();
-    }
-  };
-  return {
-    write(key, value) {
-      if (flushed) return;
-      pendingWrites++;
-      // Sync values settle inside the toCrossJSONStream call, before the
-      // cancel function exists — track with a flag instead of the handle.
-      let settled = false;
-      let cancel = null;
-      const stream = toCrossJSONStream(value, {
-        refs,
-        plugins: resolved.plugins,
-        disabledFeatures:
-          resolved.disabledFeatures | serializeOnlyDisabledFeatures(resolved.serializeErrorStacks),
-        onParse(node, initial) {
-          onData({ key, node, initial });
-        },
-        onError,
-        onDone() {
-          settled = true;
-          if (cancel) cancels.delete(cancel);
-          pendingWrites--;
-          maybeDone();
-        }
-      });
-      if (!settled) {
-        cancel = stream;
-        cancels.add(cancel);
-      }
-    },
-    flush() {
-      flushed = true;
-      maybeDone();
-    },
-    close() {
-      flushed = true;
-      for (const cancel of cancels) cancel();
-      cancels.clear();
-    }
-  };
+  return createKeyedSerializer({ onData, onDone, onError }, (key, value, hooks) =>
+    toCrossJSONStream(value, {
+      refs,
+      plugins: resolved.plugins,
+      disabledFeatures:
+        resolved.disabledFeatures | serializeOnlyDisabledFeatures(resolved.serializeErrorStacks),
+      onParse(node, initial) {
+        hooks.data({ key, node, initial });
+      },
+      onError: hooks.error,
+      onDone: hooks.done
+    })
+  );
 }

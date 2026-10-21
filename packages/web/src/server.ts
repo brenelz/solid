@@ -2031,6 +2031,10 @@ export function renderToStream(code, options = {}) {
   // The server error hook's ledger scope (`reportServerError`): the request
   // this render serves, else the render itself — never the process.
   const errorScope = requestEvent || {};
+  const reportRenderError = (err, handling) => {
+    reportServerError(err, { kind: "render", handling }, null, options.onError, errorScope);
+    if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
+  };
   let dispose;
   let dead = false;
   // The render's `"render"` record (`timeDocument`, once the context is up):
@@ -2143,20 +2147,12 @@ export function renderToStream(code, options = {}) {
     // seam's contract is `write`/`flush`, `close` is optional) must not be
     // able to escape the teardown. A throw here is the serializer's failure,
     // so it goes where its other failures go (`handling: "serialize"`,
-    // through the render's hook, else the ambient one); with no hook there
-    // is nobody to tell and nothing left to protect — the render is already
-    // torn down — so it is dropped.
+    // through the render's hook, else the ambient one).
     if (serializer && typeof serializer.close === "function") {
       try {
         serializer.close();
       } catch (err) {
-        reportServerError(
-          err,
-          { kind: "render", handling: "serialize" },
-          null,
-          options.onError,
-          errorScope
-        );
+        reportRenderError(err, "serialize");
       }
     }
     // A closed serializer drops writes without looking at them, but the
@@ -2190,14 +2186,7 @@ export function renderToStream(code, options = {}) {
     // boundary that already reported this error with its location leaves
     // this a no-op (once per error). With no hook anywhere the failure is
     // never silent.
-    reportServerError(
-      err,
-      { kind: "render", handling: "failed" },
-      null,
-      options.onError,
-      errorScope
-    );
-    if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
+    reportRenderError(err, "failed");
     abandon();
   };
   // The same containment reached from the renderer's OWN retry passes (root
@@ -2494,16 +2483,7 @@ export function renderToStream(code, options = {}) {
     plugins: options.plugins,
     onData: payload => sink.data(payload),
     onDone,
-    onError: err => {
-      reportServerError(
-        err,
-        { kind: "render", handling: "serialize" },
-        null,
-        options.onError,
-        errorScope
-      );
-      if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
-    }
+    onError: err => reportRenderError(err, "serialize")
   });
   let rootAssetsSerialized = false;
   const serializeRootAssets = () => {
@@ -3119,22 +3099,11 @@ export function renderToStream(code, options = {}) {
           context.trace = undefined;
           if (onAbort) signal.removeEventListener("abort", onAbort);
           if (endEdges) endEdges();
-          // Contained (#4029): an `onCleanup` that throws must not escape the
-          // teardown — from an `abort` listener it is an uncaught exception,
-          // from a completion microtask an unhandled rejection. It is the
-          // render's failure, so it goes to the hook as one (`handling:
-          // "failed"`), and with no hook anywhere it is never silent.
+          // A cleanup's throw must not escape an abort listener or a microtask (#4029).
           try {
             d();
           } catch (err) {
-            reportServerError(
-              err,
-              { kind: "render", handling: "failed" },
-              null,
-              options.onError,
-              errorScope
-            );
-            if (!options.onError && ambientServerErrorHook() === undefined) console.error(err);
+            reportRenderError(err, "failed");
           }
         };
         rootOwner = claimRenderRoot(context);
@@ -6237,7 +6206,7 @@ export function configureServerErrors(config: ServerErrorsConfig): void;
 export function reportRequestFailure(error: unknown, event: RequestEvent): void;
 
 /**
- * The serializer's `onError`, when a render passed one: seroval reports a
+ * `renderToString`'s serializer `onError`, when it passed one: seroval reports a
  * value that would not serialize here instead of throwing at the write
  * (that difference is why this is only wired when a hook was given — as
  * `onError` always was). The hook hears it as `handling: "serialize"`,
