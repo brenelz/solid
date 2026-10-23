@@ -242,8 +242,8 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
   // reached the observable store). "Uninitialized" alone is not the tell,
   // though: a first landing staged for this flush's commit (streamed
   // hydration rides this) parks its value in `_pendingValue` with the flag
-  // still set, and a comparator throw on that landing leaves the node
-  // uninitialized but errored — both have real truth to reveal. Only an
+  // still set, and a pass that threw leaves the node uninitialized but
+  // errored — both have real truth to reveal. Only an
   // uninitialized node with neither a staged value nor an error is a settle
   // that never happened. A lane derivation's first landing is truth too: it
   // sits in the lane slot until the lane shows (#3648). Silent in

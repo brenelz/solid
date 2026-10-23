@@ -862,15 +862,17 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       el._pendingValue !== NOT_PENDING
     );
   // A staged value, a parked frame (L2: the commit retires it), or status the
-  // commit sweep must settle (a pending or uninitialized pass), queues the
-  // node for this flush's commit. A first pass queues only when pending or
-  // born held: otherwise its value published directly. A queued pass's
-  // children are uncommitted (CONFIG_STAGED) until that commit.
+  // commit sweep must settle (a pending pass, or an uninitialized one that
+  // did not throw), queues the node for this flush's commit. A first pass
+  // queues only when pending or born held: otherwise its value published
+  // directly. A queued pass's children are uncommitted (CONFIG_STAGED) until
+  // that commit.
   if (
     el._pendingValue !== NOT_PENDING ||
     (el._x !== null && (el._x._pendingFirstChild !== null || el._x._pendingDisposal !== null)) ||
     ((el._statusFlags & (STATUS_PENDING | STATUS_UNINITIALIZED)) !== 0 &&
-      (!create || (el._statusFlags & STATUS_PENDING) !== 0))
+      (!create || (el._statusFlags & STATUS_PENDING) !== 0) &&
+      !(el._statusFlags & STATUS_ERROR))
   ) {
     el._config |= CONFIG_STAGED;
     // Lane work is the lane's to reveal (its seam), not this flush's commit.

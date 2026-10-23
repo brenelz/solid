@@ -1,5 +1,3 @@
-// #4244: a memo whose first pass rejected has no value yet. Re-asked, a
-// verdict reader sees it loading (NotReady), not pending with `undefined`.
 import { expect, it } from "vitest";
 import {
   createDeferred,
@@ -64,6 +62,7 @@ for (const [name, create] of [
     seen.length = 0;
     setN(1);
     flush();
+    expect(seen.length).toBeGreaterThan(0);
     for (const v of seen) {
       expect(v).toHaveLength(1);
       expect((v as any[])[0]).toBeInstanceOf(Error);
@@ -99,6 +98,7 @@ for (const [name, create] of [
     seen.length = 0;
     setN(1);
     flush();
+    expect(seen.length).toBeGreaterThan(0);
     for (const v of seen) {
       expect(v).toBeInstanceOf(Error);
       expect((v as Error).message).not.toBe("boom");
@@ -109,3 +109,60 @@ for (const [name, create] of [
     expect(seen[seen.length - 1]).toEqual({ key: "a" });
   });
 }
+
+it("a pass that throws after an uninitialized memo staged a value drops the staging", () => {
+  const [n, setN] = createSignal(0, { ownedWrite: true });
+  const [k, setK] = createSignal(0);
+  let calls = 0;
+  let m!: () => unknown;
+  const seen: unknown[] = [];
+  createRoot(() => {
+    const src = createMemo(() => new Promise<string>(() => {}));
+    m = createMemo(() => {
+      calls++;
+      if (calls === 2) {
+        n();
+        return "stale";
+      }
+      if (calls === 3) throw new Error("late");
+      n();
+      return src();
+    });
+    createMemo(() => {
+      try {
+        m();
+      } catch {}
+      if (k() === 1) setN(2);
+      return k();
+    });
+    createRenderEffect(
+      () => {
+        try {
+          return [isPending(() => m()), m()];
+        } catch (e) {
+          return [e];
+        }
+      },
+      v => {
+        seen.push(v);
+      }
+    );
+  });
+  flush();
+  setN(1);
+  setK(1);
+  flush();
+  expect(calls).toBe(3);
+  expect(seen[seen.length - 1]).toHaveLength(1);
+  expect(((seen[seen.length - 1] as any[])[0] as Error).message).toBe("late");
+
+  seen.length = 0;
+  setN(5);
+  flush();
+  expect(seen.length).toBeGreaterThan(0);
+  for (const v of seen) {
+    expect(v).toHaveLength(1);
+    expect((v as any[])[0]).toBeInstanceOf(Error);
+    expect(((v as any[])[0] as Error).message).not.toBe("late");
+  }
+});

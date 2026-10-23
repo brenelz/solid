@@ -1355,6 +1355,9 @@ export function commitPendingNode(n: Signal<any>): void {
     n._pendingValue = NOT_PENDING;
     n._time = clock + 1;
     notifyStatus(c as Computed<unknown>, STATUS_ERROR, e);
+  } else if (c._statusFlags! & STATUS_ERROR) {
+    // A pass that threw after the staging superseded it: dropped, not published.
+    n._pendingValue = NOT_PENDING;
   } else if (n._pendingValue !== NOT_PENDING) {
     n._value = n._pendingValue as any;
     n._pendingValue = NOT_PENDING;
