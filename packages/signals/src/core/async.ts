@@ -908,8 +908,7 @@ export function notifyStatus(el: Computed<any>, status: number, error: any): voi
     setPendingError(el, pendingSource, error);
   } else {
     clearPendingSources(el);
-    el._statusFlags =
-      status | (status !== STATUS_ERROR ? el._statusFlags & STATUS_UNINITIALIZED : 0);
+    el._statusFlags = status | (el._statusFlags & STATUS_UNINITIALIZED);
     ext(el)._error = error;
   }
 

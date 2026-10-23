@@ -1387,7 +1387,8 @@ export function commitPendingNode(n: Signal<any>): void {
   // `_error` means the last pass threw, kept its full list, and `_depsTail`
   // marks where it stopped.
   if (c._x?._error == null) trimStaleDeps(c as Computed<unknown>);
-  if (!(c._statusFlags! & STATUS_PENDING)) c._statusFlags! &= ~STATUS_UNINITIALIZED;
+  if (!(c._statusFlags! & (STATUS_PENDING | STATUS_ERROR)))
+    c._statusFlags! &= ~STATUS_UNINITIALIZED;
   // L2: the children this commit publishes are the frame's now — the frame
   // they replace, parked by the pass (`recompute`), goes.
   if (

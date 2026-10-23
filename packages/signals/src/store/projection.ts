@@ -273,7 +273,7 @@ export function runProjectionComputed<T extends object>(
           // reader re-derives and meets the error at its pull (memo parity,
           // #2897) — and the flush that runs them advances the clock, so a
           // later tracked re-read may retry (core `read`).
-          if (first && owner._statusFlags & STATUS_UNINITIALIZED) return;
+          if (first && pending && owner._statusFlags & STATUS_UNINITIALIZED) return;
           if (pending) wakeFamily(fam, error);
           else errorFamily(fam);
         });
