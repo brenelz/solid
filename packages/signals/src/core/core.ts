@@ -120,6 +120,7 @@ import {
   setPassLane,
   txOf,
   inEffectCallback,
+  setEffectCallback,
   passTx,
   joinPassTx,
   stagedReaders,
@@ -1533,6 +1534,25 @@ export function setStrictRead(v: string | false): string | false {
   const prev = strictRead;
   strictRead = v;
   return prev;
+}
+
+/**
+ * Runs `fn` as an event handler: an imperative scope of its own, outside the
+ * effect callback or strict-read scope whose native call (`focus()`,
+ * `showModal()`) dispatched the event synchronously. Dev only; `fn()` in prod.
+ */
+export function runEventHandler<T>(fn: () => T): T {
+  if (!__DEV__) return fn();
+  const prevStrictRead = strictRead;
+  const prevEffectCallback = inEffectCallback;
+  strictRead = false;
+  setEffectCallback(false);
+  try {
+    return fn();
+  } finally {
+    strictRead = prevStrictRead;
+    setEffectCallback(prevEffectCallback);
+  }
 }
 
 /**

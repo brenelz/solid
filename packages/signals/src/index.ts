@@ -43,6 +43,8 @@ export { setConsoleFooter } from "./core/index.js";
 export { setWriteHook, setSignalIdentities, setReadWatch, signalName } from "./core/index.js";
 /** @internal Store dependency edges: the name a store proxy's writes go by (the server-components client). */
 export { storeName } from "./store/edges.js";
+/** @internal Dev: runs an event handler outside the effect callback or strict-read scope that dispatched it (the web runtime). */
+export { runEventHandler } from "./core/index.js";
 import { DEV as _DEV, OBSERVE as _OBSERVE, type Dev, type Observe } from "./core/index.js";
 /**
  * Observe tier (diagnostics channel, attribution hook slot + interaction

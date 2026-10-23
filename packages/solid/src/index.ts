@@ -188,6 +188,8 @@ export function creationStamp(): number {
 export { setWriteHook } from "@solidjs/signals";
 /** @internal Dependency edges: name plain signals so a write reports which one; dev read watch. */
 export { setSignalIdentities, setReadWatch, signalName, storeName } from "@solidjs/signals";
+/** @internal Dev: runs an event handler outside the effect callback or strict-read scope that dispatched it. */
+export { runEventHandler } from "@solidjs/signals";
 /** @internal Dependency edges: server-only (an edges render names plain signals). Client: no-op. */
 export function beginEdgesRender(): () => void {
   return () => {};

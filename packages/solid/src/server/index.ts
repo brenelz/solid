@@ -169,6 +169,10 @@ export function setWriteHook(_hook: ((node?: object) => void) | null): void {}
 export function setSignalIdentities(_on: boolean): void {}
 /** @internal Dependency edges: client-only. */
 export function setReadWatch(_watch: ((node: object) => void) | null): void {}
+/** @internal Client-only: the server dispatches no events. */
+export function runEventHandler<T>(fn: () => T): T {
+  return fn();
+}
 /** @internal Dependency edges: client-only. */
 export function signalName(_node: object | undefined): string | undefined {
   return undefined;
