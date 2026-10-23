@@ -593,10 +593,44 @@ fn jsx_expression_can_return_hydratable_child(expression: &JSXExpression<'_>) ->
     }
 }
 
+/// Whether evaluating the expression itself reaches an `await` or `yield`;
+/// a nested function's body does not run.
+pub(crate) fn suspends_outside_functions(expression: &Expression<'_>) -> bool {
+    use oxc_ast_visit::Visit;
+
+    struct SuspendFinder {
+        found: bool,
+    }
+
+    impl<'b> Visit<'b> for SuspendFinder {
+        fn visit_await_expression(&mut self, _it: &oxc_ast::ast::AwaitExpression<'b>) {
+            self.found = true;
+        }
+        fn visit_yield_expression(&mut self, _it: &oxc_ast::ast::YieldExpression<'b>) {
+            self.found = true;
+        }
+        fn visit_function(
+            &mut self,
+            _it: &oxc_ast::ast::Function<'b>,
+            _flags: oxc_syntax::scope::ScopeFlags,
+        ) {
+        }
+        fn visit_arrow_function_expression(
+            &mut self,
+            _it: &oxc_ast::ast::ArrowFunctionExpression<'b>,
+        ) {
+        }
+    }
+
+    let mut finder = SuspendFinder { found: false };
+    finder.visit_expression(expression);
+    finder.found
+}
+
 /// Strips TS-only wrappers (casts, non-null, satisfies) and parens before a
 /// shape check, the same way the Babel predicates recurse through
 /// `TSAsExpression`/`TSNonNullExpression`/`TSSatisfiesExpression`.
-fn unwrap_ts_wrappers<'e, 'a>(mut expression: &'e Expression<'a>) -> &'e Expression<'a> {
+pub(crate) fn unwrap_ts_wrappers<'e, 'a>(mut expression: &'e Expression<'a>) -> &'e Expression<'a> {
     loop {
         expression = match expression {
             Expression::TSAsExpression(cast) => &cast.expression,

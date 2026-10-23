@@ -100,4 +100,37 @@ describe("intrinsic ref and spread sources", () => {
     expect(output).toMatch(/spread\([^,]+, attrs, false\)/);
     expect(output).not.toContain("mergeProps");
   });
+
+  test.each([
+    [
+      "an awaited lone spread",
+      "async function f() { return <div {...(await attrs())} />; }",
+      'ssrElement("div", await attrs(),'
+    ],
+    [
+      "an awaited spread beside an attribute",
+      'async function f() { return <div id="x" {...(await attrs())} />; }',
+      "await attrs()]"
+    ],
+    [
+      "a yielded lone spread",
+      "function* g() { return <div {...(yield attrs())} />; }",
+      'ssrElement("div", yield attrs(),'
+    ]
+  ])("leaves %s outside the thunk", (_, source, expected) => {
+    const output = compile(source);
+    expect(output).toContain(expected);
+    expect(output).not.toContain("=>");
+  });
+
+  test("keeps the receiver of a zero-argument member call through a cast", () => {
+    const output = babel.transformSync("const view = <div {...(api.attrs as any)()} />;", {
+      plugins: [[plugin, { generate: "ssr", hydratable: true }]],
+      configFile: false,
+      babelrc: false,
+      filename: "input.tsx",
+      parserOpts: { plugins: ["jsx", "typescript"] }
+    }).code;
+    expect(output).toContain('ssrElement("div", () => (api.attrs as any)(),');
+  });
 });

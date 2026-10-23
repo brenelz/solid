@@ -621,12 +621,19 @@ export function canNativeSpread(
 }
 
 export function inlineCallExpression(node: t.Expression): t.Expression {
-  return t.isCallExpression(node) &&
-    !node.arguments.length &&
-    !t.isCallExpression(node.callee) &&
-    !t.isMemberExpression(node.callee)
-    ? (node.callee as t.Expression)
-    : t.arrowFunctionExpression([], node);
+  if (t.isCallExpression(node) && !node.arguments.length) {
+    let callee: t.Node = node.callee;
+    while (
+      t.isTSNonNullExpression(callee) ||
+      t.isTSAsExpression(callee) ||
+      t.isTSSatisfiesExpression(callee) ||
+      t.isParenthesizedExpression(callee)
+    )
+      callee = callee.expression;
+    if (!t.isCallExpression(callee) && !t.isMemberExpression(callee))
+      return node.callee as t.Expression;
+  }
+  return t.arrowFunctionExpression([], node);
 }
 
 // Like inlineCallExpression, but only unwraps IIFEs — never a bare identifier

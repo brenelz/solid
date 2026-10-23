@@ -11,6 +11,7 @@ use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use crate::shared::ast::{arrow_return_expression, expression_to_argument, variable_statement};
 use crate::shared::ast_builder::AstBuilder;
 use crate::shared::classify::Classify;
+use crate::shared::utils::unwrap_ts_wrappers;
 
 pub(crate) trait ConditionBuilder<'a> {
     fn condition_allocator(&self) -> &'a Allocator;
@@ -82,7 +83,7 @@ pub(crate) fn zero_arg_call_thunk<'a>(
         return None;
     }
     if matches!(
-        call.callee,
+        unwrap_ts_wrappers(&call.callee),
         Expression::CallExpression(_)
             | Expression::StaticMemberExpression(_)
             | Expression::ComputedMemberExpression(_)

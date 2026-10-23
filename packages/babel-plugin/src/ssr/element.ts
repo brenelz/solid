@@ -1,4 +1,5 @@
 import * as babelTypes from "@babel/types";
+import type { NodePath } from "@babel/traverse";
 
 const t = babelTypes;
 import { decode } from "html-entities";
@@ -1152,12 +1153,7 @@ function createElement(
       refs.push(node.value.expression);
   }
   if (propAttributes.length === 1 && t.isJSXSpreadAttribute(propAttributes[0].node)) {
-    const argument = propAttributes[0].node.argument;
-    props = [
-      isDynamic(propAttributes[0].get("argument"), { checkMember: true })
-        ? inlineCallExpression(argument)
-        : argument
-    ];
+    props = [spreadSource(propAttributes[0].get("argument"))];
   } else {
     props = [];
     let runningObject: Array<babelTypes.ObjectProperty | babelTypes.ObjectMethod> = [],
@@ -1181,19 +1177,7 @@ function createElement(
           props.push(sourceLiteral(runningObject));
           runningObject = [];
         }
-        // A dynamic spread defers behind a thunk: evaluated in argument
-        // position it would run before `ssrElement` allocates the element's
-        // own hydration id, while the client claims the element
-        // (getNextElement) before applying the spread — shifting the
-        // element's id by one and leaving it unclaimed. `ssrElement` calls
-        // function sources after allocating the key, matching that order.
-        props.push(
-          isDynamic(attribute.get("argument"), {
-            checkMember: true
-          })
-            ? inlineCallExpression(node.argument)
-            : node.argument
-        );
+        props.push(spreadSource(attribute.get("argument")));
       } else if (t.isJSXAttribute(node)) {
         const value = decodedAttrValue(node.value) || t.booleanLiteral(true),
           id = convertJSXIdentifier(node.name),
@@ -1300,21 +1284,42 @@ function createElement(
   return { exprs, template: "", declarations: [], dynamics: [], spreadElement: true };
 }
 
+// Deferred so the spread runs after ssrElement takes the hydration key.
+function spreadSource(argument: NodePath<babelTypes.Expression>): babelTypes.Expression {
+  const node = argument.node;
+  return isDynamic(argument, { checkMember: true }) && !suspendsOutsideFunctions(node)
+    ? inlineCallExpression(node)
+    : node;
+}
+
 /** Does evaluating `node` call anything? A function's body does not run. */
 function callsOutsideFunctions(node: babelTypes.Node): boolean {
-  if (
-    t.isCallExpression(node) ||
-    t.isOptionalCallExpression(node) ||
-    t.isNewExpression(node) ||
-    t.isTaggedTemplateExpression(node)
-  )
-    return true;
+  return containsOutsideFunctions(
+    node,
+    n =>
+      t.isCallExpression(n) ||
+      t.isOptionalCallExpression(n) ||
+      t.isNewExpression(n) ||
+      t.isTaggedTemplateExpression(n)
+  );
+}
+
+function suspendsOutsideFunctions(node: babelTypes.Node): boolean {
+  return containsOutsideFunctions(node, n => t.isAwaitExpression(n) || t.isYieldExpression(n));
+}
+
+function containsOutsideFunctions(
+  node: babelTypes.Node,
+  matches: (node: babelTypes.Node) => boolean
+): boolean {
+  if (matches(node)) return true;
   if (t.isFunction(node)) return false;
   for (const key of t.VISITOR_KEYS[node.type] ?? []) {
     const child = (node as any)[key];
     if (Array.isArray(child)) {
-      for (const c of child) if (c && callsOutsideFunctions(c)) return true;
-    } else if (child && typeof child.type === "string" && callsOutsideFunctions(child)) return true;
+      for (const c of child) if (c && containsOutsideFunctions(c, matches)) return true;
+    } else if (child && typeof child.type === "string" && containsOutsideFunctions(child, matches))
+      return true;
   }
   return false;
 }

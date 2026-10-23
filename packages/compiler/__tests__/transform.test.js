@@ -216,6 +216,33 @@ describe("@solidjs/compiler transform", () => {
     }
   });
 
+  it("leaves an SSR spread with await or yield outside the thunk", () => {
+    const { code } = transform(
+      `
+      async function f() { return <div {...(await attrs())} />; }
+      async function g() { return <div id="x" {...(await attrs())} />; }
+      function* h() { return <div {...(yield attrs())} />; }
+      `,
+      { filename: "suspended-spread.jsx", moduleName: "r-server", generate: "ssr" }
+    );
+
+    expect(code).toContain('_$ssrElement("div", await attrs(),');
+    expect(code).toContain("await attrs()],");
+    expect(code).toContain('_$ssrElement("div", yield attrs(),');
+    expect(code).not.toContain("=>");
+  });
+
+  it("keeps the receiver of a zero-argument member call through a cast", () => {
+    const { code } = transform("const view = <div {...(api.attrs as any)()} />;", {
+      filename: "cast-callee.tsx",
+      moduleName: "r-server",
+      generate: "ssr"
+    });
+
+    expect(code).toContain("return (api.attrs as any)();");
+    expect(code).not.toContain("api.attrs as any,");
+  });
+
   it("covers the static subset of the Babel simpleElements fixture", () => {
     const result = transform(
       'const template = <div id="main"><style>{"div { color: red; }"}</style><h1>Welcome</h1><label for={"entry"}>Edit:</label><input id="entry" type="text" /></div>;',

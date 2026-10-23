@@ -36,7 +36,7 @@ use crate::shared::utils::{
     child_slot_allocates_ids, decode_html_entities, element_name, escape_html_attribute,
     escape_html_text_expression, expression_can_return_hydratable_child,
     expression_is_function_shaped, format_number, is_component_name, is_void_element,
-    normalize_static_attribute_value, trim_jsx_text,
+    normalize_static_attribute_value, suspends_outside_functions, trim_jsx_text,
 };
 
 use super::template::SsrTemplate;
@@ -1676,10 +1676,7 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
         if let (Some(JSXAttributeItem::SpreadAttribute(spread)), None) =
             (prop_attributes.next(), prop_attributes.next())
         {
-            let mut argument = spread.argument.clone_in(self.allocator);
-            if self.classify().is_dynamic(None, &argument, false) {
-                argument = self.inline_call_expression(argument);
-            }
+            let argument = self.spread_source(spread.argument.clone_in(self.allocator));
             return Ok((argument, None));
         }
         let last_spread = attributes
@@ -1700,17 +1697,7 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
                     // object flushed ahead of it, the element's for the tail.
                     self.note_props_site(spread.span);
                     flush_component_props(self, &mut running_props, &mut prop_objects, spread.span);
-                    let mut argument = spread.argument.clone_in(self.allocator);
-                    // A dynamic spread defers behind a thunk: evaluated in
-                    // argument position it would run before `ssrElement`
-                    // allocates the element's own hydration id, while the
-                    // client claims the element (getNextElement) before
-                    // applying the spread — shifting the element's id by one
-                    // and leaving it unclaimed. `ssrElement` calls function
-                    // sources after allocating the key, matching that order.
-                    if self.classify().is_dynamic(None, &argument, false) {
-                        argument = self.inline_call_expression(argument);
-                    }
+                    let argument = self.spread_source(spread.argument.clone_in(self.allocator));
                     prop_objects.push(argument);
                 }
                 JSXAttributeItem::Attribute(attr) => {
@@ -3305,6 +3292,16 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
                 _ => {}
             }
         }
+    }
+
+    /// Deferred so the spread runs after `ssrElement` takes the hydration key.
+    fn spread_source(&self, argument: Expression<'a>) -> Expression<'a> {
+        if self.classify().is_dynamic(None, &argument, false)
+            && !suspends_outside_functions(&argument)
+        {
+            return self.inline_call_expression(argument);
+        }
+        argument
     }
 
     /// Babel's `inlineCallExpression`: zero-arg calls with simple callees
