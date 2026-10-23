@@ -1676,7 +1676,11 @@ impl<'a, 'source> AstSsrTransform<'a, 'source> {
         if let (Some(JSXAttributeItem::SpreadAttribute(spread)), None) =
             (prop_attributes.next(), prop_attributes.next())
         {
-            return Ok((spread.argument.clone_in(self.allocator), None));
+            let mut argument = spread.argument.clone_in(self.allocator);
+            if self.classify().is_dynamic(None, &argument, false) {
+                argument = self.inline_call_expression(argument);
+            }
+            return Ok((argument, None));
         }
         let last_spread = attributes
             .iter()

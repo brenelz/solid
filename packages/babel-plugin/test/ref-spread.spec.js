@@ -30,7 +30,7 @@ describe("intrinsic ref and spread sources", () => {
   ])("passes one effective source through for %s", (_, source) => {
     for (const hydratable of [true, false]) {
       const output = compile(source, "ssr", hydratable);
-      expect(output).toContain('ssrElement("div", attrs()');
+      expect(output).toContain('ssrElement("div", attrs,');
       expect(output).not.toContain("mergeProps");
     }
   });

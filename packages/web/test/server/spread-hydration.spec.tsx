@@ -3,7 +3,7 @@
  */
 import { describe, expect, test } from "vitest";
 import { renderToString } from "@solidjs/web";
-import { createSignal } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 
 function extractHydrationKeys(html: string): string[] {
   const matches = [...html.matchAll(/_hk=([^\s>]+)/g)];
@@ -77,6 +77,34 @@ describe("Spread element hydration key alignment", () => {
     const lastSegments = anchorKeys.map(k => parseInt(k.split("-").pop()!));
     expect(lastSegments[1] - lastSegments[0]).toBe(3);
     expect(lastSegments[2] - lastSegments[1]).toBe(3);
+  });
+
+  test("a lone dynamic spread runs after the element's hydration key", () => {
+    const withMemo = () => {
+      const title = createMemo(() => "spread");
+      return {
+        get title() {
+          return title();
+        }
+      };
+    };
+    const lone = renderToString(() => (
+      <>
+        <label {...withMemo()}>x</label>
+        <li>after</li>
+      </>
+    ));
+    const withAttribute = renderToString(() => (
+      <>
+        <label data-x="" {...withMemo()}>
+          x
+        </label>
+        <li>after</li>
+      </>
+    ));
+    expect(lone).toContain('title="spread"');
+    expect(extractHydrationKeys(lone)).toEqual(extractHydrationKeys(withAttribute));
+    expect(extractHydrationKeys(lone)).toEqual(["0", "2"]);
   });
 
   // #3313: `<a {...props} />` — children arrive INSIDE the spread, so the
