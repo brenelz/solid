@@ -140,11 +140,7 @@ export const setSignalIdentities: (on: boolean) => void = core.setSignalIdentiti
 export const beginEdgesRender: () => () => void = core.beginEdgesRender;
 /** Dependency edges, dev only. Client: watch every node read. Server: no-op. */
 export const setReadWatch: (watch: ((node: object) => void) | null) => void = core.setReadWatch;
-/**
- * Dev only. Client: runs an event handler as a scope of its own, outside the
- * effect callback or strict-read scope whose native call dispatched the event.
- * Server: `fn()`.
- */
+/** Dev only. Client: runs an event handler outside the effect callback or strict-read scope that dispatched it. Server: `fn()`. */
 export const runEventHandler: <T>(fn: () => T) => T = core.runEventHandler;
 /** Dependency edges. Client: a plain signal's identity, if it was named. Server: `undefined`. */
 export const signalName: (node: object | undefined) => string | undefined = core.signalName;

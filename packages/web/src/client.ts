@@ -550,10 +550,15 @@ export function unregisterDelegatedContainer(container, owner = container) {
 function attachDelegatedEvent(name, container, state) {
   if (state.handlers.has(name)) return;
   const handler = "_SOLID_OBSERVE_"
-    ? e => dispatchAsInteraction(e, () => eventHandler(e, container, state))
+    ? e => dispatchHandler(e, () => eventHandler(e, container, state))
     : e => eventHandler(e, container, state);
   state.handlers.set(name, handler);
   container.addEventListener(name, handler);
+}
+
+// Dev: the handler runs outside the effect callback or strict-read window that dispatched it.
+function dispatchHandler(e, fn) {
+  return dispatchAsInteraction(e, "_SOLID_DEV_" ? () => runEventHandler(fn) : fn);
 }
 
 // === Interaction provenance (observe tier) ===
@@ -995,7 +1000,7 @@ export function addEvent(node, name, handler, delegate) {
   if (Array.isArray(handler)) {
     const handlerFn = handler[0];
     const listener = "_SOLID_OBSERVE_"
-      ? e => dispatchAsInteraction(e, () => runHandler(() => handlerFn.call(node, handler[1], e)))
+      ? e => dispatchHandler(e, () => handlerFn.call(node, handler[1], e))
       : e => handlerFn.call(node, handler[1], e);
     // Keep authored identity on this attachment's wrapper, never on the
     // shared element where another spread/root/direct listener could replace it.
@@ -1008,18 +1013,12 @@ export function addEvent(node, name, handler, delegate) {
     // what the caller gets back, so removal by the returned identity still works.
     // Listener objects keep their identity (their options object rides along
     // on the attach call and must match on removal).
-    const listener = e => dispatchAsInteraction(e, () => runHandler(() => handler.call(node, e)));
+    const listener = e => dispatchHandler(e, () => handler.call(node, e));
     node.addEventListener(name, listener);
     return listener;
   }
   node.addEventListener(name, handler, typeof handler !== "function" && handler);
   return handler;
-}
-
-// Dev: a handler runs in a scope of its own, not the effect callback or
-// strict-read scope whose native call (focus(), showModal()) dispatched it (#4235).
-function runHandler(fn) {
-  return "_SOLID_DEV_" ? runEventHandler(fn) : fn();
 } /** Compiler-emitted primitive; not for hand-written code. @internal */
 export function style(
   node: Element,
@@ -2949,12 +2948,6 @@ function assignProp(node, prop, value, prev, skipRef, nodeName) {
 }
 
 function eventHandler(e, container, state) {
-  "_SOLID_DEV_"
-    ? runEventHandler(() => dispatchDelegated(e, container, state))
-    : dispatchDelegated(e, container, state);
-}
-
-function dispatchDelegated(e, container, state) {
   if (hydrationRt !== null && hydrationRt.dedupEvent(e)) return;
   const prev = e[$$EVENT_OWNER];
   let resumeNode;

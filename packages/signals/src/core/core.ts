@@ -1536,11 +1536,7 @@ export function setStrictRead(v: string | false): string | false {
   return prev;
 }
 
-/**
- * Runs `fn` as an event handler: an imperative scope of its own, outside the
- * effect callback or strict-read scope whose native call (`focus()`,
- * `showModal()`) dispatched the event synchronously. Dev only; `fn()` in prod.
- */
+/** Dev: runs an event handler outside the effect callback or strict-read scope that dispatched it; `fn()` in prod. */
 export function runEventHandler<T>(fn: () => T): T {
   if (!__DEV__) return fn();
   const prevStrictRead = strictRead;

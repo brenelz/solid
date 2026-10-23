@@ -6,19 +6,23 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { render } from "@solidjs/web";
 import { createEffect, createRoot, createSignal, flush, OBSERVE, resetErrorHalt } from "solid-js";
 
+let unsubscribe: (() => void) | undefined;
+
 function arm() {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   const events: any[] = [];
-  const unsubscribe = OBSERVE!.diagnostics.subscribe(e => {
+  unsubscribe = OBSERVE!.diagnostics.subscribe(e => {
     if (e.code === "STRICT_READ_UNTRACKED") events.push(e);
   });
-  return { events, unsubscribe };
+  return events;
 }
 
 let container: HTMLDivElement;
 let dispose: (() => void) | undefined;
 
 afterEach(() => {
+  unsubscribe?.();
+  unsubscribe = undefined;
   dispose?.();
   dispose = undefined;
   container?.remove();
@@ -36,7 +40,7 @@ function mount(fn: () => any) {
 
 describe("#4235 event handlers dispatched from an effect callback", () => {
   test("a delegated handler fired by focus() in an effect reads props without a strict-read warning", () => {
-    const { events, unsubscribe } = arm();
+    const events = arm();
     const [label] = createSignal("Name", { name: "label" });
     const [open, setOpen] = createSignal(false);
     const seen: string[] = [];
@@ -59,7 +63,6 @@ describe("#4235 event handlers dispatched from an effect callback", () => {
 
     setOpen(true);
     flush();
-    unsubscribe();
 
     expect(seen).toEqual(["Name"]);
     expect(events).toHaveLength(0);
@@ -94,7 +97,7 @@ describe("#4235 event handlers dispatched from an effect callback", () => {
   });
 
   test("an addEvent handler fired by focus() in an effect reads props without a strict-read warning", () => {
-    const { events, unsubscribe } = arm();
+    const events = arm();
     const [label] = createSignal("Name", { name: "label" });
     const [open, setOpen] = createSignal(false);
     const seen: string[] = [];
@@ -128,14 +131,13 @@ describe("#4235 event handlers dispatched from an effect callback", () => {
     flush();
     setOpen(false);
     flush();
-    unsubscribe();
 
     expect(seen).toEqual(["Name", "blur", "Name"]);
     expect(events).toHaveLength(0);
   });
 
   test("control: a direct read in the effect callback still warns", () => {
-    const { events, unsubscribe } = arm();
+    const events = arm();
     const [label] = createSignal("Name", { name: "label" });
     const [open, setOpen] = createSignal(false);
 
@@ -148,7 +150,6 @@ describe("#4235 event handlers dispatched from an effect callback", () => {
 
     setOpen(true);
     flush();
-    unsubscribe();
 
     expect(events).toHaveLength(1);
     expect(events[0].data?.strictRead).toBe("an effect callback");
