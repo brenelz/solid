@@ -945,11 +945,10 @@ function isPlainBag(o: unknown): o is object {
   const proto = Object.getPrototypeOf(o);
   return (proto === Object.prototype || proto === null) && !($PROXY in o);
 }
-// A function source is consumed only through the view, key by key, so two
-// plain bags with the same data properties are the same to every reader.
 function sameBag(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (!isPlainBag(a) || !isPlainBag(b)) return false;
+  if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
   const keys = Reflect.ownKeys(a);
   const other = Reflect.ownKeys(b);
   if (keys.length !== other.length) return false;
@@ -959,6 +958,7 @@ function sameBag(a: unknown, b: unknown): boolean {
     const da = Object.getOwnPropertyDescriptor(a, key)!;
     const db = Object.getOwnPropertyDescriptor(b, key)!;
     if (!("value" in da) || !("value" in db) || da.value !== db.value) return false;
+    if (da.enumerable !== db.enumerable) return false;
   }
   return true;
 }

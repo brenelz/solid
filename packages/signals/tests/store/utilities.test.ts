@@ -489,15 +489,27 @@ describe("Merge Signal", () => {
     setSource({ a: 1 });
     flush();
     expect(runs).toBe(1);
-    setSource({ a: 2 });
+    setSource(Object.defineProperty({}, "a", { value: 1, writable: true, configurable: true }));
     flush();
     expect(runs).toBe(2);
-    setSource({ a: 2, b: 1 });
+    setSource({ a: 1 });
     flush();
     expect(runs).toBe(3);
-    setSource({ b: 1, a: 2 });
+    setSource(Object.assign(Object.create(null), { a: 1 }));
     flush();
     expect(runs).toBe(4);
+    setSource(Object.assign(Object.create(null), { a: 1 }));
+    flush();
+    expect(runs).toBe(4);
+    setSource({ a: 2 });
+    flush();
+    expect(runs).toBe(5);
+    setSource({ a: 2, b: 1 });
+    flush();
+    expect(runs).toBe(6);
+    setSource({ b: 1, a: 2 });
+    flush();
+    expect(runs).toBe(7);
     const getterBag = {
       get a() {
         return 2;
@@ -506,7 +518,7 @@ describe("Merge Signal", () => {
     };
     setSource(getterBag);
     flush();
-    expect(runs).toBe(5);
+    expect(runs).toBe(8);
     setSource({
       get a() {
         return 2;
@@ -514,20 +526,20 @@ describe("Merge Signal", () => {
       b: 1
     });
     flush();
-    expect(runs).toBe(6);
+    expect(runs).toBe(9);
     setSource(new Box(2));
     flush();
-    expect(runs).toBe(7);
+    expect(runs).toBe(10);
     setSource(new Box(2));
     flush();
-    expect(runs).toBe(8);
+    expect(runs).toBe(11);
     const [store] = createStore({ a: 2 });
     setSource(store);
     flush();
-    expect(runs).toBe(9);
+    expect(runs).toBe(12);
     setSource(createStore({ a: 2 })[0]);
     flush();
-    expect(runs).toBe(10);
+    expect(runs).toBe(13);
   });
 });
 
