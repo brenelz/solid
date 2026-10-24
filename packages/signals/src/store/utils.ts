@@ -939,6 +939,29 @@ export function mergeSources(o: any): any[] | undefined {
   const r = mergeView(o);
   return r === undefined ? undefined : r.sources;
 }
+
+function isPlainBag(o: unknown): o is object {
+  if (o === null || typeof o !== "object") return false;
+  const proto = Object.getPrototypeOf(o);
+  return (proto === Object.prototype || proto === null) && !($PROXY in o);
+}
+// A function source is consumed only through the view, key by key, so two
+// plain bags with the same data properties are the same to every reader.
+function sameBag(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!isPlainBag(a) || !isPlainBag(b)) return false;
+  const keys = Reflect.ownKeys(a);
+  const other = Reflect.ownKeys(b);
+  if (keys.length !== other.length) return false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key !== other[i]) return false;
+    const da = Object.getOwnPropertyDescriptor(a, key)!;
+    const db = Object.getOwnPropertyDescriptor(b, key)!;
+    if (!("value" in da) || !("value" in db) || da.value !== db.value) return false;
+  }
+  return true;
+}
 /**
  * Merges multiple props-like objects into a single proxy that *preserves
  * reactivity*. Reads are forwarded to the right-most source that defines the
@@ -991,7 +1014,7 @@ export function merge<T extends unknown[]>(...sources: T): Merge<T> {
     count++;
     only = s;
     if (typeof s === "function") {
-      flattened[n] = createMemo(s as () => any) as any;
+      flattened[n] = createMemo(s as () => any, { equals: sameBag }) as any;
       kinds[n++] = SOURCE_MEMO;
       continue;
     }

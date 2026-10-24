@@ -6,6 +6,7 @@ import {
   createRoot,
   createSignal,
   flush,
+  merge,
   OBSERVE
 } from "../src/index.js";
 import type { DiagnosticEvent } from "../src/core/dev.js";
@@ -168,5 +169,28 @@ describe("UNSTABLE_MEMO_OUTPUT", () => {
     }
 
     expect(events).toHaveLength(0);
+  });
+
+  it("stays quiet for merge()'s memo over a function source returning equivalent objects (#4256)", () => {
+    const [n, setN] = createSignal(0, { name: "n" });
+    let runs = 0;
+    createRoot(() => {
+      const props = merge(() => (n() >= 0 ? { tone: "info" } : {}));
+      createEffect(
+        () => (runs++, props.tone),
+        () => {},
+        { name: "consumer" }
+      );
+    });
+    flush();
+
+    const events = captureUnstable();
+    for (let i = 1; i <= 8; i++) {
+      setN(i);
+      flush();
+    }
+
+    expect(events).toHaveLength(0);
+    expect(runs).toBe(1);
   });
 });

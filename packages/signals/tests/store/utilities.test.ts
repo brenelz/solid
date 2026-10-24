@@ -443,6 +443,92 @@ describe("Merge Signal", () => {
     const props = merge({ a: 1 }, null, undefined, false);
     expect((props as any).a).toBe(1);
   });
+
+  test("a function source returning an equivalent plain object does not re-run readers (#4256)", () => {
+    const [n, setN] = createSignal(0);
+    const handler = () => {};
+    let props!: { tone?: string; onClick?: () => void };
+    const seen: (string | undefined)[] = [];
+    createRoot(() => {
+      props = merge(() => (n() >= 0 ? { tone: "info", onClick: handler } : {}));
+      createEffect(
+        () => props.tone,
+        v => {
+          seen.push(v);
+        }
+      );
+    });
+    flush();
+    for (let i = 1; i <= 4; i++) {
+      setN(i);
+      flush();
+    }
+    expect(seen).toEqual(["info"]);
+    expect(props.onClick).toBe(handler);
+    setN(-1);
+    flush();
+    expect(seen).toEqual(["info", undefined]);
+  });
+
+  test("a function source re-runs readers when a key, a value, or the shape changes", () => {
+    class Box {
+      constructor(public a: number) {}
+    }
+    const [source, setSource] = createSignal<object>({ a: 1 });
+    let props!: Record<string, any>;
+    let runs = 0;
+    createRoot(() => {
+      props = merge(() => source());
+      createEffect(
+        () => (runs++, props.a),
+        () => {}
+      );
+    });
+    flush();
+    expect(runs).toBe(1);
+    setSource({ a: 1 });
+    flush();
+    expect(runs).toBe(1);
+    setSource({ a: 2 });
+    flush();
+    expect(runs).toBe(2);
+    setSource({ a: 2, b: 1 });
+    flush();
+    expect(runs).toBe(3);
+    setSource({ b: 1, a: 2 });
+    flush();
+    expect(runs).toBe(4);
+    const getterBag = {
+      get a() {
+        return 2;
+      },
+      b: 1
+    };
+    setSource(getterBag);
+    flush();
+    expect(runs).toBe(5);
+    setSource({
+      get a() {
+        return 2;
+      },
+      b: 1
+    });
+    flush();
+    expect(runs).toBe(6);
+    setSource(new Box(2));
+    flush();
+    expect(runs).toBe(7);
+    setSource(new Box(2));
+    flush();
+    expect(runs).toBe(8);
+    const [store] = createStore({ a: 2 });
+    setSource(store);
+    flush();
+    expect(runs).toBe(9);
+    setSource(createStore({ a: 2 })[0]);
+    flush();
+    expect(runs).toBe(10);
+  });
 });
 
 describe("omit Props", () => {
