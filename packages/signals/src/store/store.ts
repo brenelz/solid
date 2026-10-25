@@ -1046,6 +1046,15 @@ function sameLeaf(a: unknown, b: unknown): boolean {
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
   return unwrapValue(a) === unwrapValue(b) || targetsEqual(a, b);
 }
+function itemKey(v: unknown, fam: StoreFamily | null): unknown {
+  if (v === null || typeof v !== "object") return v;
+  return (v as any)[$TARGET] ?? lookupTarget(v, fam) ?? v;
+}
+function itemKeys(items: unknown[], fam: StoreFamily | null): Set<unknown> {
+  const keys = new Set<unknown>();
+  for (const item of items) keys.add(itemKey(item, fam));
+  return keys;
+}
 function reportReplacedContainers(
   t: StoreTarget,
   old: Record<PropertyKey, any>,
@@ -1055,7 +1064,8 @@ function reportReplacedContainers(
   const keys = writtenKeys ?? Reflect.ownKeys(pb);
   const isArray = Array.isArray(pb);
   const owner = storeRootOwner(t);
-  let moved: Set<unknown> | null = null;
+  let oldItems: Set<unknown> | null = null;
+  let newItems: Set<unknown> | null = null;
   for (const key of keys) {
     if ((isArray && key === "length") || key === $OWNER) continue;
     if (t.del?.has(key)) continue;
@@ -1070,29 +1080,25 @@ function reportReplacedContainers(
       targetsEqual(ov, nv)
     )
       continue;
-    // splice/sort/unshift shift existing items between indices: a move, not a copy.
-    if (isArray) {
-      if (moved === null) {
-        moved = new Set();
-        for (const item of old as unknown[]) moved.add(unwrapValue(item));
-      }
-      if (moved.has(nv)) continue;
-    }
     const isArr = Array.isArray(nv);
     if (isArr !== Array.isArray(ov)) continue;
-    let total: number;
+    const nkeys = isArr ? null : Object.keys(nv);
+    const total = isArr ? (nv as unknown[]).length : nkeys!.length;
+    if (total > REPLACED_CENSUS_MAX) continue;
+    // splice/sort/unshift shift existing items between indices: a move, not a copy.
+    if (isArray) {
+      if (oldItems === null) {
+        oldItems = itemKeys(old as unknown[], t.fam);
+        newItems = itemKeys(pb as unknown[], t.fam);
+      }
+      if (oldItems.has(itemKey(nv, t.fam)) || newItems!.has(itemKey(ov, t.fam))) continue;
+    }
     let unchanged = 0;
     if (isArr) {
-      total = (nv as unknown[]).length;
-      if (total > REPLACED_CENSUS_MAX) continue;
-      const oldItems = new Set<unknown>();
-      for (const item of ov as unknown[]) oldItems.add(unwrapValue(item));
-      for (const item of nv as unknown[]) if (oldItems.has(unwrapValue(item))) unchanged++;
+      const was = itemKeys(ov as unknown[], t.fam);
+      for (const item of nv as unknown[]) if (was.has(itemKey(item, t.fam))) unchanged++;
     } else {
-      const nkeys = Object.keys(nv);
-      total = nkeys.length;
-      if (total > REPLACED_CENSUS_MAX) continue;
-      for (const k of nkeys) if (sameLeaf((ov as any)[k], (nv as any)[k])) unchanged++;
+      for (const k of nkeys!) if (sameLeaf((ov as any)[k], (nv as any)[k])) unchanged++;
     }
     attrHooks!.storeReplaced(
       storePathOf(t) + "." + String(key),
