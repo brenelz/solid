@@ -1055,6 +1055,7 @@ function reportReplacedContainers(
   const keys = writtenKeys ?? Reflect.ownKeys(pb);
   const isArray = Array.isArray(pb);
   const owner = storeRootOwner(t);
+  let moved: Set<unknown> | null = null;
   for (const key of keys) {
     if ((isArray && key === "length") || key === $OWNER) continue;
     if (t.del?.has(key)) continue;
@@ -1069,6 +1070,14 @@ function reportReplacedContainers(
       targetsEqual(ov, nv)
     )
       continue;
+    // splice/sort/unshift shift existing items between indices: a move, not a copy.
+    if (isArray) {
+      if (moved === null) {
+        moved = new Set();
+        for (const item of old as unknown[]) moved.add(unwrapValue(item));
+      }
+      if (moved.has(nv)) continue;
+    }
     const isArr = Array.isArray(nv);
     if (isArr !== Array.isArray(ov)) continue;
     let total: number;

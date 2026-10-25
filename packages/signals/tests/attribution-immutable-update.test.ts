@@ -102,6 +102,29 @@ describe("IMMUTABLE_UPDATE_IN_STORE", () => {
     expect(hits).toEqual([]);
   });
 
+  it("does not report an existing item that splice shifts into a removed index (#4262)", () => {
+    const hits = arm();
+    const [state, setState] = createStore({
+      items: [
+        { id: "a", product: "p1", name: "Pancakes", variant: "meat", quantity: 2 },
+        { id: "b", product: "p1", name: "Pancakes", variant: "cheese", quantity: 2 }
+      ]
+    });
+    setState(s => {
+      s.items.splice(0, 1);
+    });
+    flush();
+    expect(state.items.length).toBe(1);
+    expect(state.items[0].id).toBe("b");
+    expect(hits).toEqual([]);
+    setState(s => {
+      s.items[0] = { ...s.items[0], quantity: 3 };
+    });
+    flush();
+    expect(hits).toHaveLength(1);
+    expect(hits[0].data!.path).toBe("store.items.0");
+  });
+
   it("does not report genuinely new data (nothing carried over)", () => {
     const hits = arm();
     const [, setState] = createStore<State>(initial());
