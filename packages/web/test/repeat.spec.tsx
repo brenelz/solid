@@ -3,7 +3,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, test } from "vitest";
-import { createRoot, createSignal, Repeat, flush } from "solid-js";
+import { createRoot, createSignal, Repeat, Show, flush } from "solid-js";
 import { insert, Repeat as WebRepeat } from "../src/index.js";
 
 test("solid-js/web re-exports Repeat", () => {
@@ -492,5 +492,28 @@ describe("Testing each without callback builds each row once", () => {
       dispose();
     });
     expect(refs).toBe(1);
+  });
+
+  test("a control-flow child stays reactive in every row", () => {
+    const [on, setOn] = createSignal(false);
+    let div!: HTMLDivElement, disposer!: () => void;
+    createRoot(dispose => {
+      disposer = dispose;
+      div = (
+        <div>
+          <Repeat count={2}>
+            <Show when={on()} fallback={<i>off</i>}>
+              <b>on</b>
+            </Show>
+          </Repeat>
+        </div>
+      ) as HTMLDivElement;
+    });
+    flush();
+    expect(div.innerHTML).toBe("<i>off</i><i>off</i>");
+    setOn(true);
+    flush();
+    expect(div.innerHTML).toBe("<b>on</b><b>on</b>");
+    disposer();
   });
 });

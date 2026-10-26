@@ -74,6 +74,13 @@ describe("Server Repeat", () => {
     expect(val).toEqual(["item", "item"]);
     expect(reads).toBe(2);
   });
+
+  test("keeps a zero-arity function child as the row value", () => {
+    const memo = () => "item";
+    const result = Repeat({ count: 2, children: memo });
+    const val = typeof result === "function" ? (result as any)() : result;
+    expect(val).toEqual([memo, memo]);
+  });
 });
 
 describe("Server Show", () => {
