@@ -704,6 +704,8 @@ function createBoundary<T>(
           if (!b._fallback && b._fb === fb) {
             dispose(fb);
             b._fb = null;
+            // Past this flush's seam: a boundary waiting on its error needs one.
+            if (collecting.size !== 0) schedule();
           }
         });
       release(b);
