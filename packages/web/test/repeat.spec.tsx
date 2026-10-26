@@ -480,3 +480,17 @@ describe("Testing each without callback", () => {
 
   test("dispose", () => disposer());
 });
+
+describe("Testing each without callback builds each row once", () => {
+  test("ref runs once per row", () => {
+    let refs = 0;
+    createRoot(dispose => {
+      <Repeat count={1}>
+        <div ref={() => refs++} />
+      </Repeat>;
+      flush();
+      dispose();
+    });
+    expect(refs).toBe(1);
+  });
+});

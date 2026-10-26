@@ -93,7 +93,10 @@ export function Repeat<T extends SolidElement>(props: {
   options.from = () => props.from;
   return repeat(
     () => props.count,
-    index => (typeof props.children === "function" ? props.children(index) : props.children),
+    index => {
+      const child = props.children;
+      return typeof child === "function" ? child(index) : child;
+    },
     options
   ) as unknown as SolidElement;
 }
