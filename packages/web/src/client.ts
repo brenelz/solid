@@ -2751,6 +2751,7 @@ export function runHydrationEvents() {
           for (let i = 0; i < matches.length; i++)
             eventHandler(e, matches[i].container, matches[i].state);
         } else if (matchContainer) eventHandler(e, matchContainer, matchState);
+        flush();
       }
       if (sharedConfig.done) {
         sharedConfig.events = _$HY.events = null;
