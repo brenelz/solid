@@ -4106,6 +4106,8 @@ export function createErrorBoundary<T, U>(
   // ancestor group's release (#2872).
   setContext(RevealGroupContext, null, owner);
   const outputOwner = ctx ? createOwner() : undefined;
+  let disposed = false;
+  onCleanup(() => (disposed = true));
   // Partial template from a pass that went async. A retry pull must resume
   // these surviving holes (their owners and any async computations created
   // inside the boundary stay alive) rather than dispose and re-run the
@@ -4315,9 +4317,13 @@ export function createErrorBoundary<T, U>(
     let resolved: any = inCtx(() => ctx.resolve(ctx.escape(handleError(err, true))));
     if (outcome === true || !resolved || !resolved.h || !resolved.h.length) return finish(resolved);
     return async () => {
+      // The resume loop's convergence budget (see hydration.ts).
+      let passes = 0;
       while (resolved && resolved.p && resolved.p.length) {
         if (resolved.p.some((p: any) => p.$clientHole)) return;
+        if (passes++ > 10000) break;
         await Promise.all(resolved.p).catch(() => {});
+        if (disposed) return;
         resolved = inCtx(() => ctx.ssr(resolved.t, ...resolved.h));
       }
       return finish(resolved);

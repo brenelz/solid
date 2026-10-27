@@ -1164,6 +1164,88 @@ describe("Loading SSR Async", () => {
       ).toBe(true);
     });
 
+    // A post-flush Loading rejection under an Errored whose fallback hole is still pending.
+    function pendingFallbackOutcome(hole: () => any) {
+      const { context, fragmentResults, fragmentErrors, serialized } = createMockSSRContext({
+        fragmentFlushed: true
+      });
+      sharedConfig.context = context;
+
+      const d = deferred<string>();
+      let dispose!: () => void;
+      let result: any;
+      createRoot(
+        disposeRoot => {
+          dispose = disposeRoot;
+          result = Errored({
+            fallback: () => ssr(["<p>", "</p>"], hole),
+            get children() {
+              return Loading({
+                fallback: "Loading..." as any,
+                get children() {
+                  const data = createMemo(() => d.promise);
+                  return ssr(["<div>", "</div>"], () => data()) as any;
+                }
+              }) as any;
+            }
+          }) as any;
+        },
+        { id: "t" }
+      );
+      let value: any = result;
+      while (typeof value === "function") value = value();
+      expect(value.t[0]).toContain("Loading...");
+
+      const fetchError = new Error("Async fetch failed");
+      d.reject(fetchError);
+      return { fetchError, dispose, fragmentResults, fragmentErrors, serialized };
+    }
+
+    test("a fallback hole pending again on every pass settles the fragment after the pass budget (#4317)", async () => {
+      let pulls = 0;
+      const { fetchError, fragmentResults, fragmentErrors, serialized } = pendingFallbackOutcome(
+        () => {
+          pulls++;
+          throw new NotReadyError(new Promise<void>(r => setImmediate(r)));
+        }
+      );
+
+      const deadline = Date.now() + 4000;
+      while (!fragmentErrors.size && Date.now() < deadline) await tick();
+
+      expect(fragmentErrors.size).toBe(1);
+      expect([...fragmentErrors.values()][0]).toBe(fetchError);
+      expect([...fragmentResults.values()][0]).toBeUndefined();
+      expect(pulls).toBeLessThanOrEqual(10002);
+      expect([...serialized.values()].some(v => v instanceof Error)).toBe(false);
+    });
+
+    test("a disposed render stops waiting for the fallback's async hole (#4317)", async () => {
+      const hint = deferred<void>();
+      let ready = false;
+      let pulls = 0;
+      const { fetchError, dispose, fragmentResults, fragmentErrors, serialized } =
+        pendingFallbackOutcome(() => {
+          pulls++;
+          if (!ready) throw new NotReadyError(hint.promise);
+          return "HINT";
+        });
+      await tick();
+      expect(pulls).toBe(1);
+      expect(fragmentErrors.size).toBe(0);
+
+      dispose();
+      ready = true;
+      hint.resolve();
+      await tick();
+
+      expect(pulls).toBe(1);
+      expect(fragmentErrors.size).toBe(1);
+      expect([...fragmentErrors.values()][0]).toBe(fetchError);
+      expect([...fragmentResults.values()][0]).toBeUndefined();
+      expect([...serialized.values()].some(v => v instanceof Error)).toBe(false);
+    });
+
     test("Loading with nested Errored resolves mixed success and error content", async () => {
       const { context, registeredFragments, fragmentResults, fragmentErrors } =
         createMockSSRContext();
