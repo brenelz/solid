@@ -15,7 +15,8 @@ import {
   ownerId,
   onCleanup,
   inServerComponentScope,
-  edgeHooks
+  edgeHooks,
+  BOUNDARY_PASS_BUDGET
 } from "./signals.js";
 import { OBSERVE } from "@solidjs/signals";
 import { sharedConfig, NoHydrateContext, callerRenderContext } from "./shared.js";
@@ -179,7 +180,7 @@ function ssrLoadingBoundary(
   const timed = IS_DEV || observed;
   const discoveredAt = timed ? performance.now() : 0;
   let recorded = false;
-  let streamedOnError: boolean | Promise<boolean> = false;
+  let streamedOnError: boolean | Promise<boolean | undefined> = false;
   let pendingRecord: (() => void) | undefined;
   const record = (outcome: BoundaryEvent["outcome"], streamed: boolean, error?: unknown) => {
     if (recorded) return;
@@ -401,9 +402,27 @@ function ssrLoadingBoundary(
   // Whether the last failure's outcome was rendered by a server <Errored>
   // (its own finding names it; the "client re-renders" one would be wrong).
   let outcomeRendered = false;
+  // Armed on the creation owner: `o` is reset on every discovery pass.
+  // Once the creating pass is disposed this instance stops retrying; with
+  // no successor at its id it releases the entry (its placeholder left the
+  // document with the pass), so the response can end. A successor
+  // registered in the same re-run owns the entry and its reveal slot.
+  let disposed = false;
+  let superseded = false;
+  let owners: Record<string, Function> | undefined;
+  const abandon = () => {
+    if (owners![id] !== done) return void (superseded = true);
+    delete owners![id];
+    done!();
+  };
   // With `wait`, answers a promise where the outcome is still resolving (see
-  // errorOutcome): the fragment settles when it lands.
-  function failFragment(err: any, report: boolean, wait?: boolean): boolean | Promise<boolean> {
+  // errorOutcome): the fragment settles when it lands, or, this instance
+  // disposed by then, is abandoned (`undefined`).
+  function failFragment(
+    err: any,
+    report: boolean,
+    wait?: boolean
+  ): boolean | Promise<boolean | undefined> {
     const settle = (outcome: Outcome) => {
       outcomeRendered = !!outcome && outcome.value !== undefined && !outcome.escaped;
       if (report && !outcomeRendered) {
@@ -418,7 +437,8 @@ function ssrLoadingBoundary(
       return done!(outcome && outcome.value, err, outcome && outcome.escaped);
     };
     const outcome = errorOutcome(err, wait);
-    return outcome instanceof Promise ? outcome.then(settle) : settle(outcome);
+    if (!(outcome instanceof Promise)) return settle(outcome);
+    return outcome.then(outcome => (disposed ? abandon() : settle(outcome)));
   }
 
   function runLoadingPhase<T>(render: () => T): T {
@@ -480,6 +500,7 @@ function ssrLoadingBoundary(
       const settling = streamedOnError;
       if (settling instanceof Promise)
         return settling.then(streamed => {
+          if (streamed === undefined) return;
           if (!outcomeRendered) reportRouted(err, "client");
           record("error", streamed, err);
         });
@@ -672,22 +693,10 @@ function ssrLoadingBoundary(
   if (ctx.async) {
     const regOpts = revealGroup ? { revealGroup: revealGroup.id } : undefined;
     done = ctx.registerFragment(id, regOpts);
-    let owners = fragmentOwners.get(ctx.registerFragment);
+    owners = fragmentOwners.get(ctx.registerFragment);
     if (!owners) fragmentOwners.set(ctx.registerFragment, (owners = {}));
     owners[id] = done;
-    // Armed on the creation owner: `o` is reset on every discovery pass.
-    // Once the creating pass is disposed this instance stops retrying; with
-    // no successor at its id it releases the entry (its placeholder left the
-    // document with the pass), so the response can end. A successor
-    // registered in the same re-run owns the entry and its reveal slot.
-    let disposed = false;
-    let superseded = false;
     onCleanup(() => (disposed = true));
-    const abandon = () => {
-      if (owners![id] !== done) return (superseded = true);
-      delete owners![id];
-      done!();
-    };
     // A final hole surfacing only now: an earlier real async read masked it
     // during the initial discovery, or the hole was reached through a
     // derived async computation, whose FINAL classification lands a
@@ -725,7 +734,7 @@ function ssrLoadingBoundary(
         // loop at microtask speed, serializing a new deferred per pass until
         // the process OOMs (#3003). Fail the boundary loudly instead.
         const checkBudget = () => {
-          if (passes <= 10000) return;
+          if (passes <= BOUNDARY_PASS_BUDGET) return;
           throw new Error(
             `<Loading> boundary discovery did not converge after ${passes} passes — ` +
               `an async source produces a new pending answer on every retry. Ensure repeated ` +

@@ -1164,11 +1164,9 @@ describe("Loading SSR Async", () => {
       ).toBe(true);
     });
 
-    // A post-flush Loading rejection under an Errored whose fallback hole is still pending.
     function pendingFallbackOutcome(hole: () => any) {
-      const { context, fragmentResults, fragmentErrors, serialized } = createMockSSRContext({
-        fragmentFlushed: true
-      });
+      const { context, fragmentResults, fragmentErrors, fragmentSettles, serialized } =
+        createMockSSRContext({ fragmentFlushed: true });
       sharedConfig.context = context;
 
       const d = deferred<string>();
@@ -1198,41 +1196,40 @@ describe("Loading SSR Async", () => {
 
       const fetchError = new Error("Async fetch failed");
       d.reject(fetchError);
-      return { fetchError, dispose, fragmentResults, fragmentErrors, serialized };
+      return { fetchError, dispose, fragmentResults, fragmentErrors, fragmentSettles, serialized };
     }
 
     test("a fallback hole pending again on every pass settles the fragment after the pass budget (#4317)", async () => {
       let pulls = 0;
       const { fetchError, fragmentResults, fragmentErrors, serialized } = pendingFallbackOutcome(
         () => {
-          pulls++;
-          throw new NotReadyError(new Promise<void>(r => setImmediate(r)));
+          if (++pulls > 20000) return "HINT";
+          throw new NotReadyError(Promise.resolve());
         }
       );
-
-      const deadline = Date.now() + 4000;
-      while (!fragmentErrors.size && Date.now() < deadline) await tick();
+      await tick();
 
       expect(fragmentErrors.size).toBe(1);
       expect([...fragmentErrors.values()][0]).toBe(fetchError);
       expect([...fragmentResults.values()][0]).toBeUndefined();
-      expect(pulls).toBeLessThanOrEqual(10002);
+      expect(pulls).toBe(10001);
       expect([...serialized.values()].some(v => v instanceof Error)).toBe(false);
     });
 
-    test("a disposed render stops waiting for the fallback's async hole (#4317)", async () => {
+    test("a disposed render stops waiting for the fallback's async hole and abandons the fragment (#4317)", async () => {
       const hint = deferred<void>();
       let ready = false;
       let pulls = 0;
-      const { fetchError, dispose, fragmentResults, fragmentErrors, serialized } =
-        pendingFallbackOutcome(() => {
+      const { dispose, fragmentErrors, fragmentSettles, serialized } = pendingFallbackOutcome(
+        () => {
           pulls++;
           if (!ready) throw new NotReadyError(hint.promise);
           return "HINT";
-        });
+        }
+      );
       await tick();
       expect(pulls).toBe(1);
-      expect(fragmentErrors.size).toBe(0);
+      expect(fragmentSettles).toEqual([]);
 
       dispose();
       ready = true;
@@ -1240,9 +1237,8 @@ describe("Loading SSR Async", () => {
       await tick();
 
       expect(pulls).toBe(1);
-      expect(fragmentErrors.size).toBe(1);
-      expect([...fragmentErrors.values()][0]).toBe(fetchError);
-      expect([...fragmentResults.values()][0]).toBeUndefined();
+      expect(fragmentSettles).toEqual([{ key: "t000", value: undefined, error: undefined }]);
+      expect(fragmentErrors.size).toBe(0);
       expect([...serialized.values()].some(v => v instanceof Error)).toBe(false);
     });
 
