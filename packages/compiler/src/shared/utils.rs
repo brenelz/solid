@@ -226,24 +226,18 @@ fn static_binary_expression(
                 right.into_template_value()
             ))),
         },
-        BinaryOperator::Subtraction => match (left, right) {
-            (StaticValue::Number(left), StaticValue::Number(right)) => {
-                Some(StaticValue::Number(left - right))
+        BinaryOperator::Subtraction | BinaryOperator::Multiplication | BinaryOperator::Division => {
+            match (left, right) {
+                (StaticValue::Number(left), StaticValue::Number(right)) => {
+                    Some(StaticValue::Number(match operator {
+                        BinaryOperator::Subtraction => left - right,
+                        BinaryOperator::Multiplication => left * right,
+                        _ => left / right,
+                    }))
+                }
+                _ => None,
             }
-            _ => None,
-        },
-        BinaryOperator::Multiplication => match (left, right) {
-            (StaticValue::Number(left), StaticValue::Number(right)) => {
-                Some(StaticValue::Number(left * right))
-            }
-            _ => None,
-        },
-        BinaryOperator::Division => match (left, right) {
-            (StaticValue::Number(left), StaticValue::Number(right)) => {
-                Some(StaticValue::Number(left / right))
-            }
-            _ => None,
-        },
+        }
         _ => None,
     }
 }
