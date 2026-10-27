@@ -226,6 +226,24 @@ fn static_binary_expression(
                 right.into_template_value()
             ))),
         },
+        BinaryOperator::Subtraction => match (left, right) {
+            (StaticValue::Number(left), StaticValue::Number(right)) => {
+                Some(StaticValue::Number(left - right))
+            }
+            _ => None,
+        },
+        BinaryOperator::Multiplication => match (left, right) {
+            (StaticValue::Number(left), StaticValue::Number(right)) => {
+                Some(StaticValue::Number(left * right))
+            }
+            _ => None,
+        },
+        BinaryOperator::Division => match (left, right) {
+            (StaticValue::Number(left), StaticValue::Number(right)) => {
+                Some(StaticValue::Number(left / right))
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -380,10 +398,32 @@ pub(crate) fn format_number(value: f64) -> String {
     if value.is_infinite() {
         return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
     }
-    if value.fract() == 0.0 {
-        format!("{}", value as i64)
+    if value == 0.0 {
+        return "0".to_string();
+    }
+    if value < 0.0 {
+        return format!("-{}", format_number(-value));
+    }
+    // Number::toString digit placement: positional only for 1e-6 <= n < 1e21.
+    let exponential = format!("{value:e}");
+    let (mantissa, exponent) = exponential.split_once('e').unwrap();
+    let digits = mantissa.replace('.', "");
+    let k = digits.len() as i32;
+    let n = exponent.parse::<i32>().unwrap() + 1;
+    if k <= n && n <= 21 {
+        format!("{digits}{}", "0".repeat((n - k) as usize))
+    } else if 0 < n && n <= 21 {
+        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+    } else if -6 < n && n <= 0 {
+        format!("0.{}{digits}", "0".repeat(-n as usize))
     } else {
-        value.to_string()
+        let sign = if n > 0 { '+' } else { '-' };
+        let exponent = (n - 1).abs();
+        if k == 1 {
+            format!("{digits}e{sign}{exponent}")
+        } else {
+            format!("{}.{}e{sign}{exponent}", &digits[..1], &digits[1..])
+        }
     }
 }
 
@@ -672,5 +712,35 @@ pub(crate) fn jsx_child_is_function_hole(child: &JSXChild<'_>) -> bool {
             None => false,
         },
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_number;
+
+    #[test]
+    fn format_number_matches_js_number_to_string() {
+        for (value, expected) in [
+            (0.0, "0"),
+            (-0.0, "0"),
+            (1.0, "1"),
+            (-1.5, "-1.5"),
+            (0.1 + 0.2, "0.30000000000000004"),
+            (123456789012345680000.0, "123456789012345680000"),
+            (1e19, "10000000000000000000"),
+            (1e20, "100000000000000000000"),
+            (1e21, "1e+21"),
+            (-1e21, "-1e+21"),
+            (1.1805916207174113e21, "1.1805916207174113e+21"),
+            (0.000001, "0.000001"),
+            (1e-7, "1e-7"),
+            (-1.5e-7, "-1.5e-7"),
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "Infinity"),
+            (f64::NEG_INFINITY, "-Infinity"),
+        ] {
+            assert_eq!(format_number(value), expected, "{value:?}");
+        }
     }
 }

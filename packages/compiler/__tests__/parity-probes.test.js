@@ -474,6 +474,9 @@ const a = <div>{value() ?? "fallback"}</div>;
   "exotic literal holes": `
 const a = <div a={1n} b={/re?g/g} c={-1} d={NaN}>{0}{-0}{1n}{true}{undefined}{null}</div>;
 `,
+  "number literal spellings (#4322)": `
+const a = <div a={1e21} b={1e19} c={1e-7} d={123456789012345680000} e={0.000001} f={1e20}>{1/0}{0/0}{1e21}{1e-7}{3-1}{2*3}{-1e-7}</div>;
+`,
   "tagged template in hole": `
 const a = <div title={tag\`x \${y()}\`}>{tag\`body\`}</div>;
 `,
