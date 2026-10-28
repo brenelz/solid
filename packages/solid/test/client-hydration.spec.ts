@@ -5104,6 +5104,102 @@ describe("adoption trace — Promise statics", () => {
     expect(settled).toBe("ok");
     expect(mod.peek()).toEqual({ value: "ok" });
   });
+
+  // #4332: user code keeps a promise made under the trace (a module-level
+  // import cache in Vite's __vitePreload shape). Consumed after hydration,
+  // it has to settle for real.
+  test("a promise cached under the trace settles when consumed after hydration (#4332)", async () => {
+    startHydration({ t0: { s: 1, v: "ready" } });
+
+    const loads = new Map<string, Promise<{ value: string }>>();
+    let imports = 0;
+    const load = (key: string) => {
+      let p = loads.get(key);
+      if (!p)
+        loads.set(
+          key,
+          (p = Promise.resolve().then(() => {
+            imports++;
+            return { value: "ok" };
+          }))
+        );
+      return p;
+    };
+    let result: any;
+    createRoot(
+      () => {
+        result = createMemo(async () => {
+          await load("x");
+          return "ready";
+        })();
+      },
+      { id: "t" }
+    );
+    flush();
+    stopHydration();
+    expect(result).toBe("ready");
+    expect(imports).toBe(0);
+
+    const settled = await Promise.race([
+      load("x").then(m => m.value),
+      new Promise(r => setTimeout(() => r("timeout"), 50))
+    ]);
+    expect(settled).toBe("ok");
+    expect(imports).toBe(1);
+  });
+
+  test("a fetch cached under the trace is made once, when consumed after hydration (#4332)", async () => {
+    const realFetch = window.fetch;
+    const fetched = vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ value: "ok" }) }));
+    window.fetch = fetched as any;
+    try {
+      startHydration({ t0: { s: 1, v: "ready" } });
+
+      let cached: Promise<any> | undefined;
+      const load = () => (cached ||= fetch("/data").then(r => r.json()));
+      createRoot(
+        () => {
+          createMemo(async () => {
+            await load();
+            return "ready";
+          })();
+        },
+        { id: "t" }
+      );
+      flush();
+      stopHydration();
+      expect(fetched).not.toHaveBeenCalled();
+
+      const settled = await Promise.race([
+        Promise.all([load(), load()]).then(([a, b]) => a.value + b.value),
+        new Promise(r => setTimeout(() => r("timeout"), 50))
+      ]);
+      expect(settled).toBe("okok");
+      expect(fetched).toHaveBeenCalledTimes(1);
+    } finally {
+      window.fetch = realFetch;
+    }
+  });
+
+  test("a continuation attached under the trace never runs on its own (#4332)", async () => {
+    startHydration({ t0: { s: 1, v: "ready" } });
+
+    const continued = vi.fn();
+    createRoot(
+      () => {
+        createMemo(async () => {
+          await Promise.resolve();
+          continued();
+          return "ready";
+        })();
+      },
+      { id: "t" }
+    );
+    flush();
+    stopHydration();
+    await new Promise(r => setTimeout(r, 10));
+    expect(continued).not.toHaveBeenCalled();
+  });
 });
 
 describe("seedless derived stores — hydration (#3194)", () => {
