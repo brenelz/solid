@@ -1,9 +1,8 @@
 /**
  * #3948: a non-keyed `<Show when={latest(async)}>` selects its branch from the
  * display-ahead value, then the narrowed accessor re-reads that condition.
- * The guard must use the same view and must not stamp the caller (the text
- * binding) as a verdict reader. A real stale read — the branch is no longer
- * the selected one — still throws.
+ * The guard must use the same view as the caller (the text binding). A real
+ * stale read — the branch is no longer the selected one — still throws.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {

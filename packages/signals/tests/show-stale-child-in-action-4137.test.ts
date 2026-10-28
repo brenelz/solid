@@ -46,15 +46,13 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 function show<T>(when: () => T, child: (row: () => T) => () => string, stale: string[]) {
   const value = createMemo(when);
   const condition = createMemo(value, { equals: (a: any, b: any) => !a === !b });
-  let shown: any = false;
   return createMemo(() => {
-    const c = condition();
-    shown = c;
-    if (!c) return undefined;
+    if (!condition()) return undefined;
     return untrack(() =>
       child(() => {
-        if (!shown) stale.push(String(untrack(value)));
-        return value();
+        const v = value();
+        if (!v) stale.push(String(v));
+        return v;
       })
     );
   });

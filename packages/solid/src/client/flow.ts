@@ -229,9 +229,9 @@ export function Show<T>(props: {
             : untrack(
                 () =>
                   (child as any)(() => {
-                    // Tracked, like Match: an untracked read serves the committed frame (#3948).
-                    if (!condition()) throw narrowedError("Show");
-                    return conditionValue();
+                    const value = conditionValue();
+                    if (!value) throw narrowedError("Show");
+                    return value;
                   }),
                 IS_DEV && "<Show>"
               )

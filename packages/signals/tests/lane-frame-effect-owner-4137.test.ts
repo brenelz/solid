@@ -15,8 +15,7 @@ import {
   createRenderEffect,
   createRoot,
   createSignal,
-  flush,
-  untrack
+  flush
 } from "../src/index.js";
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -25,15 +24,13 @@ function mount(read: () => string | undefined, stale: string[], log: string[]) {
   createRoot(() => {
     const value = createMemo(read);
     const condition = createMemo(value, { equals: (a: any, b: any) => !a === !b });
-    let shown: any = false;
     createRenderEffect(
       () => {
-        const c = condition();
-        shown = c;
-        if (!c) return "none";
+        if (!condition()) return "none";
         const child = createMemo(() => {
-          if (!shown) stale.push(String(untrack(value)));
-          return `${value()}`;
+          const v = value();
+          if (!v) stale.push(String(v));
+          return `${v}`;
         });
         return child();
       },

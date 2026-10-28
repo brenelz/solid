@@ -49,15 +49,13 @@ for (const [binding, count] of [
               // <Show when={selected()}>{item => <section …>{data.count}</section>}</Show>
               const conditionValue = createMemo(() => selected());
               const condition = createMemo(conditionValue, { equals: (a, b) => !a === !b });
-              let shown: unknown = false;
               const item = () => {
-                if (!shown) throw new Error("stale narrowed read");
-                return conditionValue()!;
+                const value = conditionValue();
+                if (!value) throw new Error("stale narrowed read");
+                return value;
               };
               return createMemo(() => {
-                const c = condition();
-                shown = c;
-                if (!c) return "Choose";
+                if (!condition()) return "Choose";
                 return untrack(() => {
                   // aria-label={item().name} aria-busy={isPending(() => data.count)}
                   // (or title={item().name + suffix()})
