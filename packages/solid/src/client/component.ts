@@ -160,12 +160,12 @@ export function lazy<T extends Component<any>>(
     // Observe: the import starts now, whoever reads it later, so a route
     // that preloads every level isn't read as a waterfall (#4105).
     if (IS_OBSERVE) markFlight(cur);
-    // Under a hydration trace the global Promise is the never-settling
-    // MockPromise stub; a loader that builds its promise from it (Vite's
-    // __vitePreload) must not cache that stub, or every later preload and
-    // render waits on it forever (#4013). Nothing loaded under a trace is
-    // kept: a real import() still lands through then() below (and the module
-    // registry dedupes the next call); the stub's then() is inert.
+    // Under a hydration trace the global Promise is the MockPromise stub,
+    // and a then() registered under the trace stays inert; a loader that
+    // builds its promise from it (Vite's __vitePreload) must not cache that
+    // stub, or the handlers below never run for it (#4013). Nothing loaded
+    // under a trace is kept: a real import() still lands through then()
+    // below (and the module registry dedupes the next call).
     if (tracing) p = undefined;
     cur.then(
       (mod: any) => {

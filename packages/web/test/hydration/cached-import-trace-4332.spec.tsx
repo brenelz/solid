@@ -1,12 +1,6 @@
 /**
  * @jsxImportSource @solidjs/web
  * @vitest-environment jsdom
- *
- * #4332: hydration traces an adopted async memo with the global Promise
- * swapped for a stub. User code that keeps a promise made under the trace (a
- * module-level import cache built from the global Promise, as Vite's
- * __vitePreload is) must still get a promise that settles when another
- * component consumes it after hydration.
  */
 import { afterEach, describe, expect, test } from "vitest";
 import { createMemo, flush, isHydrating } from "solid-js";
@@ -28,8 +22,6 @@ describe("#4332: a promise cached under the hydration trace", () => {
   test("settles when a later component consumes it", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
-    // renderToStream output for App below: the memo settled to "ready" on
-    // the server and is serialized under its hydration id.
     container.innerHTML = "ready";
     const served: any = Promise.resolve("ready");
     served.s = 1;

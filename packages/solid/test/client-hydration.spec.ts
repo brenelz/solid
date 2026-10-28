@@ -5105,9 +5105,6 @@ describe("adoption trace — Promise statics", () => {
     expect(mod.peek()).toEqual({ value: "ok" });
   });
 
-  // #4332: user code keeps a promise made under the trace (a module-level
-  // import cache in Vite's __vitePreload shape). Consumed after hydration,
-  // it has to settle for real.
   test("a promise cached under the trace settles when consumed after hydration (#4332)", async () => {
     startHydration({ t0: { s: 1, v: "ready" } });
 
@@ -5199,6 +5196,43 @@ describe("adoption trace — Promise statics", () => {
     stopHydration();
     await new Promise(r => setTimeout(r, 10));
     expect(continued).not.toHaveBeenCalled();
+  });
+
+  test("statics the runtime lacks still trace, and a kept promise settles or rejects when consumed", async () => {
+    const { withResolvers, try: tryStatic } = Promise as any;
+    delete (Promise as any).withResolvers;
+    delete (Promise as any).try;
+    try {
+      startHydration({ t0: { s: 1, v: "server" } });
+
+      let kept: any;
+      let tried: any;
+      let result: any;
+      createRoot(
+        () => {
+          result = createMemo(() => {
+            tried = (Promise as any).try(() => "client");
+            const r = (Promise as any).withResolvers();
+            r.resolve("client");
+            return (kept = r.promise);
+          })();
+        },
+        { id: "t" }
+      );
+      flush();
+      stopHydration();
+      expect(result).toBe("server");
+      expect(await kept.then((v: string) => v)).toBe("client");
+      expect(
+        await tried.then(
+          () => undefined,
+          (e: unknown) => e
+        )
+      ).toBeInstanceOf(TypeError);
+    } finally {
+      if (withResolvers) (Promise as any).withResolvers = withResolvers;
+      if (tryStatic) (Promise as any).try = tryStatic;
+    }
   });
 });
 

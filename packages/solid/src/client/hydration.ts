@@ -510,30 +510,32 @@ let closed = 0;
 // A `static {}` block marks the class as side-effectful, so bundlers retain
 // it in EVERY client bundle even with zero references; the PURE-annotated
 // factory shakes with its only consumer, subFetch (#2883 phase 3).
-// Inert under a trace; consumed after it, a kept one does its real work (#4332).
+// Inert under a trace; consumed after it, a kept one does its real work.
 const MockPromise = /* @__PURE__ */ (() => {
   const RealPromise = Promise;
   class MockPromise {
     _real?: Promise<any>;
     constructor(
       executor?: ((resolve: any, reject: any) => void) | 0,
-      public _wake = executor && (() => new Promise(executor))
+      public _wake = executor && (() => new RealPromise(executor))
     ) {}
   }
   for (const k of ["then", "catch", "finally"] as const) {
     (MockPromise.prototype as any)[k] = function (this: MockPromise, ...args: any[]) {
       const run = () =>
-        ((this._real ||= this._wake ? this._wake() : new Promise(noop)) as any)[k](...args);
+        ((this._real ||= this._wake ? this._wake() : new RealPromise(noop)) as any)[k](...args);
       return tracing || closed ? new MockPromise(0, run) : run();
     };
   }
   for (const k of ["all", "allSettled", "any", "race", "reject", "resolve", "try"] as const) {
     (MockPromise as any)[k] = (...args: any[]) =>
-      new MockPromise(0, () => (Promise as any)[k](...args));
+      new MockPromise(resolve => resolve((RealPromise as any)[k](...args)));
   }
   (MockPromise as any).withResolvers = () => {
-    const r = RealPromise.withResolvers();
-    return { ...r, promise: new MockPromise(0, () => r.promise) };
+    const r: any = {};
+    const p = new RealPromise((resolve, reject) => Object.assign(r, { resolve, reject }));
+    r.promise = new MockPromise(0, () => p);
+    return r;
   };
   return MockPromise;
 })();
@@ -549,10 +551,10 @@ export let tracing = 0;
 export function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
   const ogFetch = fetch;
   const ogPromise = Promise;
-  if (!tracing++) Promise.resolve().then(() => closed++);
+  if (!tracing++) queueMicrotask(() => closed++);
   try {
     window.fetch = (...args: any[]) =>
-      new MockPromise(resolve => resolve(fetch(...(args as [any])))) as any;
+      new MockPromise(resolve => resolve(ogFetch(...(args as [any])))) as any;
     Promise = MockPromise as any;
     const result = fn(prev);
     // An async GENERATOR's body has not run yet — its reads before the
@@ -581,7 +583,7 @@ export function subFetch<T>(fn: (prev?: T) => any, prev?: T) {
   } finally {
     window.fetch = ogFetch;
     Promise = ogPromise;
-    if (!--tracing) Promise.resolve().then(() => closed--);
+    if (!--tracing) queueMicrotask(() => closed--);
   }
 }
 
