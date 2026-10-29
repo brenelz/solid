@@ -57,21 +57,24 @@ for (const nested of [true, false]) {
         </Loading>
       );
     }, container);
-    await tick();
-    expect(container.textContent).toBe("loading");
-    await land("detail", null);
-    expect(container.textContent).toBe("err not found");
-    refresh(detail);
-    flush();
-    await tick();
-    expect(container.textContent).toBe("err not found");
-    await land("detail", { title: "Crash" });
-    expect(container.textContent).toBe(nested ? "Crashfinding" : "Crash");
-    if (nested) {
-      await land("search:Crash", ["a", "b"]);
-      expect(container.textContent).toBe("Crashab");
+    try {
+      await tick();
+      expect(container.textContent).toBe("loading");
+      await land("detail", null);
+      expect(container.textContent).toBe("err not found");
+      refresh(detail);
+      flush();
+      await tick();
+      expect(container.textContent).toBe("err not found");
+      await land("detail", { title: "Crash" });
+      expect(container.textContent).toBe(nested ? "Crashfinding" : "Crash");
+      if (nested) {
+        await land("search:Crash", ["a", "b"]);
+        expect(container.textContent).toBe("Crashab");
+      }
+    } finally {
+      dispose();
+      container.remove();
     }
-    dispose();
-    container.remove();
   });
 }

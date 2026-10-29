@@ -31,9 +31,9 @@ for (const nested of [true, false])
     let detail!: Refreshable<() => any>;
     const dispose = createRoot(d => {
       detail = createMemo(async () => {
-        const d = await ask("detail");
-        if (!d) throw new Error("not found");
-        return d;
+        const res = await ask("detail");
+        if (!res) throw new Error("not found");
+        return res;
       });
       const out = createLoadingBoundary(
         () =>
