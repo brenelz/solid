@@ -2220,7 +2220,7 @@ export function stagedScreen(c: Computed<any>): boolean {
   if (
     observeFlightHook &&
     flushTransaction === latestOpened &&
-    passLane === null &&
+    (passLane === null || (passLane === flushTransaction._verdict && (c as any)._type)) &&
     c._config & CONFIG_VERDICT &&
     !(c._statusFlags & STATUS_UNINITIALIZED)
   )

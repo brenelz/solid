@@ -985,7 +985,8 @@ const laneSeams = (t: Transaction | null): void => {
         (l?._lane
           ? l._parent?._verdict === l &&
             (r._config & CONFIG_VERDICT
-              ? !(r._flags & REACTIVE_PROBE_UNANSWERED)
+              ? !(r._flags & REACTIVE_PROBE_UNANSWERED) &&
+                !(r._flags & REACTIVE_STAGED_READ && l._parent === t && blocked(t))
               : !blocked(l._parent))
           : l &&
             !(

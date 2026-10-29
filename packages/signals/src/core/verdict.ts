@@ -27,6 +27,7 @@ import {
   REACTIVE_PROBED,
   REACTIVE_REASK,
   REACTIVE_PROBE_UNANSWERED,
+  REACTIVE_SCREEN_READ,
   REACTIVE_STAGED_READ,
   REACTIVE_WINDOW,
   STATUS_ERROR,
@@ -474,7 +475,10 @@ function verdictValue(el: Signal<any> | Computed<any>, c: Computed<any> | null):
         t._verdict?._held &&
         flushTransaction !== t
       ) {
-        staleReader(c!, t._verdict);
+        if (!(c!._flags & REACTIVE_SCREEN_READ)) {
+          c!._flags |= REACTIVE_FRAME_READ | REACTIVE_SCREEN_READ;
+          t._verdict._reruns.push(c!);
+        }
         return el._value;
       }
       if (tracked) verdictRead(c!, t);
