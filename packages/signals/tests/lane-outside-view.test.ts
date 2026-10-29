@@ -190,6 +190,102 @@ describe("a held lane from the outside", () => {
     ]);
   });
 
+  it("#3460 every sync write re-running a reader mid-hold runs its callback", async () => {
+    reset();
+    const runs: number[] = [];
+    let setOther!: (v: string) => void;
+    let start!: () => unknown;
+    createRoot(() => {
+      const [count, setCount] = createSignal(0);
+      const [other, so] = createSignal("x");
+      setOther = so;
+      const details = createMemo(() => delay(2000, latest(count)));
+      start = action(function* () {
+        setCount(1);
+        yield delay(3000);
+        setCount(0);
+      });
+      createRenderEffect(
+        () => `Details: ${details()}`,
+        () => {}
+      );
+      createRenderEffect(
+        () => {
+          other();
+          latest(count);
+        },
+        () => void runs.push(now)
+      );
+    });
+    flush();
+    await settle();
+    await advanceTo(3000);
+    start();
+    await settle();
+    await advanceTo(3500);
+    setOther("y");
+    await settle();
+    await advanceTo(3600);
+    setOther("z");
+    await settle();
+    await advanceTo(12000);
+    expect(runs).toEqual([0, 3500, 3600, 5000, 8000]);
+  });
+
+  it("#3460 a reader of two held lanes re-runs at each lane's reveal", async () => {
+    reset();
+    const log: string[] = [];
+    const when: number[] = [];
+    let setOther!: (v: string) => void;
+    let startA!: () => unknown;
+    let startB!: () => unknown;
+    createRoot(() => {
+      const [count, setCount] = createSignal(0);
+      const [opt, setOpt] = createOptimistic(0);
+      const [other, so] = createSignal("x");
+      setOther = so;
+      const details = createMemo(() => delay(2000, latest(count)));
+      const optDetails = createMemo(() => delay(500, opt()));
+      startA = action(function* () {
+        setCount(1);
+        yield delay(3000);
+      });
+      startB = action(function* () {
+        setOpt(1);
+        yield delay(3000);
+      });
+      createRenderEffect(
+        () => `Details: ${details()}`,
+        () => {}
+      );
+      createRenderEffect(
+        () => `OptDetails: ${optDetails()}`,
+        () => {}
+      );
+      text(() => `Both: ${other()} ${latest(count)} ${opt()}`, log, when);
+    });
+    flush();
+    await settle();
+    await advanceTo(3000);
+    startA();
+    await settle();
+    await advanceTo(3200);
+    startB();
+    await settle();
+    await advanceTo(3500);
+    setOther("y");
+    await settle();
+    await advanceTo(12000);
+    expect(frames(log, when)).toEqual([
+      "0: Both: x 0 0",
+      "3200: Both: x 0 0",
+      "3500: Both: y 0 0",
+      "3700: Both: y 0 1",
+      "5000: Both: y 1 1",
+      "6700: Both: y 1 0"
+    ]);
+  });
+
   // Lanes stage (#3479 review, fuzzer latest-1 #1955): the committed view an
   // outsider sees must be a WHOLE frame. A memo derived from the held value
   // used to publish its speculative result straight into `_value` (the lane's

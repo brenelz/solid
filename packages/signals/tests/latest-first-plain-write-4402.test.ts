@@ -1,13 +1,3 @@
-/**
- * #4402: a pass that reads `latest(s)` before `s()` computes once on a plain
- * synchronous write, as `[s(), latest(s)]` does (D-22: inside a flush,
- * `latest()` of a staging not yet held is the frame's read, and a plain read
- * beside it in the same pass reads the staging too; F-10: one frame for
- * every channel). The `latest()` read seats the pass in the verdict lane on
- * purpose (a `<Show>` over `latest(x)` mounts its child once, #3540); the
- * plain read after it is still the frame's, and the seam re-derives the
- * pass once only if the flush parks.
- */
 import { describe, expect, it } from "vitest";
 import {
   createEffect,
@@ -67,8 +57,7 @@ describe("[latest(s), s()] in a flush that commits runs once", () => {
   for (const via of ["inline", "memo", "latest(memo)"] as const) {
     for (const reader of ["render effect", "user effect"] as const)
       it(`${via}, ${reader}`, () => runsOnce(via, reader));
-    // A memo's answer may be a flight, asked over what the lane's seat sees
-    // (verdict-memo-flight-no-reask.test.ts): still two passes.
+    // A memo reader still computes twice (verdict-memo-flight-no-reask.test.ts).
     it.fails(`${via}, memo`, () => runsOnce(via, "memo"));
   }
 });

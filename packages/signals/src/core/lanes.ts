@@ -968,18 +968,21 @@ const laneSeams = (t: Transaction | null): void => {
         l = r._x?._transaction || (r._flags & REACTIVE_STAGED_READ ? t : null);
       // A verdict reader a later read of the same pass routed into a verdict
       // lane answered for itself: it re-derives at the holder's landing, not
-      // now (one run — #3322, #3540). Other verdict-lane work re-derives only
-      // if the frame stays parked: a transaction landing at this seam makes
-      // what it read the screen (one run). A reader a transaction holds that
-      // read none of its stagings (a verdict reader that probed only a
-      // flight, held as the frame's pending observer or its staged
-      // derivation) has nothing to re-derive: its re-run re-enters that
-      // transaction and parks it again, every round — it runs at the
-      // landing (#4349). One that read a staging re-derives only if its
-      // frame stays parked: landing at this seam, what it read is the screen
-      // (one run, D-22). Not one born into that frame (a held pass's child,
-      // ruling A): it has no screen, its reads are the transaction's either
-      // way — it runs again at the landing, not now.
+      // now (one run — #3322, #3540) — unless it is an effect `latest()`
+      // seated there that then read the frame's staging (`stagedScreen`):
+      // the frame staying parked, it re-derives now on the screen (D-22).
+      // Other verdict-lane work re-derives only if the frame stays parked:
+      // a transaction landing at this seam makes what it read the screen
+      // (one run). A reader a transaction holds that read none of its
+      // stagings (a verdict reader that probed only a flight, held as the
+      // frame's pending observer or its staged derivation) has nothing to
+      // re-derive: its re-run re-enters that transaction and parks it
+      // again, every round — it runs at the landing (#4349). One that read
+      // a staging re-derives only if its frame stays parked: landing at
+      // this seam, what it read is the screen (one run, D-22). Not one born
+      // into that frame (a held pass's child, ruling A): it has no screen,
+      // its reads are the transaction's either way — it runs again at the
+      // landing, not now.
       if (
         r._flags & REACTIVE_DISPOSED ||
         (l?._lane
