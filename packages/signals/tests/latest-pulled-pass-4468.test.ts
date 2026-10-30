@@ -26,22 +26,36 @@ afterEach(() => vi.useRealTimers());
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 describe("#4468: a memo pulled inside latest() computes as its own pass", () => {
-  for (const form of ["pulled", "plainFirst"] as const)
+  for (const form of ["pulled", "plainFirst", "lazy", "dormant"] as const)
     it(`the memo's own isPending(held x) is the same whoever wakes it (${form})`, async () => {
       const [x, setX] = createSignal(0);
       const [s, setS] = createSignal(0);
       const [on, setOn] = createSignal(false);
       const seen: unknown[] = [];
+      const make = () => {
+        const sa = createMemo(() => s());
+        return createMemo(
+          () => `${sa()}:${isPending(x)}`,
+          form === "lazy" ? { lazy: true } : undefined
+        );
+      };
+      const unowned = form === "dormant" ? make() : null;
       createRoot(() => {
         createRenderEffect(x, () => {});
-        const sa = createMemo(() => s());
-        const m = createMemo(() => `${sa()}:${isPending(x)}`);
+        const m = unowned ?? make();
         createRenderEffect(
-          () => (on() ? (form === "pulled" ? latest(() => m()) : (m(), latest(m))) : "off"),
+          () => (on() ? (form === "plainFirst" ? (m(), latest(m)) : latest(() => m())) : "off"),
           v => void seen.push(v)
         );
       });
       flush();
+      if (form === "dormant") {
+        setOn(true);
+        flush();
+        expect(seen[seen.length - 1]).toBe("0:false");
+        setOn(false);
+        flush();
+      }
       action(function* () {
         setX(1);
         yield sleep(100);
