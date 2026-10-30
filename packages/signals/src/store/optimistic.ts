@@ -54,7 +54,7 @@ import {
 } from "../core/scheduler.js";
 import type { Computed, Signal } from "../core/types.js";
 import type { Refreshable } from "../core/index.js";
-import { runProjectionComputed } from "./projection.js";
+import { familyStatus, runProjectionComputed } from "./projection.js";
 import { reconcileState } from "./reconcile.js";
 import {
   cloneRaw,
@@ -807,6 +807,7 @@ export function createOptimisticStore<T extends object = {}>(
     map: new WeakMap(),
     node: null,
     live: new Set(),
+    st: familyStatus,
     shallow: !!options?.shallow,
     opt: true,
     key:
@@ -834,6 +835,7 @@ export function createOptimisticStore<T extends object = {}>(
     }, nodeOptions) as Computed<void>;
     node._config &= ~CONFIG_AUTO_DISPOSE;
     fam.node = node;
+    (node as any).fam = fam;
   }
   return [store, ((fn: (draft: T) => void) => storeSetter(store, fn)) as StoreSetter<T>];
 }
