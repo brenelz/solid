@@ -44,3 +44,24 @@ it("#4444: a detached dispose still takes the self flag", () => {
   dispose();
   expect(isDisposed(o)).toBe(true);
 });
+
+it("#4444: a detached dispose handed a falsy value still disposes the owner", async () => {
+  let cleaned = false;
+  const o = createOwner();
+  runWithOwner(o, () => onCleanup(() => (cleaned = true)));
+  await Promise.resolve(null).then(o.dispose);
+  expect(cleaned).toBe(true);
+  expect(isDisposed(o)).toBe(true);
+});
+
+it("#4444: a child's dispose registered as a parent's cleanup tears the child down", () => {
+  let cleaned = false;
+  const parent = createOwner();
+  const child = runWithOwner(parent, () => createOwner())!;
+  runWithOwner(child, () => onCleanup(() => (cleaned = true)));
+  runWithOwner(parent, () => onCleanup(child.dispose));
+  parent.dispose();
+  expect(cleaned).toBe(true);
+  expect(isDisposed(child)).toBe(true);
+  expect(isDisposed(parent)).toBe(true);
+});

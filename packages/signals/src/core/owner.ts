@@ -401,8 +401,7 @@ export function createOwner(options?: { id?: string; transparent?: boolean }) {
         _childCount: 0,
         _x: null,
         _parent: parent,
-        // Per owner, so it is a free callable like `createRoot`'s (#4444).
-        dispose: (self?: boolean) => disposeRootSelf.call(owner, self),
+        dispose: (self?: boolean) => disposeRootSelf.call(owner, self !== false),
         _name: undefined as string | undefined,
         _loc: undefined as string | undefined
       } as Root)
@@ -424,7 +423,7 @@ export function createOwner(options?: { id?: string; transparent?: boolean }) {
         _childCount: 0,
         _x: null,
         _parent: parent,
-        dispose: (self?: boolean) => disposeRootSelf.call(owner, self)
+        dispose: (self?: boolean) => disposeRootSelf.call(owner, self !== false)
       } as Root);
 
   if (__DEV__ && parent && parent._config & CONFIG_CHILDREN_FORBIDDEN) {
