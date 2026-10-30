@@ -415,9 +415,11 @@ function verdictValue(el: Signal<any> | Computed<any>, c: Computed<any> | null):
   // `_flags`: the wake is a no-op for it.) So is the probe's state (#4429):
   // a `latest()` the pass makes itself does not join a hold through the
   // probe's arm, and what the pass reads does not answer the outer probe
-  // (`probeFound` is only set while `probing`).
-  const prevProbing = probing;
-  probing = false;
+  // (`probeFound` is only set while `probing`). So is the `latest` window
+  // (#4468): the pass's own `isPending` of a held write is not inside it.
+  const prevProbing = probing,
+    prevLatest = latestActive;
+  probing = latestActive = false;
   setVerdict(null);
   prepareComputed(owner, false);
   if (c && tracking) {
@@ -426,6 +428,7 @@ function verdictValue(el: Signal<any> | Computed<any>, c: Computed<any> | null):
   }
   setVerdict(verdictValue);
   probing = prevProbing;
+  latestActive = prevLatest;
   // Shadow (S0): the window's decision point — the rows Vl*/Vp*.
   if (__TEST__) shadowExpect(c, el, tracking, latestActive ? 2 : 1, spectating, false);
   // A live `affects()` mark on the node or a dependency (affects.ts): not
