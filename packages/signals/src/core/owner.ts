@@ -382,7 +382,7 @@ export function createOwner(options?: { id?: string; transparent?: boolean }) {
   // with the component label and JSX site (`owner._name = "<App>"`,
   // `owner._loc = "src/App.tsx:3:5"`) — slots, so labelling a root is a
   // plain store rather than a shape fork between labelled and plain roots.
-  const owner = __OBSERVE__
+  const owner: Root = __OBSERVE__
     ? ({
         id: inheritId(options, transparent, parent),
         _config: transparent ? CONFIG_TRANSPARENT : 0,
@@ -401,7 +401,8 @@ export function createOwner(options?: { id?: string; transparent?: boolean }) {
         _childCount: 0,
         _x: null,
         _parent: parent,
-        dispose: disposeRootSelf,
+        // Per owner, so it is a free callable like `createRoot`'s (#4444).
+        dispose: (self?: boolean) => disposeRootSelf.call(owner, self),
         _name: undefined as string | undefined,
         _loc: undefined as string | undefined
       } as Root)
@@ -423,7 +424,7 @@ export function createOwner(options?: { id?: string; transparent?: boolean }) {
         _childCount: 0,
         _x: null,
         _parent: parent,
-        dispose: disposeRootSelf
+        dispose: (self?: boolean) => disposeRootSelf.call(owner, self)
       } as Root);
 
   if (__DEV__ && parent && parent._config & CONFIG_CHILDREN_FORBIDDEN) {
