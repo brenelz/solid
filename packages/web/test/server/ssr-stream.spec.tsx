@@ -2231,6 +2231,33 @@ describe("Entry CSS Auto-Discovery", () => {
     expect(html).toContain('<link rel="stylesheet" href="/assets/main.css">');
   });
 
+  test("a string-valued key reached through imports is skipped", () => {
+    const manifest = {
+      _base: "/",
+      "src/index.tsx": {
+        file: "assets/index.js",
+        isEntry: true,
+        imports: ["_base", "src/shared.tsx"]
+      },
+      "src/shared.tsx": { file: "assets/shared.js", css: ["assets/shared.css"] }
+    };
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <div>Hello</div>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="stylesheet" href="/assets/shared.css">');
+  });
+
   test("entry CSS from transitive imports is collected", async () => {
     const manifest = {
       "src/index.tsx": { file: "assets/index.js", isEntry: true, imports: ["src/shared.tsx"] },

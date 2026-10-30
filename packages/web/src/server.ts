@@ -443,7 +443,7 @@ function resolveAssets(moduleUrl, manifest) {
   if (!manifest) return null;
   const base = manifest._base;
   const entry = manifest[moduleUrl];
-  if (!entry) return null;
+  if (!entry || typeof entry !== "object") return null;
   const css = [];
   const js = [];
   let preloads;
@@ -452,7 +452,7 @@ function resolveAssets(moduleUrl, manifest) {
     if (visited.has(key)) return;
     visited.add(key);
     const e = manifest[key];
-    if (!e) return;
+    if (!e || typeof e !== "object") return;
     js.push(joinAssetPath(base, e.file));
     if (e.css) for (let i = 0; i < e.css.length; i++) css.push(joinAssetPath(base, e.css[i]));
     if (e.preloads) {

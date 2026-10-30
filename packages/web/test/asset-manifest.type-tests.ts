@@ -1,5 +1,3 @@
-// A manifest literal may set `_base` beside its entries (solidjs/solid#4502).
-// Compile-only, under `test-types`.
 import type { AssetManifest, AssetManifestEntry } from "../src/server.js";
 import { renderToString } from "../src/server.js";
 
