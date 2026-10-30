@@ -86,18 +86,23 @@ export type PreloadLink = PreloadLinkAttributes &
  * contract — a parsed Vite client manifest satisfies it structurally
  * (unknown fields pass through untyped), but any bundler integration can
  * produce it. Only these fields are ever read: `preloads` is Solid's
- * extension slot for explicit typed links the integration selects.
+ * extension slot for explicit typed links the integration selects. Keys
+ * that are not module ids carry string metadata (`_base`), so a lookup
+ * narrows with `typeof` before reading entry fields.
  */
-export type AssetManifest = Record<
-  string,
-  {
-    file: string;
-    css?: string[];
-    isEntry?: boolean;
-    imports?: string[];
-    preloads?: PreloadLink[];
-  }
-> & { _base?: string };
+export type AssetManifest = {
+  [key: string]: AssetManifestEntry | string | undefined;
+  _base?: string;
+};
+
+/** One module's record in an `AssetManifest`. */
+export type AssetManifestEntry = {
+  file: string;
+  css?: string[];
+  isEntry?: boolean;
+  imports?: string[];
+  preloads?: PreloadLink[];
+};
 
 /** Inline style content, e.g. dev CSS collected from a bundler's module graph. */
 export type InlineStyleAsset = {

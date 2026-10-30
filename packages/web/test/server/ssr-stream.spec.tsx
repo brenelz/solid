@@ -2209,6 +2209,28 @@ describe("Entry CSS Auto-Discovery", () => {
     expect(html).toContain('<link rel="stylesheet" href="/assets/main.css">');
   });
 
+  test("a metadata key without a value does not stop the entry scan", () => {
+    const manifest = {
+      _base: undefined,
+      "src/index.tsx": { file: "assets/index-abc.js", isEntry: true, css: ["assets/main.css"] }
+    };
+
+    const html = renderToString(
+      () => (
+        <html>
+          <head>
+            <title>Test</title>
+          </head>
+          <body>
+            <div>Hello</div>
+          </body>
+        </html>
+      ),
+      { manifest }
+    );
+    expect(html).toContain('<link rel="stylesheet" href="/assets/main.css">');
+  });
+
   test("entry CSS from transitive imports is collected", async () => {
     const manifest = {
       "src/index.tsx": { file: "assets/index.js", isEntry: true, imports: ["src/shared.tsx"] },

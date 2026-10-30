@@ -73,6 +73,10 @@ mutual<runtime.AssetManifest>(
   null as unknown as mock.AssetManifest,
   null as unknown as runtime.AssetManifest
 );
+mutual<runtime.AssetManifestEntry>(
+  null as unknown as mock.AssetManifestEntry,
+  null as unknown as runtime.AssetManifestEntry
+);
 mutual<runtime.ResolvedAssets>(
   null as unknown as mock.ResolvedAssets,
   null as unknown as runtime.ResolvedAssets
