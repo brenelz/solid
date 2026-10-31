@@ -1885,8 +1885,15 @@ function pullFamily(target: StoreTarget): void {
     // verdict window still asks it (`isPending` is true while the flight is
     // up). The family's, not the target's: the edit stands in for the one
     // flight the family has — not over a new question they do not answer
-    // (optimistic.ts `stands`, #4336).
-    if (verdict === null && fw._statusFlags & STATUS_PENDING && optHooks?.stands(target)) return;
+    // (optimistic.ts `stands`, #4336). A render effect already waiting on a
+    // new question keeps waiting: the guess does not answer it.
+    if (
+      verdict === null &&
+      fw._statusFlags & STATUS_PENDING &&
+      optHooks?.stands(target) &&
+      !(c?._type === EFFECT_RENDER && !fw._x?._reask && linkedTo(c, fw))
+    )
+      return;
     // A pass the pull throws a staged error (D-41) is linked to the derive,
     // untracked too — `handleAsync` asking a returned proxy whether it is a
     // flight: the pass carries the error, and the re-ask or answer that
