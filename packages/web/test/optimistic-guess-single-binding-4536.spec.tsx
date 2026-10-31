@@ -19,6 +19,7 @@ for (const on of [true, false])
     const ask = (key: string) => new Promise<any>(res => asks.push({ key, res }));
     const settle = async (key: string, v: any) => {
       const i = asks.findIndex(a => a.key === key);
+      if (i < 0) throw new Error(`not asked: ${key}; asked: ${asks.map(a => a.key)}`);
       asks.splice(i, 1)[0].res(v);
       await tick();
     };

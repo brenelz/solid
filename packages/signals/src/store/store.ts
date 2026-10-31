@@ -1870,13 +1870,14 @@ function pullFamily(target: StoreTarget): void {
     // release the hold with the flight still up. An errored derive has no
     // landing to learn of: the error is what the frame shows.
     const c: any = context;
+    const frame = c !== null && c._type === EFFECT_RENDER;
+    let linked: boolean | undefined;
     if (
-      c !== null &&
-      c._type === EFFECT_RENDER &&
+      frame &&
       fw._statusFlags & STATUS_PENDING &&
       fw._config & CONFIG_HELD &&
       flushTransaction !== txOf(fw) &&
-      !linkedTo(c, fw)
+      !(linked = linkedTo(c, fw))
     )
       return;
     // An optimistic family carrying guesses that stand in for the flight
@@ -1891,7 +1892,7 @@ function pullFamily(target: StoreTarget): void {
       verdict === null &&
       fw._statusFlags & STATUS_PENDING &&
       optHooks?.stands(target) &&
-      !(c?._type === EFFECT_RENDER && !fw._x?._reask && linkedTo(c, fw))
+      !(frame && !fw._x?._reask && (linked ??= linkedTo(c, fw)))
     )
       return;
     // A pass the pull throws a staged error (D-41) is linked to the derive,

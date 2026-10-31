@@ -18,7 +18,10 @@ const tick = async () => {
   }
 };
 
-function page(on: boolean) {
+type Body = (filter: () => string, issues: any[], other: () => number) => string;
+const mapBody: Body = (filter, issues) => filter() + ": " + issues.map(i => `[#${i.id}]`).join("");
+
+function page(on: boolean, body: Body = mapBody) {
   const asks: { key: string; res: (v: any) => void }[] = [];
   const ask = (key: string) => new Promise<any>(res => asks.push({ key, res }));
   const land = async (key: string, v: any) => {
@@ -29,10 +32,13 @@ function page(on: boolean) {
   };
   const frames: string[] = [];
   let setFilter!: (f: string) => void;
+  let setOther!: (n: number) => void;
   let closeOne!: (id: number) => void;
   createRoot(() => {
     const [filter, sf] = createSignal("open");
+    const [other, so] = createSignal(0);
     setFilter = sf;
+    setOther = so;
     const [issues, set] = createOptimisticStore<any[]>(() => ask(`issues:${filter()}`), [], {
       key: "id"
     });
@@ -60,7 +66,7 @@ function page(on: boolean) {
       createLoadingBoundary(
         () => {
           createRenderEffect(
-            () => filter() + ": " + issues.map(i => `[#${i.id}]`).join(""),
+            () => body(filter, issues, other),
             v => ((text = v), sample())
           );
           return () => "content";
@@ -77,7 +83,7 @@ function page(on: boolean) {
       v => ((shell = v), sample())
     );
   });
-  return { asks, land, frames, setFilter, closeOne: (id: number) => closeOne(id) };
+  return { asks, land, frames, setFilter, setOther, closeOne: (id: number) => closeOne(id) };
 }
 
 describe("#4536 one render effect reads both the question and the keyed list", () => {
@@ -101,5 +107,32 @@ describe("#4536 one render effect reads both the question and the keyed list", (
       expect(h.frames.at(-1)).toBe("closed: [#2]");
       expect(h.asks).toEqual([]);
       expect(h.frames.filter(f => f.startsWith("closed") && /#3|#4/.test(f))).toEqual([]);
+    });
+  for (const on of [false, true])
+    it(`a re-run reading the list untracked keeps waiting on the new question (on=${on})`, async () => {
+      const h = page(
+        on,
+        (filter, issues, other) =>
+          filter() +
+          ": " +
+          (other() === 0
+            ? issues.map(i => `[#${i.id}]`).join("")
+            : "len " + untrack(() => issues.length))
+      );
+      await tick();
+      await h.land("issues:open", [{ id: 1 }, { id: 3 }, { id: 4 }]);
+      h.setFilter("closed");
+      await tick();
+      h.closeOne(1);
+      await tick();
+      expect(h.frames.at(-1)).toBe(on ? "loading" : "open: [#3][#4]");
+      h.setOther(1);
+      await tick();
+      expect(h.frames.at(-1)).toBe(on ? "loading" : "open: [#3][#4]");
+      await h.land("issues:closed", [{ id: 1 }, { id: 2 }]);
+      expect(h.frames.at(-1)).toBe("closed: len 1");
+      await h.land("close:1", {});
+      await h.land("issues:closed", [{ id: 2 }]);
+      expect(h.frames.filter(f => f.startsWith("closed") && f !== "closed: len 1")).toEqual([]);
     });
 });
