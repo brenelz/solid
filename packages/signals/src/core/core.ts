@@ -15,6 +15,7 @@ import {
   CONFIG_ASYNC,
   CONFIG_AUTO_DISPOSE,
   CONFIG_CHILDREN_FORBIDDEN,
+  CONFIG_DEFER,
   CONFIG_FRESH_READ,
   CONFIG_GUESS,
   CONFIG_VERDICT,
@@ -1385,7 +1386,7 @@ export function createEffectNode<T>(
   effectFn: (val: T, prev: T | undefined) => void | (() => void),
   errorFn: ((err: unknown, cleanup: () => void) => void | (() => void)) | undefined,
   type: number,
-  options: NodeOptions<T> | undefined
+  options: (NodeOptions<T> & { defer?: boolean }) | undefined
 ): any {
   const transparent = options?.transparent ?? false;
   // Prod and observe boilerplates — see computed() for why the observe tier
@@ -1403,6 +1404,7 @@ export function createEffectNode<T>(
           (transparent ? CONFIG_TRANSPARENT : 0) |
           (options?.ownedWrite ? CONFIG_OWNED_WRITE : 0) |
           (options?.sync ? CONFIG_SYNC : 0) |
+          (options?.defer ? CONFIG_DEFER : 0) |
           (options?._extraConfig ?? 0) |
           (snapshotCaptureActive && ownerInSnapshotScope(context) ? CONFIG_IN_SNAPSHOT_SCOPE : 0),
         _equals: false as unknown as Computed<T>["_equals"],
@@ -1449,6 +1451,7 @@ export function createEffectNode<T>(
           (transparent ? CONFIG_TRANSPARENT : 0) |
           (options?.ownedWrite ? CONFIG_OWNED_WRITE : 0) |
           (options?.sync ? CONFIG_SYNC : 0) |
+          (options?.defer ? CONFIG_DEFER : 0) |
           (options?._extraConfig ?? 0) |
           (snapshotCaptureActive && ownerInSnapshotScope(context) ? CONFIG_IN_SNAPSHOT_SCOPE : 0),
         _equals: false as unknown as Computed<T>["_equals"],

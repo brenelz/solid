@@ -224,6 +224,9 @@ export const CONFIG_FRAME = 1 << 23;
 /** The node's last answering pass registered a flight: an async memo. Kept
  * by the verdict engine alone (verdict.ts `holdWork`), which reads it. */
 export const CONFIG_ASYNC = 1 << 29;
+/** An effect created with `defer: true`: its first run is skipped wherever
+ * it would happen — at creation, or at the commit of a born-held pass. */
+export const CONFIG_DEFER = 1 << 30;
 
 export const STATUS_NONE = 0;
 export const STATUS_PENDING = 1 << 0;

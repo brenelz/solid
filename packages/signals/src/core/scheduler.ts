@@ -1,4 +1,5 @@
 import {
+  CONFIG_DEFER,
   CONFIG_FRAME,
   CONFIG_HELD,
   CONFIG_HELD_FRAME,
@@ -1455,8 +1456,9 @@ export function commitPendingNode(n: Signal<any>): void {
     // The A28 stash goes with it.
     if (c._x != null) ((c._x._reask = false), (c._x._flushed = NOT_PENDING));
     // An effect with a staged value was born held (L2): its first run is
-    // this commit's, not its creation's (A29) — queue it now.
-    if ((n as any)._type && (n as any)._type !== EFFECT_TRACKED) {
+    // this commit's, not its creation's (A29) — queue it now, unless
+    // `defer` skips the first run.
+    if ((n as any)._type && (n as any)._type !== EFFECT_TRACKED && !(n._config & CONFIG_DEFER)) {
       (n as any)._modified = true;
       globalQueue.enqueue(
         (n as any)._type,
