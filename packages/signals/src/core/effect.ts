@@ -2,6 +2,7 @@ import { NOT_PENDING } from "./constants.js";
 import {
   CONFIG_AUTO_DISPOSE,
   CONFIG_CHILDREN_FORBIDDEN,
+  CONFIG_DEFER,
   EFFECT_RENDER,
   EFFECT_TRACKED,
   EFFECT_USER,
@@ -79,13 +80,15 @@ export function effect<T>(
   // staged); the flush's commit replays this effect. Its first run is not this
   // creation's (A29). A lane's node likewise: its run is the lane's, queued
   // by the pass and released at the reveal (lanes.ts).
-  !options?.defer &&
-    node._pendingValue === NOT_PENDING &&
-    !node._x?._transaction?._lane &&
-    (node._type === EFFECT_USER || options?.schedule
-      ? globalQueue.enqueue(node._type, runEffect.bind(null, node))
-      : // Type 0: the synchronous first render, not a queued run (D-19).
-        runEffect(node, 0));
+  if (node._pendingValue === NOT_PENDING) {
+    node._config &= ~CONFIG_DEFER;
+    !options?.defer &&
+      !node._x?._transaction?._lane &&
+      (node._type === EFFECT_USER || options?.schedule
+        ? globalQueue.enqueue(node._type, runEffect.bind(null, node))
+        : // Type 0: the synchronous first render, not a queued run (D-19).
+          runEffect(node, 0));
+  }
   if (__DEV__ && !node._parent) {
     const message =
       "[NO_OWNER_EFFECT] Effects created outside a reactive context will never be disposed";

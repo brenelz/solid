@@ -829,22 +829,24 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
         el._flags & REACTIVE_SCREEN_READ &&
         !(el as any)._modified &&
         Object.is((el as any)._prevValue, value)
-      ) &&
-      // A re-staging pass owes no run: the commit replays the effect (#3802).
-      el._pendingValue === NOT_PENDING
+      )
     ) {
-      (el as any)._modified = !el._x?._error;
-      // Reuse one bound runner per effect — runEffect no-ops on a stale
-      // `_modified`, so re-enqueueing the same function is harmless.
-      // Lane work's run is the lane's (released at its reveal) — a first
-      // pass under a lane too: `effect()` skips the synchronous first run of
-      // a lane's node.
-      if (!create || lane !== null)
-        globalQueue.enqueue(
-          isEffect,
-          ((el as any)._boundRunEffect ??= GlobalQueue._runEffect.bind(null, el)),
-          lane
-        );
+      // A re-staging pass owes no run: the commit replays the effect (#3802).
+      if (el._pendingValue !== NOT_PENDING) el._config &= ~CONFIG_DEFER;
+      else {
+        (el as any)._modified = !el._x?._error;
+        // Reuse one bound runner per effect — runEffect no-ops on a stale
+        // `_modified`, so re-enqueueing the same function is harmless.
+        // Lane work's run is the lane's (released at its reveal) — a first
+        // pass under a lane too: `effect()` skips the synchronous first run of
+        // a lane's node.
+        if (!create || (lane !== null && !(el._config & CONFIG_DEFER)))
+          globalQueue.enqueue(
+            isEffect,
+            ((el as any)._boundRunEffect ??= GlobalQueue._runEffect.bind(null, el)),
+            lane
+          );
+      }
     }
 
     // Lanes. A written guess's own pass from the frame: its source
