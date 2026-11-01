@@ -1,10 +1,3 @@
-/**
- * #4557 — effects a lane's mount creates. An action guesses `opt = true`;
- * the guess mounts a child with a render effect and a user effect reading a
- * memo over a signal `n`. A deferred effect skips its first run whatever
- * mounted it (a lane as much as a plain or held mount, #4543), and a later
- * write to `n` runs each effect once, deferred or not.
- */
 import { describe, expect, it } from "vitest";
 import {
   action,
@@ -83,6 +76,64 @@ describe("#4557 effects mounted by a lane", () => {
     expect(await mount(false)).toEqual({
       mounted: ["render 1 prev undefined", "user 1 prev undefined"],
       written: ["render 2 prev 1", "user 2 prev 1"],
+      landed: []
+    });
+  });
+
+  it("a write whose seam the lane blocks runs a reader of its memo once", async () => {
+    const log: string[] = [];
+    const [opt, setOpt] = createOptimistic(false);
+    const [n, setN] = createSignal(1);
+    const [k, setK] = createSignal(0);
+    let release!: () => void;
+    let resolveA!: (v: string) => void;
+    const run = action(function* () {
+      setOpt(true);
+      yield new Promise<void>(r => (release = r));
+    });
+    let dispose!: () => void;
+    createRoot(d => {
+      dispose = d;
+      const content = createMemo(() =>
+        opt()
+          ? untrack(() => {
+              const m = createMemo(() => n());
+              createEffect(
+                () => m(),
+                v => void log.push(`user ${v}`)
+              );
+              const a = createMemo(() => (k() ? new Promise<string>(r => (resolveA = r)) : "a0"));
+              createRenderEffect(
+                () => a(),
+                v => void log.push(`a ${v}`)
+              );
+              return "child";
+            })
+          : undefined
+      );
+      createRenderEffect(content, () => {});
+    });
+    flush();
+    const p = run();
+    flush();
+    await settle();
+    const mounted = log.splice(0);
+    setN(2);
+    setK(1);
+    flush();
+    await settle();
+    const written = log.splice(0);
+    resolveA("a1");
+    await settle();
+    const revealed = log.splice(0);
+    release();
+    await p;
+    await settle();
+    dispose();
+    expect({ mounted, written, revealed, landed: log }).toEqual({
+      mounted: ["a a0", "user 1"],
+      written: ["user 2"],
+      revealed: ["a a1"],
       landed: []
     });
   });

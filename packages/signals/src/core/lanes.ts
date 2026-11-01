@@ -89,7 +89,6 @@ import {
   merge,
   newTransaction,
   nextQuestion,
-  notifyEpoch,
   ownFlights,
   passLane,
   question,
@@ -114,9 +113,6 @@ export { laneValueOf };
 const lanes: Transaction[] = [];
 /** A pass left a shown slot the equality gate can no longer see (#3892). */
 const LEFT_SHOWN = 1 << 20;
-/** The notify epoch at the last seam: a node notified since has shown its
- * readers the value it left with (#4557). */
-let notified = 0;
 function newLane(parent: Transaction): Transaction {
   const l = newTransaction(true, parent);
   lanes.push(l);
@@ -424,8 +420,10 @@ export function laneStage(
         // what is seen and reaches the screen with the frame's commit. (Only
         // a lane is ever `_shown`.)
         if (tx._shown)
-          if (!flushTransaction || !blocked(resolveTx(tx._parent!))) el._flags |= LEFT_SHOWN;
-          else el._value = display(el);
+          if (!flushTransaction || !blocked(resolveTx(tx._parent!))) {
+            el._flags |= LEFT_SHOWN;
+            el._notifiedAt = -1;
+          } else el._value = display(el);
         x._transaction = null;
       }
       x._lane = NOT_PENDING;
@@ -859,7 +857,7 @@ function laneSeam(l: Transaction, leaked: boolean): void {
     const n = l._nodes[i] as Computed<any>;
     if (n._flags & LEFT_SHOWN) {
       n._flags ^= LEFT_SHOWN;
-      if (n._notifiedAt <= notified) insertSubs(n);
+      if (n._notifiedAt < 0) insertSubs(n);
     }
     const x = n._x!;
     if (x._transaction !== l) continue;
@@ -1171,7 +1169,6 @@ const laneSeams = (t: Transaction | null): void => {
       r._flags &= ~REACTIVE_LANE_DIRTY;
       enqueueSub(r);
     }
-  notified = notifyEpoch;
 };
 /** The landing's re-derive of a reader whose frame flight the seam parked
  * (R5): the flight asked the question the landing would — adopted, it is
