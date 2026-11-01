@@ -142,23 +142,34 @@ export function forEachDependent(
   for (let s = el._subs; s !== null; s = s._nextSub) fn(s._sub, s);
 }
 
-/** Each dependent reachable from `el`, depth first. `fn` sees every arrival,
- * `seen` when an earlier branch already walked the node (a diamond); the
- * node's dependents are walked once, on its first arrival unless `fn`
- * returns false (then it stays unmarked: a later branch may walk it). */
+/** Each dependent reachable from `el`, depth first, on an explicit stack (a
+ * chain is as deep as it is long). `fn` sees every arrival, `seen` when an
+ * earlier branch already walked the node (a diamond); the node's dependents
+ * are walked once, on the first arrival `fn` returns true for (until then it
+ * stays unmarked: a later branch may walk it), and `leave` runs once they
+ * are. */
 function walkDependents(
   el: Computed<any>,
-  fn: (node: Computed<any>, seen: boolean) => unknown
+  fn: (node: Computed<any>, seen: boolean, link: Link) => unknown,
+  leave?: (node: Computed<any>) => void
 ): void {
   const visited = new NewSet<Computed<any>>();
-  const visit = (node: Computed<any>) => {
-    const seen = visited.has(node);
-    if (fn(node, seen) !== false && !seen) {
-      visited.add(node);
-      forEachDependent(node, visit);
+  const stack: Link[] = [];
+  for (let s = el._subs; s !== null || stack.length; ) {
+    if (s === null) {
+      s = stack.pop()!;
+      leave?.(s._sub);
+      s = s._nextSub;
+    } else {
+      const node = s._sub;
+      const seen = visited.has(node);
+      if (fn(node, seen, s) && !seen) {
+        visited.add(node);
+        stack.push(s);
+        s = node._subs;
+      } else s = s._nextSub;
     }
-  };
-  forEachDependent(el, visit);
+  }
 }
 
 // Queue a node to re-run on the next flush (used both when a pending source
@@ -195,6 +206,7 @@ export function releaseSettledDependents(el: Computed<any>): void {
   let candidates: Computed<any>[] | undefined;
   walkDependents(el, (node, seen) => {
     if (!seen && !node._subs && node._config & CONFIG_AUTO_DISPOSE) (candidates ??= []).push(node);
+    return true;
   });
   if (candidates) for (const node of candidates) releaseIfSettledUnobserved(node);
 }
@@ -350,12 +362,13 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // equal to the committed value notifies nobody — the source settling
       // is its verdict changing: it runs again. (Verdict readers exist only
       // with the verdict engine installed.)
-      // D-41: a derivation of a staged error carries it (verdict.ts `stageMark`).
-      return (
-        holdWorkHook &&
-          (node._config & CONFIG_VERDICT ? enqueueSub(node) : stageMarkHook!(node, el)),
-        false
-      );
+      // D-41: a derivation of a staged error carries it (verdict.ts `stageMark`);
+      // marked, its dependents are walked for theirs.
+      return holdWorkHook
+        ? node._config & CONFIG_VERDICT
+          ? (enqueueSub(node), false)
+          : stageMarkHook!(node, el) && source === el
+        : false;
     node._time = clock;
     const remaining = node._x?._pendingSources?.values().next().value;
     // STATUS_ERROR + pending sources only coexist via an errored loading
@@ -394,6 +407,7 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // (F-9, F-2: graph shape is not observable, #4562).
       stageMarkHook?.(node, el);
     }
+    return true;
   });
 
   // A node the enqueueSub above queued is released at that pass's tail
@@ -985,7 +999,12 @@ export function notifyStatus(el: Computed<any>, status: number, error?: any): vo
     !(error instanceof NotReadyError)
   )
     error = new StatusError(el, error);
+  if (markStatus(el, status, error)) propagateStatus(el, status, error);
+}
 
+/** The node's half of `notifyStatus`: `el` takes the status; whether its
+ * dependents take it too. */
+function markStatus(el: Computed<any>, status: number, error: any): boolean {
   const pendingSource = status === STATUS_PENDING && error instanceof NotReadyError && error.source;
   // (CARVE 2: the lane assignment went with the engine.)
 
@@ -1024,15 +1043,15 @@ export function notifyStatus(el: Computed<any>, status: number, error?: any): vo
   // (No guess written, no arm.)
   if (guessing && status === STATUS_PENDING && el._config & CONFIG_GUESS) {
     if (passLane === null) joinFuture(el._flags & REACTIVE_REASK ? null : txOf(el)._parent);
-    return;
+    return false;
   }
 
   const elNotify = statusNotifierOf(el);
   if (elNotify) {
     elNotify.call(el);
-    return;
+    return false;
   }
-  propagateStatus(el, status, error);
+  return true;
 }
 
 /** The dependents' half of `notifyStatus`: `el`'s status reaches each
@@ -1042,92 +1061,97 @@ export function notifyStatus(el: Computed<any>, status: number, error?: any): vo
  * (store/projection.ts `wakeFamily`), exactly as a memo's would reach its. */
 export function propagateStatus(el: Computed<any>, status: number, error: any): void {
   const pendingSource = status === STATUS_PENDING && error instanceof NotReadyError && error.source;
-  forEachDependent(el, (sub, link) => {
-    sub._time = clock;
-    // A pending mark on a kept-tail link re-derives the subscriber instead of
-    // marking it (A30, #3494 review; fuzzer latest-1 #2141; #3519 review).
-    // Past `_depsTail` lie the committed frame's deps, kept by A30 because
-    // that frame still derives from them while the pass that dropped them is
-    // staged. A source going pending there is a question for the node's NEXT
-    // pass, not a fact about its current one. Re-derived, the pass decides:
-    // it reads the dep and registers through its own read, or reads neither
-    // and is done. Clears and errors still ride every link. A link inside the prefix carries the
-    // pass's generation (`link()`), so the test is O(1); mid-pass the prefix
-    // is what the pass has read so far, and the heap refuses a recomputing
-    // node — a dep it has yet to reach registers through its own read.
-    // A verdict reader likewise (CONFIG_VERDICT), for either status: the
-    // dependency going pending or erroring changed what `isPending`/`latest`
-    // answer, so its pass runs again — it decides, breaking out as the
-    // verdict lane's, going pending through a plain read of its own, or
-    // answering an errored source (`isPending` false; `latest` throws it).
-    // Inheriting the error would make a probe's reader errored. A boundary's
-    // output (CONFIG_REDERIVE, boundaries.ts) the same: content or fallback
-    // is its pass's call.
-    // Not one D-25 makes the hold's work (verdict.ts `holdWork`): an async
-    // memo with no verdict window of its own reads a verdict memo's value,
-    // and that source going pending changes none of its reads — re-derived,
-    // it is served the committed value it already derived from (A10) and
-    // asks that question again. It waits on the source like any derivation
-    // (F-9), and asks its next question once, at the landing (#4397).
-    // A node carrying a staged error re-derives on a pending mark: its
-    // source asks again, and the staging it carried is not the answer
-    // (#4109, `stageMark`).
-    if (
-      sub._config & CONFIG_REDERIVE ||
-      (holdWorkHook &&
-        (sub._config & CONFIG_VERDICT || (pendingSource && sub._config & CONFIG_STAGED_ERROR)) &&
-        !(pendingSource && holdWorkHook(sub, el))) ||
-      (status === STATUS_PENDING && link._gen !== sub._depGen)
-    ) {
-      enqueueSub(sub);
-      schedule();
-      return;
-    }
-    // Already pending on this source (a re-ask of its flight): the status is
-    // unchanged and nothing re-notifies. The re-asking write is held with the
-    // flight the observer waits on (fuzzer #3446 P1): the propagation joins
-    // the observer's transaction. An independent render effect in the same
-    // frame still passes through — its pass is the frame's (#3372, compiled
-    // shape: the unmount it stages makes the observer a zombie whose say is
-    // moot for this transaction, A15 #3463).
-    if (pendingSource && sub._x?._pendingSources?.has(pendingSource)) {
+  // A derived store's derive (store/projection.ts): marked, not re-run — its
+  // leaves' readers are not its dependents, so the family walks them.
+  const family = (sub: Computed<any>) => (sub as any)._fam?.st(status, error);
+  walkDependents(
+    el,
+    (sub, _seen, link) => {
+      sub._time = clock;
+      // A pending mark on a kept-tail link re-derives the subscriber instead of
+      // marking it (A30, #3494 review; fuzzer latest-1 #2141; #3519 review).
+      // Past `_depsTail` lie the committed frame's deps, kept by A30 because
+      // that frame still derives from them while the pass that dropped them is
+      // staged. A source going pending there is a question for the node's NEXT
+      // pass, not a fact about its current one. Re-derived, the pass decides:
+      // it reads the dep and registers through its own read, or reads neither
+      // and is done. Clears and errors still ride every link. A link inside the prefix carries the
+      // pass's generation (`link()`), so the test is O(1); mid-pass the prefix
+      // is what the pass has read so far, and the heap refuses a recomputing
+      // node — a dep it has yet to reach registers through its own read.
+      // A verdict reader likewise (CONFIG_VERDICT), for either status: the
+      // dependency going pending or erroring changed what `isPending`/`latest`
+      // answer, so its pass runs again — it decides, breaking out as the
+      // verdict lane's, going pending through a plain read of its own, or
+      // answering an errored source (`isPending` false; `latest` throws it).
+      // Inheriting the error would make a probe's reader errored. A boundary's
+      // output (CONFIG_REDERIVE, boundaries.ts) the same: content or fallback
+      // is its pass's call.
+      // Not one D-25 makes the hold's work (verdict.ts `holdWork`): an async
+      // memo with no verdict window of its own reads a verdict memo's value,
+      // and that source going pending changes none of its reads — re-derived,
+      // it is served the committed value it already derived from (A10) and
+      // asks that question again. It waits on the source like any derivation
+      // (F-9), and asks its next question once, at the landing (#4397).
+      // A node carrying a staged error re-derives on a pending mark: its
+      // source asks again, and the staging it carried is not the answer
+      // (#4109, `stageMark`).
       if (
-        passLane === null &&
-        (sub._config & (CONFIG_HELD | CONFIG_OVERRIDE)) === CONFIG_HELD &&
-        globalQueue._running &&
-        !freshHook?.(sub, pendingSource._time === clock)
-      )
-        joinFuture(txOf(sub));
-      return;
-    }
-    if (
-      pendingSource ||
-      (status !== STATUS_PENDING && (sub._x?._error !== error || sub._x?._pendingSources))
-    ) {
-      // The marked subscriber is queued for the commit sweep so its status
-      // bookkeeping (loading window, uninitialized clear) runs with the flush
-      // — with the lane, when the pass propagating is the lane's work and
-      // the dependent's pending is the lane's own flight (`laneStage`).
-      // (No answer: a pending propagation leaves a written guess a guess.)
-      if (laneStageHook && passLane !== null) laneStageHook(sub, passLane, true, el);
-      else {
-        queuePendingNode(sub);
-        // A15 (#3443): pending propagates onto a held memo without
-        // recomputing it, and the propagation itself enters the memo's
-        // transaction — the flight flows into a memo that transaction
-        // holds, so the write that started it is held with it. A render
-        // effect's membership is its pass's (`notify`), never sticky.
+        sub._config & CONFIG_REDERIVE ||
+        (holdWorkHook &&
+          (sub._config & CONFIG_VERDICT || (pendingSource && sub._config & CONFIG_STAGED_ERROR)) &&
+          !(pendingSource && holdWorkHook(sub, el))) ||
+        (status === STATUS_PENDING && link._gen !== sub._depGen)
+      ) {
+        enqueueSub(sub);
+        schedule();
+        return;
+      }
+      // Already pending on this source (a re-ask of its flight): the status is
+      // unchanged and nothing re-notifies. The re-asking write is held with the
+      // flight the observer waits on (fuzzer #3446 P1): the propagation joins
+      // the observer's transaction. An independent render effect in the same
+      // frame still passes through — its pass is the frame's (#3372, compiled
+      // shape: the unmount it stages makes the observer a zombie whose say is
+      // moot for this transaction, A15 #3463).
+      if (pendingSource && sub._x?._pendingSources?.has(pendingSource)) {
         if (
-          status === STATUS_PENDING &&
+          passLane === null &&
           (sub._config & (CONFIG_HELD | CONFIG_OVERRIDE)) === CONFIG_HELD &&
-          !(sub as any)._type
+          globalQueue._running &&
+          !freshHook?.(sub, pendingSource._time === clock)
         )
           joinFuture(txOf(sub));
+        return;
       }
-      notifyStatus(sub, status, error);
-      // A derived store's derive (store/projection.ts): marked, not re-run —
-      // its leaves' readers are not its dependents, so the family walks them.
-      (sub as any)._fam?.st(status, error);
-    }
-  });
+      if (
+        pendingSource ||
+        (status !== STATUS_PENDING && (sub._x?._error !== error || sub._x?._pendingSources))
+      ) {
+        // The marked subscriber is queued for the commit sweep so its status
+        // bookkeeping (loading window, uninitialized clear) runs with the flush
+        // — with the lane, when the pass propagating is the lane's work and
+        // the dependent's pending is the lane's own flight (`laneStage`).
+        // (No answer: a pending propagation leaves a written guess a guess.)
+        if (laneStageHook && passLane !== null) laneStageHook(sub, passLane, true, el);
+        else {
+          queuePendingNode(sub);
+          // A15 (#3443): pending propagates onto a held memo without
+          // recomputing it, and the propagation itself enters the memo's
+          // transaction — the flight flows into a memo that transaction
+          // holds, so the write that started it is held with it. A render
+          // effect's membership is its pass's (`notify`), never sticky.
+          if (
+            status === STATUS_PENDING &&
+            (sub._config & (CONFIG_HELD | CONFIG_OVERRIDE)) === CONFIG_HELD &&
+            !(sub as any)._type
+          )
+            joinFuture(txOf(sub));
+        }
+        if (markStatus(sub, status, error)) return true;
+        family(sub);
+      }
+    },
+    family
+  );
 }

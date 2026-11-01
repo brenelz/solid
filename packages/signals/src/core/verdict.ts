@@ -53,7 +53,6 @@ import {
   unflushedValue,
   verdict
 } from "./core.js";
-import { settlePendingSource } from "./async.js";
 import { forgetThrownRead, warnStrictReadUntracked } from "./dev.js";
 import { NotReadyError } from "./error.js";
 import { link } from "./graph.js";
@@ -681,22 +680,19 @@ function holdWork(n: Computed<any>, source: Computed<any>): unknown {
  * walk (`settlePendingSource`) marks every node it reaches from a staged
  * error — a diamond's revisited join and a chain's single arrival alike
  * (#4562). */
-function stageMark(node: Computed<any>, el: Computed<any>): void {
+function stageMark(node: Computed<any>, el: Computed<any>): boolean {
   if (
-    el._config & CONFIG_STAGED_ERROR &&
-    !(
-      node._config &
-      (CONFIG_REDERIVE | CONFIG_STAGED_ERROR | CONFIG_ASYNC | (EFFECT_TRACKED << 23))
-    )
-  ) {
-    node._pendingValue = el._pendingValue;
-    node._config |= CONFIG_STAGED_ERROR;
-    queuePendingNode(node);
-    // A derived store's readers are its family's (store/projection.ts): they
-    // re-derive from the staging, as from the derive's status (#4189).
-    (node as any)._fam?.st(STATUS_ERROR);
-    settlePendingSource(node);
-  }
+    !(el._config & CONFIG_STAGED_ERROR) ||
+    node._config & (CONFIG_REDERIVE | CONFIG_STAGED_ERROR | CONFIG_ASYNC | (EFFECT_TRACKED << 23))
+  )
+    return false;
+  node._pendingValue = el._pendingValue;
+  node._config |= CONFIG_STAGED_ERROR;
+  queuePendingNode(node);
+  // A derived store's readers are its family's (store/projection.ts): they
+  // re-derive from the staging, as from the derive's status (#4189).
+  (node as any)._fam?.st(STATUS_ERROR);
+  return true;
 }
 
 installVerdictHooks(observeFlight, holdWork, stageMark);

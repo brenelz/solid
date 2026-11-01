@@ -184,8 +184,8 @@ export let observeFlightHook: ((c: Computed<any>, el: Computed<any>) => boolean)
  * whether verdict reader `n` waits on it instead of re-deriving. */
 export let holdWorkHook: ((n: Computed<any>, source: Computed<any>) => unknown) | null = null;
 /** D-41's staged-error mark (verdict.ts `stageMark`): the settle walk's
- * reached node `n` carries staged error source `el`'s staging. */
-export let stageMarkHook: ((n: Computed<any>, el: Computed<any>) => void) | null = null;
+ * reached node `n` carries staged error source `el`'s staging; whether it did. */
+export let stageMarkHook: ((n: Computed<any>, el: Computed<any>) => boolean) | null = null;
 export function installVerdictHooks(
   observeFlight: NonNullable<typeof observeFlightHook>,
   holdWork: NonNullable<typeof holdWorkHook>,
