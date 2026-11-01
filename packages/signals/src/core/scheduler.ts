@@ -499,7 +499,7 @@ function ownSource(n: Computed<any>, t: Transaction): boolean {
   }
   return false;
 }
-function blockedBy(nodes: Signal<any>[], owner: Transaction, own = false): boolean {
+export function blockedBy(nodes: Signal<any>[], owner: Transaction, own = false): boolean {
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i] as Computed<any>;
     if (
