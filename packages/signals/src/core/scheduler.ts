@@ -449,14 +449,14 @@ export function merge(t: Transaction, f: Transaction): void {
  * count: one a lane took over since is the lane's to wait on. A guess whose
  * own truth is in flight blocks the lane's parent, not the lane — it stands
  * in for the flight (A17: "visible until its own fetch settles"). */
-export function blocked(t: Transaction): boolean {
+export function blocked(t: Transaction, ignoreOpen?: boolean): boolean {
   // The transaction being judged (a lane consulted on its behalf judges for
   // it): a zombie whose removal it stages is moot for it alone (`onScreen`).
   const prev = judge;
   judge ??= t;
   // An action still running in it holds it open (action.ts). Its lanes
   // (lanes.ts): a lane under `t` blocks it while blocked itself.
-  const r = t._open !== 0 || blockedBy(t._nodes, t) || !!lanesBlockedHook?.(t);
+  const r = (!ignoreOpen && t._open !== 0) || blockedBy(t._nodes, t) || !!lanesBlockedHook?.(t);
   judge = prev;
   return r;
 }
@@ -499,7 +499,7 @@ function ownSource(n: Computed<any>, t: Transaction): boolean {
   }
   return false;
 }
-export function blockedBy(nodes: Signal<any>[], owner: Transaction, own = false): boolean {
+function blockedBy(nodes: Signal<any>[], owner: Transaction, own = false): boolean {
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i] as Computed<any>;
     if (

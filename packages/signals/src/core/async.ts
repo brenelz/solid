@@ -41,7 +41,7 @@ import { trimStaleDeps, unobserved } from "./graph.js";
 import { enqueueSub } from "./heap.js";
 import { cleanup, disposeChildren } from "./owner.js";
 import {
-  blockedBy,
+  blocked,
   clock,
   flush,
   globalQueue,
@@ -612,14 +612,21 @@ export function handleAsync<T>(
     // the flush below (#4495). Not status bookkeeping queued with no value.
     const carried = holdWorkHook && pendingNodes.some(n => n._pendingValue !== NOT_PENDING);
     const wasUninitialized = el._statusFlags & STATUS_UNINITIALIZED;
-    // A first answer to a held write's question lands no earlier than a hold
-    // a frame on screen waits on (F-7); not an action's open hold alone (#2937).
-    if (wasUninitialized && !(el._config & (CONFIG_HELD | CONFIG_VERDICT | CONFIG_OVERRIDE)))
+    // Not an action's open hold alone (#2937): a hold a frame on screen waits on.
+    if (
+      wasUninitialized &&
+      el._flags & REACTIVE_STAGED_READ &&
+      !(el._config & (CONFIG_HELD | CONFIG_VERDICT | CONFIG_OVERRIDE))
+    )
       for (let d = el._deps; d; d = d._nextDep) {
         const dep = d._dep;
-        if (dep._config & CONFIG_HELD && dep._pendingValue !== NOT_PENDING) {
+        if (
+          d._gen === el._depGen &&
+          dep._config & CONFIG_HELD &&
+          dep._pendingValue !== NOT_PENDING
+        ) {
           const t = txOf(dep);
-          if (blockedBy(t._nodes, t)) {
+          if (!t._lane && blocked(t, true)) {
             joinFuture(t);
             break;
           }
