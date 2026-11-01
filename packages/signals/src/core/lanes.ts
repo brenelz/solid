@@ -41,6 +41,7 @@ import {
   CONFIG_OVERRIDE,
   CONFIG_SLOT_NODE,
   CONFIG_STAGED,
+  CONFIG_STAGED_ERROR,
   CONFIG_VERDICT,
   EFFECT_RENDER,
   NOT_PENDING,
@@ -88,6 +89,7 @@ import {
   merge,
   newTransaction,
   nextQuestion,
+  notifyEpoch,
   ownFlights,
   passLane,
   question,
@@ -112,6 +114,9 @@ export { laneValueOf };
 const lanes: Transaction[] = [];
 /** A pass left a shown slot the equality gate can no longer see (#3892). */
 const LEFT_SHOWN = 1 << 20;
+/** The notify epoch at the last seam: a node notified since has shown its
+ * readers the value it left with (#4557). */
+let notified = 0;
 function newLane(parent: Transaction): Transaction {
   const l = newTransaction(true, parent);
   lanes.push(l);
@@ -854,13 +859,17 @@ function laneSeam(l: Transaction, leaked: boolean): void {
     const n = l._nodes[i] as Computed<any>;
     if (n._flags & LEFT_SHOWN) {
       n._flags ^= LEFT_SHOWN;
-      insertSubs(n);
+      if (n._notifiedAt <= notified) insertSubs(n);
     }
     const x = n._x!;
     if (x._transaction !== l) continue;
-    if (!(n._config & CONFIG_GUESS) && !(n as any)._type && n._pendingValue !== NOT_PENDING) {
-      x._lane = n._pendingValue;
-      n._pendingValue = NOT_PENDING;
+    // An effect born in the lane staged its first run: the reveal replays it
+    // (A29). A held or errored staging is its transaction's to commit.
+    if (!(n._config & CONFIG_GUESS) && n._pendingValue !== NOT_PENDING) {
+      if (!(n as any)._type) {
+        x._lane = n._pendingValue;
+        n._pendingValue = NOT_PENDING;
+      } else if (!(n._config & (CONFIG_HELD | CONFIG_STAGED_ERROR))) commitPendingNode(n);
     }
     // The frame this pass built is the screen's now; the one it replaced
     // goes (as `commitPendingNode` retires a committed pass's).
@@ -1162,6 +1171,7 @@ const laneSeams = (t: Transaction | null): void => {
       r._flags &= ~REACTIVE_LANE_DIRTY;
       enqueueSub(r);
     }
+  notified = notifyEpoch;
 };
 /** The landing's re-derive of a reader whose frame flight the seam parked
  * (R5): the flight asked the question the landing would — adopted, it is

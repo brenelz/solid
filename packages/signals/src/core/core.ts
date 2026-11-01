@@ -838,15 +838,16 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
       (el as any)._modified = !el._x?._error;
       // Reuse one bound runner per effect — runEffect no-ops on a stale
       // `_modified`, so re-enqueueing the same function is harmless.
-      // Lane work's run is the lane's (released at its reveal) — a first
-      // pass under a lane too: `effect()` skips the synchronous first run of
-      // a lane's node.
-      if (!create || lane !== null)
+      // Lane work's run is the lane's (released at its reveal); a first pass
+      // under a lane stages, and the reveal replays it (lanes.ts) — a seam
+      // nothing else brings when the node is created outside a flush.
+      if (!create)
         globalQueue.enqueue(
           isEffect,
           ((el as any)._boundRunEffect ??= GlobalQueue._runEffect.bind(null, el)),
           lane
         );
+      else if (lane !== null) schedule();
     }
 
     // Lanes. A written guess's own pass from the frame: its source
@@ -889,9 +890,9 @@ export function recompute(el: Computed<any>, create: boolean = false): void {
         // revealed (its reveal shows it), as its staging once it has (the
         // next reveal promotes it; the screen keeps the revealed value). An
         // effect's value slot is private: the run the lane holds is what
-        // shows it — unless the effect was born held, whose first run is the
-        // commit's (A29): it re-stages, as below.
-        if (isEffect && el._pendingValue === NOT_PENDING) el._value = value;
+        // shows it — unless its first run is still owed (born held, or born
+        // in the lane: the reveal replays it, A29): it stages, as below.
+        if (isEffect && !create && el._pendingValue === NOT_PENDING) el._value = value;
         else if (isEffect || lane._shown) el._pendingValue = value;
         else el._x!._lane = value;
       } else if (
