@@ -397,7 +397,8 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // parks into it. A lane's held reader is the lane's (D-37): the flush
       // never takes a lane as its transaction (#4440).
       if (node._config & CONFIG_HELD) joinFuture(txOf(node));
-      if (node._x?._blocked) {
+      const blocked = node._x?._blocked;
+      if (blocked) {
         enqueueSub(node);
         scheduled = true;
       }
@@ -407,11 +408,11 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // Only a store build has one (`storeParkHook`).
       else if (storeParkHook) (node as any)._fam?.st();
       if (node._x !== null) node._x._blocked = false;
-      if (holdWorkHook && el._config & CONFIG_STAGED_ERROR) stageMark(node, el);
       // Fully settled with nobody watching: release candidate (#2934). Checked
       // again at release time — deferred so unobserved() can't unlink subs
       // lists this walk is still iterating.
       if (!node._subs && node._config & CONFIG_AUTO_DISPOSE) (released ??= []).push(node);
+      else if (holdWorkHook && !blocked && el._config & CONFIG_STAGED_ERROR) stageMark(node, el);
     }
   });
 
