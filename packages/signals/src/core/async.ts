@@ -145,7 +145,7 @@ export function forEachDependent(
 /** Each dependent reachable from `el`, depth first, on an explicit stack (a
  * chain is as deep as it is long). `fn` sees every arrival, `seen` when an
  * earlier branch already walked the node (a diamond); the node's dependents
- * are walked once, on the first arrival `fn` returns true for (until then it
+ * are walked once, on its first arrival unless `fn` returns false (then it
  * stays unmarked: a later branch may walk it), and `leave` runs once they
  * are. */
 function walkDependents(
@@ -163,7 +163,7 @@ function walkDependents(
     } else {
       const node = s._sub;
       const seen = visited.has(node);
-      if (fn(node, seen, s) && !seen) {
+      if (fn(node, seen, s) !== false && !seen) {
         visited.add(node);
         stack.push(s);
         s = node._subs;
@@ -206,7 +206,6 @@ export function releaseSettledDependents(el: Computed<any>): void {
   let candidates: Computed<any>[] | undefined;
   walkDependents(el, (node, seen) => {
     if (!seen && !node._subs && node._config & CONFIG_AUTO_DISPOSE) (candidates ??= []).push(node);
-    return true;
   });
   if (candidates) for (const node of candidates) releaseIfSettledUnobserved(node);
 }
@@ -270,10 +269,11 @@ export function stageError(el: Computed<any>, error: any, inPass?: boolean): boo
 export function settleErroredDependents(el: Computed<any>, error: any): void {
   let scheduled = false;
   walkDependents(el, (node, seen) => {
-    if (!seen && node._x?._error === error) {
-      enqueueSub(node);
-      scheduled = true;
-    }
+    if (seen || node._x?._error !== error) return;
+    // A re-queued node's own pass sweeps its dependents.
+    enqueueSub(node);
+    scheduled = true;
+    return false;
   });
   if (scheduled) schedule();
 }
@@ -407,7 +407,6 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // (F-9, F-2: graph shape is not observable, #4562).
       stageMarkHook?.(node, el);
     }
-    return true;
   });
 
   // A node the enqueueSub above queued is released at that pass's tail
@@ -999,7 +998,7 @@ export function notifyStatus(el: Computed<any>, status: number, error?: any): vo
     !(error instanceof NotReadyError)
   )
     error = new StatusError(el, error);
-  if (markStatus(el, status, error)) propagateStatus(el, status, error);
+  if (markStatus(el, status, error) && el._subs) propagateStatus(el, status, error);
 }
 
 /** The node's half of `notifyStatus`: `el` takes the status; whether its
@@ -1100,12 +1099,12 @@ export function propagateStatus(el: Computed<any>, status: number, error: any): 
         sub._config & CONFIG_REDERIVE ||
         (holdWorkHook &&
           (sub._config & CONFIG_VERDICT || (pendingSource && sub._config & CONFIG_STAGED_ERROR)) &&
-          !(pendingSource && holdWorkHook(sub, el))) ||
+          !(pendingSource && holdWorkHook(sub, link._dep as Computed<any>))) ||
         (status === STATUS_PENDING && link._gen !== sub._depGen)
       ) {
         enqueueSub(sub);
         schedule();
-        return;
+        return false;
       }
       // Already pending on this source (a re-ask of its flight): the status is
       // unchanged and nothing re-notifies. The re-asking write is held with the
@@ -1122,7 +1121,7 @@ export function propagateStatus(el: Computed<any>, status: number, error: any): 
           !freshHook?.(sub, pendingSource._time === clock)
         )
           joinFuture(txOf(sub));
-        return;
+        return false;
       }
       if (
         pendingSource ||
@@ -1133,7 +1132,8 @@ export function propagateStatus(el: Computed<any>, status: number, error: any): 
         // — with the lane, when the pass propagating is the lane's work and
         // the dependent's pending is the lane's own flight (`laneStage`).
         // (No answer: a pending propagation leaves a written guess a guess.)
-        if (laneStageHook && passLane !== null) laneStageHook(sub, passLane, true, el);
+        if (laneStageHook && passLane !== null)
+          laneStageHook(sub, passLane, true, link._dep as Computed<any>);
         else {
           queuePendingNode(sub);
           // A15 (#3443): pending propagates onto a held memo without
@@ -1148,9 +1148,10 @@ export function propagateStatus(el: Computed<any>, status: number, error: any): 
           )
             joinFuture(txOf(sub));
         }
-        if (markStatus(sub, status, error)) return true;
+        if (markStatus(sub, status, error)) return;
         family(sub);
       }
+      return false;
     },
     family
   );

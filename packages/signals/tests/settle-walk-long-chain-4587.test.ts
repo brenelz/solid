@@ -67,3 +67,34 @@ it("a long memo chain's settle walk stages the source's error without overflowin
   dispose();
   disposeSource();
 });
+
+it("a long memo chain's silent-recovery sweep reaches the chain's end without overflowing the stack", () => {
+  const N = 8000;
+  const [b, setB] = createSignal(0);
+  const log: unknown[] = [];
+  const dispose = createRoot(d => {
+    let last = createMemo(() => {
+      const v = b();
+      if (v < 0) throw new Error(`b=${v}`);
+      return v;
+    });
+    for (let i = 0; i < N; i++) {
+      const prev = last;
+      last = createMemo(() => prev());
+    }
+    const end = last;
+    const view = createErrorBoundary(
+      () => `ok:${end()}`,
+      e => `err:${(e() as Error).message}`
+    );
+    createRenderEffect(view, v => void log.push(v));
+    return d;
+  });
+  flush();
+  setB(-1);
+  flush();
+  setB(0);
+  flush();
+  expect(log).toEqual(["ok:0", "err:b=-1", "ok:0"]);
+  dispose();
+});
