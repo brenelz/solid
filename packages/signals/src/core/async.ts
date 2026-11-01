@@ -407,6 +407,7 @@ export function settlePendingSource(el: Computed<any>, source: Computed<any> = e
       // Only a store build has one (`storeParkHook`).
       else if (storeParkHook) (node as any)._fam?.st();
       if (node._x !== null) node._x._blocked = false;
+      if (holdWorkHook && el._config & CONFIG_STAGED_ERROR) stageMark(node, el);
       // Fully settled with nobody watching: release candidate (#2934). Checked
       // again at release time — deferred so unobserved() can't unlink subs
       // lists this walk is still iterating.
