@@ -2016,7 +2016,11 @@ export function renderToStream<T>(
      * touches the document writable, a platform whose response body is
      * consumed by a proxy — this is the one teardown handle; pass
      * `request.signal`. Idempotent with the sink and consumer paths: whichever
-     * fires first tears down, the rest are no-ops.
+     * fires first tears down, the rest are no-ops. The consumer still settles:
+     * `await renderToStream(...)` resolves with the HTML produced so far (`""`
+     * before the shell), `pipeTo`'s promise resolves once its writer lock is
+     * released (the writable itself is left open, for the caller to close or
+     * abort), and `readable` closes.
      */
     signal?: AbortSignal;
   }
@@ -2026,7 +2030,8 @@ export function renderToStream<T>(
    * settles — the fully-settled-string form of the render (`const html =
    * await renderToStream(...)`). Render errors route through `onError` and
    * the promise resolves with whatever HTML the render produced; it never
-   * rejects.
+   * rejects. An aborted `signal` resolves it the same way, with the HTML
+   * produced so far (`""` before the shell).
    *
    * Completion is this path's head-freeze point: the request event's
    * `response` head (the request scope the render was started in) is
@@ -2146,8 +2151,6 @@ export function renderToStream(code, options = {}) {
         }
       : complete;
   };
-  // A disconnect leaves every sink alone, but a consumer's promise still has
-  // to settle.
   let onDisconnected;
   const onDisconnect = complete => {
     if (disconnected) return complete();
@@ -3425,7 +3428,7 @@ export function renderToStream(code, options = {}) {
     }
     consumer = name;
   };
-  const pipeToImpl = w => {
+  const pipeToImpl = (w, owned) => {
     let resolve;
     const p = new Promise(r => (resolve = r));
     // A render failure (see `abandon`) completes this consumer: the promise
@@ -3440,7 +3443,14 @@ export function renderToStream(code, options = {}) {
       } catch (_) {}
       resolve();
     });
-    onDisconnect(() => resolve());
+    // A disconnect leaves a caller's writable open; only its lock is released.
+    let release = () => Promise.resolve();
+    onDisconnect(() => {
+      release().then(() => {
+        if (owned) w.close().catch(() => {});
+        resolve();
+      });
+    });
     function flush() {
       allSettled(blockingPromises).then(awaited => {
         scheduleFlush(() => {
@@ -3481,6 +3491,11 @@ export function renderToStream(code, options = {}) {
             }
           };
           writer.closed && writer.closed.catch(failed);
+          release = () =>
+            pendingWrites.then(() => {
+              ended = true;
+              writer.releaseLock();
+            });
           buffer = writable = coalesceWrites(
             payload => {
               pendingWrites = pendingWrites
@@ -3559,8 +3574,7 @@ export function renderToStream(code, options = {}) {
         // head is deliberately NOT frozen: the render died, its teardown
         // retracts the declarations as it always did, and the consumer
         // keeps a writable head for whatever error response it builds
-        // around the partial HTML. A disconnect (the `signal` aborting)
-        // settles it the same way.
+        // around the partial HTML.
         onFailure(() => resolve(tmp));
         onDisconnect(() => resolve(tmp));
         function flush() {
@@ -3663,7 +3677,7 @@ export function renderToStream(code, options = {}) {
         // until it is handed back — awaiting before returning would
         // deadlock. The pipe already encodes chunks (TextEncoder), so the
         // readable side yields Uint8Array bytes, Response-body ready.
-        pipeToImpl(t.writable);
+        pipeToImpl(t.writable, true);
         cachedReadable = t.readable;
       }
       return cachedReadable;

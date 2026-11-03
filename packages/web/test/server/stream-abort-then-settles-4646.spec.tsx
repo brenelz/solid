@@ -113,7 +113,7 @@ describe("renderToStream: the awaited form settles when the signal aborts (#4646
     expect(writable.locked).toBe(false);
   });
 
-  test("pipeTo()'s promise settles on an abort after the shell, the writable left open", async () => {
+  test("pipeTo()'s promise settles on an abort after the shell, the writable unlocked and left open", async () => {
     const controller = new AbortController();
     const App = () => (
       <Loading fallback="waiting">
@@ -131,6 +131,38 @@ describe("renderToStream: the awaited form settles when the signal aborts (#4646
     expect(new TextDecoder().decode(value)).toContain("waiting");
     controller.abort();
     expect(await pending).toEqual({ state: "settled", html: "" });
-    expect(writable.locked).toBe(true);
+    expect(writable.locked).toBe(false);
+    await writable.close();
+    expect(await reader.read()).toEqual({ done: true, value: undefined });
+  });
+
+  test("readable: a Response body completes on an abort before the shell", async () => {
+    const controller = new AbortController();
+    const stream = renderToStream(() => <Held />, { signal: controller.signal });
+    const pending = settle(new Response(stream.readable).text());
+    setTimeout(() => controller.abort(), 10);
+    expect(await pending).toEqual({ state: "settled", html: "" });
+  });
+
+  test("readable: a Response body completes with the shell on an abort after it", async () => {
+    const controller = new AbortController();
+    const App = () => (
+      <Loading fallback="waiting">
+        <Held />
+      </Loading>
+    );
+    let shellCompleted!: () => void;
+    const shellDone = new Promise<void>(resolve => (shellCompleted = resolve));
+    const stream = renderToStream(() => <App />, {
+      signal: controller.signal,
+      onCompleteShell: () => shellCompleted()
+    });
+    const pending = settle(new Response(stream.readable).text());
+    await shellDone;
+    await new Promise(r => setTimeout(r, 10));
+    controller.abort();
+    const outcome = await pending;
+    expect(outcome.state).toBe("settled");
+    expect(outcome.html).toContain("waiting");
   });
 });
