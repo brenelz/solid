@@ -2146,6 +2146,19 @@ export function renderToStream(code, options = {}) {
         }
       : complete;
   };
+  // A disconnect leaves every sink alone, but a consumer's promise still has
+  // to settle.
+  let onDisconnected;
+  const onDisconnect = complete => {
+    if (disconnected) return complete();
+    const prev = onDisconnected;
+    onDisconnected = prev
+      ? () => {
+          prev();
+          complete();
+        }
+      : complete;
+  };
   // `quiet` tears down as a disconnect without the finding: the response
   // chose to discard the page (a pre-flush redirect) — nobody left.
   const abandon = (disconnect, quiet) => {
@@ -2220,7 +2233,10 @@ export function renderToStream(code, options = {}) {
     if (!disconnect) {
       failed = true;
       onFailed && onFailed(sink);
-    } else if (!sink && onDisconnectedBeforeShell) onDisconnectedBeforeShell();
+    } else {
+      if (!sink && onDisconnectedBeforeShell) onDisconnectedBeforeShell();
+      onDisconnected && onDisconnected();
+    }
   };
   // A retry pass that throws a REAL error (not NotReady) can have nothing on
   // the stack to catch it: the initial render pass throws synchronously out
@@ -3424,6 +3440,7 @@ export function renderToStream(code, options = {}) {
       } catch (_) {}
       resolve();
     });
+    onDisconnect(() => resolve());
     function flush() {
       allSettled(blockingPromises).then(awaited => {
         scheduleFlush(() => {
@@ -3542,8 +3559,10 @@ export function renderToStream(code, options = {}) {
         // head is deliberately NOT frozen: the render died, its teardown
         // retracts the declarations as it always did, and the consumer
         // keeps a writable head for whatever error response it builds
-        // around the partial HTML.
+        // around the partial HTML. A disconnect (the `signal` aborting)
+        // settles it the same way.
         onFailure(() => resolve(tmp));
+        onDisconnect(() => resolve(tmp));
         function flush() {
           allSettled(blockingPromises).then(awaited => {
             scheduleFlush(() => {
