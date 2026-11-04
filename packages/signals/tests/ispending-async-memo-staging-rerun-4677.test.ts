@@ -1,12 +1,3 @@
-/**
- * #4677. An async memo over `[id(), isPending(id)]` is a verdict reader: its
- * pass shows the committed id with `pending: true` ahead of the hold (F-6,
- * D-23), and its flight holds the verdict lane until it lands. A render
- * effect of `isPending(id)` alone waits in that lane too, so the two reveal
- * together. The hold landed at the seam the lane revealed, and its
- * re-derivation voided the effect's waited run: the badge showed
- * `pending: true` beside `false`.
- */
 import { describe, expect, it } from "vitest";
 import {
   createEffect,

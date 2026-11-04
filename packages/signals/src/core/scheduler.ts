@@ -1107,6 +1107,7 @@ export class GlobalQueue implements IQueue {
       if (stagedReaders.length) stagedReaders.length = 0;
     }
     this._queues = [[], []];
+    revealed = lanes;
     for (let k = transactions.length - 1; k >= 0; k--) {
       const u = transactions[k];
       if (blocked(u)) continue;
@@ -1118,6 +1119,7 @@ export class GlobalQueue implements IQueue {
       // judge them again.
       k = transactions.length;
     }
+    revealed = null;
     // The store folds the pending backings whose container nodes committed
     // — this flush's, or a landing's (store/store.ts installs it).
     storeCommitHook?.();
@@ -1225,13 +1227,17 @@ export class GlobalQueue implements IQueue {
   }
 }
 
+/** The runs the lanes revealed at this seam, while its landings run (`flush`). */
+let revealed: [QueueCallback[], QueueCallback[]] | null = null;
+
 /** A15's stale readers: a frame whose LAST pass read a held node as
  * committed re-derives on the landed world — next round, after the commits.
  * One re-derived since (any later pass cleared the bit: in the transaction,
- * or without the held read) owes nothing. A run this transaction stashed
- * for it is void (#3322: an effect has one value slot, and the stale pass
- * overwrote the value that run was for) — the re-derivation's run replaces
- * it. Truthy when an effect re-derives (`land`). */
+ * or without the held read) owes nothing. A run stashed for it is void
+ * (#3322: an effect has one value slot, and the stale pass overwrote the
+ * value that run was for) — the re-derivation's run replaces it — unless a
+ * lane held it since an earlier round and revealed it at this seam (#4677).
+ * Truthy when an effect re-derives (`land`). */
 export function reruns(u: Transaction): unknown {
   let frame;
   for (let i = 0; i < u._reruns.length; i++) {
@@ -1273,9 +1279,15 @@ export function reruns(u: Transaction): unknown {
       // that flight until it re-runs — cleared here, the transaction landed
       // at this seam with the flight up and voided the reveal's run (#4397).
       if (!u._lane) r._flags &= ~REACTIVE_FRAME_READ;
+      const type = (r as any)._type;
       if (
-        r._time === clock ||
-        u._queues[(r as any)._type - 1]?.includes((r as any)._boundRunEffect)
+        type &&
+        !(
+          r._time !== clock &&
+          revealed?.[(type === EFFECT_TRACKED ? EFFECT_USER : type) - 1].includes(
+            type === EFFECT_TRACKED ? (r as any)._run : (r as any)._boundRunEffect
+          )
+        )
       )
         (r as any)._modified = false;
       // Its frame is replaced by the re-derivation: a run one of its
